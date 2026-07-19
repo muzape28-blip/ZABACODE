@@ -14,6 +14,11 @@ jobs:
       PATH: /home/runner/.local/bin:$PATH
 
     steps:
+    - name: Install tar & git dulu
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tar git
+
     - uses: actions/checkout@v4
 
     - name: Set up Python 3.10
@@ -25,12 +30,11 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'  # GANTI JADI 17
+        java-version: '17'
 
     - name: Install system deps
       run: |
-        sudo apt-get update
-        sudo apt-get install -y git zip unzip tar curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
+        sudo apt-get install -y zip unzip curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
 
     - name: Install Buildozer & Cython
       run: |
@@ -39,7 +43,6 @@ jobs:
 
     - name: Build APK
       run: |
-        # Auto accept license biar build-tools 37 keinstall
         yes | sdkmanager --licenses || true
         buildozer -v android debug
 

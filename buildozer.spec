@@ -10,7 +10,7 @@ version = 0.1.0
 # lewat urllib bawaan). Tambahin library lain di sini (numpy, dst) pas
 # butuh beneran — itu yang bikin rebuild lewat GitHub Actions perlu jalan
 # lagi, bukan sesuatu yang user install sendiri di app yang udah jadi.
-requirements = python3,flask
+requirements = python3,flask,waitress
 
 # Seluruh UI Zabacode adalah satu WebView yang nampilin localhost, di-serve
 # oleh Flask yang jalan di thread Python background (lihat main.py).
@@ -22,10 +22,10 @@ fullscreen = 0
 # HP target Zaqi: ARMv7 32-bit, RAM kecil, Android 8+ (API 26+).
 # Kalau nanti mau nambahin dukungan HP 64-bit juga, tinggal tambah
 # arm64-v8a di baris ini.
-android.archs = armeabi-v7a
-android.api = 33
+android.arch = armeabi-v7a
+android.api = 31
 android.minapi = 26
-android.ndk_api = 26
+android.ndk_api = 21
 android.permissions = INTERNET
 
 [buildozer]

@@ -11,15 +11,9 @@ jobs:
     env:
       ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-      PATH: /home/runner/.local/bin:$PATH
 
     steps:
-    - name: Install tar & git - TANPA SUDO
-      run: |
-        apt-get update -y
-        apt-get install -y tar git
-
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v3  # GANTI KE V3
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -32,18 +26,14 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Install system deps - TANPA SUDO
-      run: |
-        apt-get install -y zip unzip curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
-
     - name: Install Buildozer & Cython
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install --user buildozer cython==0.29.33
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build APK
       run: |
-        yes | sdkmanager --licenses || true
         buildozer -v android debug
 
     - name: Upload APK

@@ -18,7 +18,13 @@ jobs:
     - name: Install system deps
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip tar curl openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
+        sudo apt-get install -y git zip unzip tar curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
+
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -46,4 +52,3 @@ jobs:
       with:
         name: Zabacode-ARMv7
         path: bin/*.apk
-        

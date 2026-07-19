@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/muzape28-blip/ZABACODE/actions/workflows/build_apk.yml/badge.svg)](https://github.com/muzape28-blip/ZABACODE/actions)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-**Zabacode** adalah IDE Python mobile standalone untuk Android ARMv7 yang menggabungkan kesederhanaan **Pydroid** dengan detail & completeness **Acode** — plus AI assistant tsundere gratis. 100% open-source, anti-kapitalis (zero telemetry), bertujuan F-Droid.
+**Zabacode** adalah IDE Python mobile standalone untuk Android ARMv7 yang menggabungkan kesederhanaan **Pydroid** dengan detail & completeness **Acode** — plus AI assistant gratis. 100% open-source, anti-kapitalis (zero telemetry), bertujuan F-Droid.
 
 ```
 ┌─────────────────────────────────────────────────┐

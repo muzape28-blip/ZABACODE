@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Zabacode</title>
+
+<!-- Monaco Editor CDN -->
+<link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.css">
+
 <style>
   :root {
     --bg: #050806;
@@ -95,7 +99,7 @@
   #sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 29; display: none; }
   #sidebar-backdrop.open { display: block; }
   #sidebar {
-    position: fixed; top: 0; bottom: 0; left: 0; width: 270px;
+    position: fixed; top: 0; bottom: 0; left: 0; width: 280px;
     background: var(--bg-panel); border-right: 1px solid var(--border);
     transform: translateX(-100%); transition: transform .2s ease;
     z-index: 30; overflow-y: auto; padding-bottom: 24px;
@@ -112,25 +116,28 @@
   .tag { font-size: 9px; padding: 2px 6px; border: 1px solid; margin-left: 6px; }
   .tag.runtime { border-color: var(--border-bright); color: var(--text-bright); }
   .tag.buildtime { border-color: var(--ai-dim); color: var(--ai); }
+  .tag.ready { border-color: var(--border-bright); color: var(--text-bright); }
+  .tag.no-key { border-color: var(--err-dim); color: var(--err); }
   .mini-btn {
     background: transparent; color: var(--text-bright); border: 1px solid var(--border-bright);
-    padding: 3px 9px; font-size: 11px; cursor: pointer; font-family: var(--mono);
+    padding: 3px 9px; font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s;
   }
   .mini-btn:active { background: var(--border-bright); color: var(--bg); }
+  .mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .placeholder-note { padding: 8px 16px; font-size: 11px; color: var(--text-dim); line-height: 1.5; }
 
   /* ---------- Editor ---------- */
-  #code-editor {
-    flex: 1; background: var(--bg); color: var(--text); caret-color: var(--text-bright);
-    font-family: var(--mono); font-size: 14px; line-height: 1.55;
-    border: none; resize: none; padding: 14px; outline: none; tab-size: 4;
+  #code-editor-container {
+    flex: 1; background: var(--bg); overflow: hidden;
   }
-  #code-editor:focus { box-shadow: inset 0 0 0 1px var(--border-bright); }
-  #editor-controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); }
-  button.action { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; border-radius: 2px; padding: 10px 18px; cursor: pointer; }
-  #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; }
+  #code-editor { width: 100%; height: 100%; }
+  #editor-controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); flex-wrap: wrap; }
+  button.action { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; border-radius: 2px; padding: 10px 18px; cursor: pointer; transition: all .15s; }
+  #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; min-width: 80px; }
   #run-btn:active { background: #2ecc0f; }
-  #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  #run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  #save-btn, #open-btn, #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  #save-btn:hover, #open-btn:hover, #clear-btn:hover { color: var(--text-bright); border-color: var(--border-bright); }
 
   /* ---------- Output view (full screen terminal) ---------- */
   #output-terminal {
@@ -144,6 +151,7 @@
   #output-terminal .exit-line { margin-top: 10px; color: var(--text-dim); }
   #output-terminal .exit-line.ok { color: var(--text-bright); }
   #output-terminal .exit-line.err { color: var(--err); }
+  #output-terminal .exit-line.timeout { color: var(--ai); }
   #back-to-editor { color: var(--text-bright); }
 
   /* ---------- AI chat (bottom sheet) ---------- */
@@ -170,7 +178,8 @@
   .msg.system-hint { border: none; color: var(--text-dim); font-style: italic; text-align: center; max-width: 100%; }
   #ai-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
   #ai-input { flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 12px; font-size: 12px; outline: none; font-family: var(--mono); }
-  #ai-send { background: var(--ai); color: #1A0F00; border: none; padding: 9px 16px; font-weight: 700; cursor: pointer; font-family: var(--mono); }
+  #ai-send { background: var(--ai); color: #1A0F00; border: none; padding: 9px 16px; font-weight: 700; cursor: pointer; font-family: var(--mono); transition: all .15s; }
+  #ai-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ---------- API key dialog ---------- */
   #key-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
@@ -180,6 +189,40 @@
   #key-dialog p { font-size: 11px; color: var(--text-dim); margin: 0 0 12px; }
   #key-dialog input { width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 10px; font-size: 12px; margin-bottom: 12px; font-family: var(--mono); }
   #key-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ---------- File manager dialog ---------- */
+  #file-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
+  #file-dialog-backdrop.open { display: flex; }
+  #file-dialog { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 90%; max-width: 380px; padding: 18px; max-height: 70vh; overflow-y: auto; }
+  #file-dialog h4 { margin: 0 0 12px; color: var(--text-bright); font-size: 14px; }
+  .file-list { display: flex; flex-direction: column; gap: 6px; }
+  .file-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-panel-2); border: 1px solid var(--border); }
+  .file-item-name { flex: 1; font-size: 12px; color: var(--text); cursor: pointer; }
+  .file-item-actions { display: flex; gap: 4px; }
+  .file-item-actions button { padding: 3px 6px; font-size: 10px; }
+  #file-save-input { width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 10px; font-size: 12px; margin-bottom: 12px; font-family: var(--mono); }
+  #file-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+  /* ---------- Theme selector dialog ---------- */
+  #theme-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
+  #theme-dialog-backdrop.open { display: flex; }
+  #theme-dialog { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 90%; max-width: 320px; padding: 18px; }
+  #theme-dialog h4 { margin: 0 0 12px; color: var(--text-bright); font-size: 14px; }
+  .theme-list { display: flex; flex-direction: column; gap: 8px; }
+  .theme-option { padding: 10px 12px; background: var(--bg-panel-2); border: 2px solid var(--border); cursor: pointer; text-align: center; font-size: 12px; transition: all .15s; }
+  .theme-option:hover { border-color: var(--border-bright); }
+  .theme-option.active { border-color: var(--text-bright); color: var(--text-bright); }
+
+  /* ---------- Install status toast ---------- */
+  .install-toast {
+    position: fixed; bottom: 80px; left: 16px; right: 16px; max-width: 340px;
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    padding: 12px 14px; font-size: 12px; z-index: 45; animation: slideUp .3s ease;
+  }
+  .install-toast.success { border-color: var(--text-bright); color: var(--text-bright); }
+  .install-toast.error { border-color: var(--err); color: var(--err); }
+  .install-toast.loading { border-color: var(--ai); color: var(--ai); }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 </style>
 </head>
 <body>
@@ -196,13 +239,18 @@
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode</div>
+        <div id="app-title">zabacode v0.2</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
-      <textarea id="code-editor" spellcheck="false">print('Zabacode Lokal Jalan!')</textarea>
+      <div id="code-editor-container">
+        <div id="code-editor"></div>
+      </div>
       <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXEC</button>
+        <button id="save-btn" class="action" title="Save file">💾 SAVE</button>
+        <button id="open-btn" class="action" title="Open file">📂 OPEN</button>
+        <button id="theme-btn" class="action" title="Change theme">🎨 THEME</button>
         <button id="clear-btn" class="action">CLEAR</button>
       </div>
     </div>
@@ -232,8 +280,8 @@
       <div class="placeholder-note">provider tanpa key bakal nanya otomatis pas pertama dipakai.</div>
     </div>
     <div class="sidebar-section">
-      <h3>[ MARKETPLACE — SOON ]</h3>
-      <div class="placeholder-note">tema & plugin community. belum diimplementasi, tempatnya udah disiapin.</div>
+      <h3>[ DOCS ]</h3>
+      <div class="placeholder-note"><a href="https://github.com/muzape28-blip/ZABACODE/blob/main/ZABACODEE.md" target="_blank" style="color:var(--text-bright)">📖 Roadmap & Docs</a></div>
     </div>
   </div>
 
@@ -261,7 +309,7 @@
   <div id="key-dialog-backdrop">
     <div id="key-dialog">
       <h4>&gt; masukin api key <span id="key-dialog-provider"></span>_</h4>
-      <p>sekali diisi, disimpan otomatis dan ga bakal ditanya lagi kecuali key-nya invalid/expired.</p>
+      <p>sekali diisi, disimpan terenkripsi dan ga bakal ditanya lagi kecuali key-nya invalid/expired.</p>
       <input id="key-dialog-input" type="password" placeholder="api key...">
       <div id="key-dialog-actions">
         <button class="mini-btn" id="key-dialog-cancel">batal</button>
@@ -269,14 +317,35 @@
       </div>
     </div>
   </div>
+
+  <div id="file-dialog-backdrop">
+    <div id="file-dialog">
+      <h4>&gt; file manager _</h4>
+      <div id="file-list-container" class="file-list"></div>
+      <input id="file-save-input" type="text" placeholder="nama file (tanpa .py)...">
+      <div id="file-dialog-actions">
+        <button class="mini-btn" id="file-dialog-cancel">tutup</button>
+        <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan baru</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="theme-dialog-backdrop">
+    <div id="theme-dialog">
+      <h4>&gt; pilih theme _</h4>
+      <div class="theme-list" id="theme-list"></div>
+    </div>
+  </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.js"></script>
 <script>
-// ---------- Boot sequence (sekali doang tiap load halaman) ----------
+// ---------- Boot sequence ----------
 const bootLines = [
-  { text: 'ZABACODE v0.1.0', cls: 'ok' },
+  { text: 'ZABACODE v0.2.0', cls: 'ok' },
   { text: '[ OK ] mounting sandbox...', cls: 'dim' },
   { text: '[ OK ] python engine ready', cls: 'dim' },
+  { text: '[ OK ] monaco editor loaded', cls: 'dim' },
   { text: '[ OK ] zabacode ai: standby (mulutnya pedas, tapi jago)', cls: 'dim' },
   { text: '> ready_', cls: 'ok' },
 ];
@@ -294,7 +363,6 @@ setTimeout(() => {
   app.style.display = 'flex';
   requestAnimationFrame(() => app.classList.add('ready'));
 }, bootLines.length * 180 + 500);
-// tap buat skip boot lebih cepet
 document.getElementById('boot-screen').addEventListener('click', () => {
   document.getElementById('boot-screen').style.display = 'none';
   const app = document.getElementById('app');
@@ -302,8 +370,28 @@ document.getElementById('boot-screen').addEventListener('click', () => {
   requestAnimationFrame(() => app.classList.add('ready'));
 });
 
-// ---------- Elemen ----------
-const editor = document.getElementById('code-editor');
+// ---------- Monaco Editor Setup ----------
+require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+let editor;
+require(['vs/editor/editor.main'], function() {
+  editor = monaco.editor.create(document.getElementById('code-editor'), {
+    value: "print('Zabacode Lokal Jalan!')\n",
+    language: 'python',
+    theme: 'vs-dark',
+    fontSize: 14,
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    fontLigatures: true,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    formatOnPaste: true,
+    formatOnType: true,
+  });
+  updateLineCounter();
+  editor.onDidChangeCursorPosition(updateLineCounter);
+});
+
+// ---------- Elements ----------
 const statusDot = document.getElementById('status-dot');
 const outputStatusDot = document.getElementById('output-status-dot');
 const lineCounter = document.getElementById('line-counter');
@@ -313,21 +401,24 @@ const outputTerminal = document.getElementById('output-terminal');
 
 // ---------- Line:Col counter ----------
 function updateLineCounter() {
-  const value = editor.value.substring(0, editor.selectionStart);
-  const lines = value.split('\n');
-  lineCounter.textContent = `Ln ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
+  if (!editor) return;
+  const pos = editor.getPosition();
+  lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
 }
-editor.addEventListener('keyup', updateLineCounter);
-editor.addEventListener('click', updateLineCounter);
-updateLineCounter();
 
 // ---------- Sidebar toggle ----------
 const sidebar = document.getElementById('sidebar');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-document.getElementById('hamburger').onclick = () => { sidebar.classList.add('open'); sidebarBackdrop.classList.add('open'); };
-sidebarBackdrop.onclick = () => { sidebar.classList.remove('open'); sidebarBackdrop.classList.remove('open'); };
+document.getElementById('hamburger').onclick = () => {
+  sidebar.classList.add('open');
+  sidebarBackdrop.classList.add('open');
+};
+sidebarBackdrop.onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+};
 
-// ---------- View switching: editor <-> output (full-screen, bukan split) ----------
+// ---------- View switching ----------
 function goToOutput() {
   viewEditor.classList.add('behind');
   viewOutput.classList.add('active');
@@ -342,7 +433,12 @@ document.getElementById('clear-btn').onclick = () => {
   outputTerminal.innerHTML = '';
 };
 
+// ---------- Run code ----------
 document.getElementById('run-btn').onclick = async () => {
+  if (!editor) return;
+  
+  const runBtn = document.getElementById('run-btn');
+  runBtn.disabled = true;
   statusDot.className = 'running';
   outputStatusDot.style.background = 'var(--ai)';
   outputTerminal.innerHTML = `<div class="prompt-line"><span class="user">zaba@zabacode:~$</span> python3 main.py<span class="cursor-block"></span></div>`;
@@ -350,8 +446,9 @@ document.getElementById('run-btn').onclick = async () => {
 
   try {
     const res = await fetch('/api/run', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: editor.value }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: editor.getValue() }),
     });
     const data = await res.json();
 
@@ -371,8 +468,12 @@ document.getElementById('run-btn').onclick = async () => {
       outputTerminal.appendChild(block);
     }
     const exit = document.createElement('div');
-    exit.className = `exit-line ${data.ok ? 'ok' : 'err'}`;
-    exit.textContent = data.ok ? '[process finished — exit 0]' : '[process finished — exit 1]';
+    exit.className = `exit-line ${data.timeout ? 'timeout' : (data.ok ? 'ok' : 'err')}`;
+    if (data.timeout) {
+      exit.textContent = '[process finished — timeout]';
+    } else {
+      exit.textContent = data.ok ? '[process finished — exit 0]' : '[process finished — exit 1]';
+    }
     outputTerminal.appendChild(exit);
 
     statusDot.className = data.ok ? 'ok' : 'err';
@@ -381,6 +482,8 @@ document.getElementById('run-btn').onclick = async () => {
     outputTerminal.innerHTML += `<div class="stderr-block">gagal konek ke backend: ${e}</div>`;
     statusDot.className = 'err';
     outputStatusDot.style.background = 'var(--err)';
+  } finally {
+    runBtn.disabled = false;
   }
 };
 
@@ -400,17 +503,47 @@ async function loadLibraries() {
     }
     list.querySelectorAll('button[data-name]').forEach(btn => {
       btn.onclick = async () => {
-        const res = await fetch('/api/libraries/install', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: btn.dataset.name }),
-        });
-        const data = await res.json();
-        alert(data.message);
+        const name = btn.dataset.name;
+        btn.disabled = true;
+        btn.textContent = 'installing...';
+        showInstallToast(`Installing ${name}...`, 'loading');
+
+        try {
+          const res = await fetch('/api/libraries/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          const data = await res.json();
+
+          if (data.ok) {
+            showInstallToast(`✓ ${data.message}`, 'success');
+          } else if (data.needs_rebuild) {
+            showInstallToast(`⚠ ${data.message}`, 'error');
+          } else {
+            showInstallToast(`✗ ${data.message}`, 'error');
+          }
+        } catch (e) {
+          showInstallToast(`✗ Error: ${e}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'install';
+        }
       };
     });
-  } catch (e) { list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>'; }
+  } catch (e) {
+    list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>';
+  }
 }
 loadLibraries();
+
+function showInstallToast(msg, type) {
+  const toast = document.createElement('div');
+  toast.className = `install-toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
 
 // ---------- AI provider status ----------
 async function loadProviderStatus() {
@@ -422,10 +555,12 @@ async function loadProviderStatus() {
     for (const [provider, hasKey] of Object.entries(status)) {
       const row = document.createElement('div');
       row.className = 'provider-row';
-      row.innerHTML = `<span>${provider}</span><span class="tag ${hasKey ? 'runtime' : 'buildtime'}">${hasKey ? 'ready' : 'no key'}</span>`;
+      row.innerHTML = `<span>${provider}</span><span class="tag ${hasKey ? 'ready' : 'no-key'}">${hasKey ? '✓ ready' : '✗ no key'}</span>`;
       list.appendChild(row);
     }
-  } catch (e) { list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>'; }
+  } catch (e) {
+    list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>';
+  }
 }
 loadProviderStatus();
 
@@ -433,7 +568,7 @@ loadProviderStatus();
 const aiPanel = document.getElementById('ai-panel');
 document.getElementById('ai-close').onclick = () => aiPanel.classList.remove('open');
 
-// ---------- AI FAB: draggable ke mana aja, snap ke tepi biar ga numpuk tombol lain ----------
+// ---------- AI FAB: draggable ----------
 const aiFab = document.getElementById('ai-fab');
 const FAB_SIZE = 50, FAB_MARGIN = 14;
 
@@ -471,19 +606,18 @@ window.addEventListener('resize', defaultFabPosition);
     dragging = false;
     el.style.cursor = 'grab';
     if (moved) {
-      // abis digeser: snap ke tepi kiri/kanan terdekat, ala chat-head
       const centerX = el.offsetLeft + FAB_SIZE / 2;
       const snapLeft = centerX < window.innerWidth / 2 ? FAB_MARGIN : window.innerWidth - FAB_SIZE - FAB_MARGIN;
       el.style.transition = 'left .18s ease';
       el.style.left = `${snapLeft}px`;
       setTimeout(() => { el.style.transition = ''; }, 200);
     } else {
-      // ga digeser sama sekali -> dianggap tap biasa, buka panel
       aiPanel.classList.add('open');
     }
   });
 })(aiFab);
 
+// ---------- AI chat messages ----------
 const aiMessages = document.getElementById('ai-messages');
 function addMsg(text, cls) {
   const div = document.createElement('div');
@@ -493,6 +627,7 @@ function addMsg(text, cls) {
   aiMessages.scrollTop = aiMessages.scrollHeight;
 }
 
+// ---------- API key dialog ----------
 const keyDialogBackdrop = document.getElementById('key-dialog-backdrop');
 const keyDialogProvider = document.getElementById('key-dialog-provider');
 const keyDialogInput = document.getElementById('key-dialog-input');
@@ -507,39 +642,206 @@ function openKeyDialog(provider) {
 document.getElementById('key-dialog-cancel').onclick = () => keyDialogBackdrop.classList.remove('open');
 document.getElementById('key-dialog-save').onclick = async () => {
   if (!keyDialogInput.value) return;
-  await fetch('/api/keys', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
-  });
-  keyDialogBackdrop.classList.remove('open');
-  loadProviderStatus();
-  addMsg(`key ${pendingProvider} tersimpan. coba kirim pesan lagi.`, 'system-hint');
+  const saveBtn = document.getElementById('key-dialog-save');
+  saveBtn.disabled = true;
+  try {
+    await fetch('/api/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
+    });
+    keyDialogBackdrop.classList.remove('open');
+    loadProviderStatus();
+    addMsg(`key ${pendingProvider} tersimpan. coba kirim pesan lagi.`, 'system-hint');
+  } finally {
+    saveBtn.disabled = false;
+  }
 };
 
 async function sendAiMessage() {
   const input = document.getElementById('ai-input');
   const message = input.value.trim();
-  if (!message) return;
+  if (!message || !editor) return;
   const provider = document.getElementById('ai-provider').value;
+  const sendBtn = document.getElementById('ai-send');
+  
   addMsg(message, 'user');
   input.value = '';
+  sendBtn.disabled = true;
 
-  const res = await fetch('/api/ai/chat', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, provider, code: editor.value }),
-  });
-  const data = await res.json();
+  try {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, provider, code: editor.getValue() }),
+    });
+    const data = await res.json();
 
-  if (res.status === 401 && data.needs_key) {
-    addMsg(`provider '${provider}' belum ada api key.`, 'system-hint');
-    openKeyDialog(provider);
-    return;
+    if (res.status === 401 && data.needs_key) {
+      addMsg(`provider '${provider}' belum ada api key.`, 'system-hint');
+      openKeyDialog(provider);
+      return;
+    }
+    if (!data.ok) {
+      addMsg(`error: ${data.message || 'gagal manggil ai'}`, 'system-hint');
+      return;
+    }
+    addMsg(data.reply, 'ai');
+  } finally {
+    sendBtn.disabled = false;
   }
-  if (!data.ok) { addMsg(`error: ${data.message || 'gagal manggil ai'}`, 'system-hint'); return; }
-  addMsg(data.reply, 'ai');
 }
 document.getElementById('ai-send').onclick = sendAiMessage;
 document.getElementById('ai-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(); });
+
+// ---------- File Manager ----------
+const fileDialogBackdrop = document.getElementById('file-dialog-backdrop');
+const fileListContainer = document.getElementById('file-list-container');
+const fileSaveInput = document.getElementById('file-save-input');
+
+document.getElementById('open-btn').onclick = async () => {
+  fileDialogBackdrop.classList.add('open');
+  await loadFileList();
+};
+
+document.getElementById('file-dialog-cancel').onclick = () => {
+  fileDialogBackdrop.classList.remove('open');
+};
+
+document.getElementById('file-dialog-save').onclick = async () => {
+  const filename = fileSaveInput.value.trim();
+  if (!filename || !editor) return;
+  
+  const saveBtn = document.getElementById('file-dialog-save');
+  saveBtn.disabled = true;
+  showInstallToast(`Saving ${filename}...`, 'loading');
+
+  try {
+    const res = await fetch(`/api/files/${filename}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: editor.getValue() }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showInstallToast(`✓ ${data.message}`, 'success');
+      fileSaveInput.value = '';
+      await loadFileList();
+    } else {
+      showInstallToast(`✗ Save gagal: ${data.message}`, 'error');
+    }
+  } finally {
+    saveBtn.disabled = false;
+  }
+};
+
+async function loadFileList() {
+  try {
+    const res = await fetch('/api/files');
+    const data = await res.json();
+    fileListContainer.innerHTML = '';
+    if (data.files && data.files.length > 0) {
+      data.files.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `
+          <div class="file-item-name">${file.name}</div>
+          <div class="file-item-actions">
+            <button class="mini-btn" data-action="open" data-file="${file.name}">open</button>
+            <button class="mini-btn" data-action="delete" data-file="${file.name}">del</button>
+          </div>
+        `;
+        fileListContainer.appendChild(item);
+      });
+      
+      fileListContainer.querySelectorAll('button').forEach(btn => {
+        btn.onclick = async () => {
+          const filename = btn.dataset.file;
+          const action = btn.dataset.action;
+          
+          if (action === 'open') {
+            const res = await fetch(`/api/files/${filename}`);
+            const data = await res.json();
+            if (data.ok && editor) {
+              editor.setValue(data.content);
+              fileDialogBackdrop.classList.remove('open');
+            }
+          } else if (action === 'delete') {
+            if (confirm(`Delete ${filename}?`)) {
+              await fetch(`/api/files/${filename}`, { method: 'DELETE' });
+              await loadFileList();
+            }
+          }
+        };
+      });
+    } else {
+      fileListContainer.innerHTML = '<div class="placeholder-note">Belum ada file tersimpan.</div>';
+    }
+  } catch (e) {
+    fileListContainer.innerHTML = '<div class="placeholder-note">Error loading files.</div>';
+  }
+}
+
+// ---------- Theme Selector ----------
+const themeDialogBackdrop = document.getElementById('theme-dialog-backdrop');
+const themeList = document.getElementById('theme-list');
+
+document.getElementById('theme-btn').onclick = () => {
+  themeDialogBackdrop.classList.add('open');
+  loadThemes();
+};
+
+async function loadThemes() {
+  try {
+    const res = await fetch('/api/themes');
+    const data = await res.json();
+    themeList.innerHTML = '';
+    const currentTheme = localStorage.getItem('zabacode-theme') || 'retro';
+    
+    for (const [key, name] of Object.entries(data.themes)) {
+      const btn = document.createElement('button');
+      btn.className = `theme-option ${key === currentTheme ? 'active' : ''}`;
+      btn.textContent = name;
+      btn.onclick = () => applyTheme(key);
+      themeList.appendChild(btn);
+    }
+  } catch (e) {
+    themeList.innerHTML = '<div class="placeholder-note">Error loading themes.</div>';
+  }
+}
+
+async function applyTheme(name) {
+  try {
+    const res = await fetch(`/api/themes/${name}`);
+    const data = await res.json();
+    if (data.ok) {
+      const theme = data.theme;
+      document.documentElement.style.setProperty('--bg', theme.bg);
+      document.documentElement.style.setProperty('--bg-panel', theme.bg_panel);
+      document.documentElement.style.setProperty('--border', theme.border);
+      document.documentElement.style.setProperty('--border-bright', theme.border_bright);
+      document.documentElement.style.setProperty('--text', theme.text);
+      document.documentElement.style.setProperty('--text-bright', theme.text_bright);
+      document.documentElement.style.setProperty('--text-dim', theme.text_dim);
+      document.documentElement.style.setProperty('--err', theme.err);
+      document.documentElement.style.setProperty('--ai', theme.ai);
+      
+      localStorage.setItem('zabacode-theme', name);
+      themeDialogBackdrop.classList.remove('open');
+      loadThemes();
+    }
+  } catch (e) {
+    alert('Error applying theme');
+  }
+}
+
+// Load saved theme on startup
+window.addEventListener('load', () => {
+  const savedTheme = localStorage.getItem('zabacode-theme');
+  if (savedTheme) {
+    applyTheme(savedTheme);
+  }
+});
 </script>
 </body>
 </html>

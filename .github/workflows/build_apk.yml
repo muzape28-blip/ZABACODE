@@ -30,10 +30,14 @@ jobs:
         python3 -m pip install --user buildozer==1.6.0 cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-    - name: Build APK
+    - name: Accept Android Licenses
       run: |
-        # LANGSUNG BUILD + AUTO ACCEPT LICENSE
-        yes | buildozer -v android debug
+        buildozer android clean || true
+        SDKMANAGER=$(find $ANDROID_SDK_ROOT -name sdkmanager | head -n 1)
+        yes | $SDKMANAGER --licenses || true
+
+    - name: Build APK
+      run: buildozer -v android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4

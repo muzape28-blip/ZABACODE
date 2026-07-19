@@ -32,10 +32,13 @@ jobs:
         python3 -m pip install --user buildozer cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-    - name: Accept Android Licenses  # TAMBAHIN INI
+    - name: Install Android SDK + Accept Licenses
       run: |
-        mkdir -p $ANDROID_SDK_ROOT/licenses
-        yes | buildozer android clean || true
+        # Biarin buildozer download cmdline-tools dulu
+        buildozer android clean || true
+        # Cari sdkmanager yg baru di cmdline-tools
+        SDKMANAGER=$(find $ANDROID_SDK_ROOT -name sdkmanager | head -n 1)
+        yes | $SDKMANAGER --licenses
 
     - name: Build APK
       run: |

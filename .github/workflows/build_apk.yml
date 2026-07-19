@@ -13,7 +13,7 @@ jobs:
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
     steps:
-    - uses: actions/checkout@v3  # GANTI KE V3
+    - uses: actions/checkout@v3
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -31,6 +31,11 @@ jobs:
         python3 -m pip install --upgrade pip
         python3 -m pip install --user buildozer cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Accept Android Licenses  # TAMBAHIN INI
+      run: |
+        mkdir -p $ANDROID_SDK_ROOT/licenses
+        yes | buildozer android clean || true
 
     - name: Build APK
       run: |

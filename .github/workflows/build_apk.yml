@@ -11,42 +11,36 @@ jobs:
     env:
       ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-      _JAVA_OPTIONS: "-XX:+IgnoreUnrecognizedVMOptions --add-modules java.base --add-opens java.base/java.lang=ALL-UNNAMED"
+      PATH: /home/runner/.local/bin:$PATH
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Install system deps
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git zip unzip tar curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
-
-    - name: Set up Java 11
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '11'
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'  # GANTI JADI 17
+
+    - name: Install system deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git zip unzip tar curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
+
     - name: Install Buildozer & Cython
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install --user buildozer cython
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        accept-android-sdk-licenses: true
-        cmdline-tools-version: '11.0'
+        python3 -m pip install --user buildozer cython==0.29.33
 
     - name: Build APK
       run: |
-        export _JAVA_OPTIONS="-XX:+IgnoreUnrecognizedVMOptions --add-modules java.base --add-opens java.base/java.lang=ALL-UNNAMED"
+        # Auto accept license biar build-tools 37 keinstall
+        yes | sdkmanager --licenses || true
         buildozer -v android debug
 
     - name: Upload APK

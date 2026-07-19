@@ -11,7 +11,6 @@ jobs:
     env:
       ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-      # Removed problematic PATH override
 
     steps:
     - uses: actions/checkout@v4
@@ -30,12 +29,16 @@ jobs:
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install --user buildozer cython==0.29.33
-        # Add ~/.local/bin to PATH AFTER Python setup
         echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Install Android SDK components
+      run: |
+        mkdir -p $ANDROID_SDK_ROOT
+        yes | sdkmanager --licenses || true
+        sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
 
     - name: Build APK
       run: |
-        yes | sdkmanager --licenses || true
         buildozer -v android debug
 
     - name: Upload APK
@@ -43,3 +46,4 @@ jobs:
       with:
         name: Zabacode-ARMv7
         path: bin/*.apk
+        

@@ -1,8 +1,6 @@
 name: Build ZABACODE APK
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -29,20 +27,13 @@ jobs:
     - name: Install Buildozer & Cython
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install --user buildozer cython==0.29.33
+        python3 -m pip install --user buildozer==1.6.0 cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-    - name: Install Android SDK + Accept Licenses
-      run: |
-        # Biarin buildozer download cmdline-tools dulu
-        buildozer android clean || true
-        # Cari sdkmanager yg baru di cmdline-tools
-        SDKMANAGER=$(find $ANDROID_SDK_ROOT -name sdkmanager | head -n 1)
-        yes | $SDKMANAGER --licenses
 
     - name: Build APK
       run: |
-        buildozer -v android debug
+        # LANGSUNG BUILD + AUTO ACCEPT LICENSE
+        yes | buildozer -v android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4

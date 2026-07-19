@@ -22,7 +22,7 @@ fullscreen = 0
 # HP target Zaqi: ARMv7 32-bit, RAM kecil, Android 8+ (API 26+).
 # Kalau nanti mau nambahin dukungan HP 64-bit juga, tinggal tambah
 # arm64-v8a di baris ini.
-android.arch = armeabi-v7a
+android.archs = armeabi-v7a
 android.api = 31
 android.minapi = 26
 android.ndk_api = 21

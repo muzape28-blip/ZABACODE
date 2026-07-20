@@ -42,13 +42,15 @@ jobs:
       with:
         accept-android-sdk-licenses: true
 
-    - name: Bridge cmdline-tools to legacy sdkmanager path (buildozer needs this)
+    - name: Bridge cmdline-tools to legacy sdkmanager path & pre-install API 34
       run: |
         CMDLINE_TOOLS_DIR=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 1 -mindepth 1 -type d | head -n 1)
         mkdir -p "$ANDROID_SDK_ROOT/tools/bin"
         ln -sf "$CMDLINE_TOOLS_DIR/bin/sdkmanager" "$ANDROID_SDK_ROOT/tools/bin/sdkmanager"
         ln -sf "$CMDLINE_TOOLS_DIR/bin/avdmanager" "$ANDROID_SDK_ROOT/tools/bin/avdmanager" || true
         ls -la "$ANDROID_SDK_ROOT/tools/bin/"
+        yes | "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" --licenses || true
+        "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" || true
 
     # TAMBAHAN CACHE DI SINI: Biar build selanjutnya ngebut dan nggak dari nol!
     - name: Cache Buildozer directory

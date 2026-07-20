@@ -128,9 +128,25 @@
 
   /* ---------- Editor ---------- */
   #code-editor-container {
-    flex: 1; background: var(--bg); overflow: hidden;
+    flex: 1; background: var(--bg); overflow: hidden; position: relative; display: flex;
   }
-  #code-editor { width: 100%; height: 100%; }
+  #code-editor { width: 100%; height: 100%; flex: 1; }
+  /* Native Fallback Editor styling */
+  #native-editor-wrapper {
+    display: none; width: 100%; height: 100%; flex: 1; overflow: hidden;
+    background: var(--bg); font-family: var(--mono);
+  }
+  #native-editor-wrapper.active { display: flex; }
+  #native-gutter {
+    width: 45px; background: var(--bg-panel); color: var(--text-dim);
+    padding: 12px 6px; text-align: right; font-size: 14px; line-height: 1.5;
+    user-select: none; overflow: hidden; border-right: 1px solid var(--border);
+  }
+  #native-code-area {
+    flex: 1; background: transparent; color: var(--text); border: none; outline: none;
+    padding: 12px; font-family: var(--mono); font-size: 14px; line-height: 1.5;
+    resize: none; overflow: auto; white-space: pre; tab-size: 4;
+  }
   #editor-controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); flex-wrap: wrap; }
   button.action { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; border-radius: 2px; padding: 10px 18px; cursor: pointer; transition: all .15s; }
   #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; min-width: 80px; }
@@ -245,6 +261,11 @@
       </div>
       <div id="code-editor-container">
         <div id="code-editor"></div>
+        <div id="native-editor-wrapper">
+          <div id="native-gutter">1</div>
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Zabacode Lokal Jalan!')
+</textarea>
+        </div>
       </div>
       <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXEC</button>
@@ -370,27 +391,6 @@ document.getElementById('boot-screen').addEventListener('click', () => {
   requestAnimationFrame(() => app.classList.add('ready'));
 });
 
-// ---------- Monaco Editor Setup ----------
-require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
-let editor;
-require(['vs/editor/editor.main'], function() {
-  editor = monaco.editor.create(document.getElementById('code-editor'), {
-    value: "print('Zabacode Lokal Jalan!')\n",
-    language: 'python',
-    theme: 'vs-dark',
-    fontSize: 14,
-    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-    fontLigatures: true,
-    minimap: { enabled: false },
-    scrollBeyondLastLine: false,
-    automaticLayout: true,
-    formatOnPaste: true,
-    formatOnType: true,
-  });
-  updateLineCounter();
-  editor.onDidChangeCursorPosition(updateLineCounter);
-});
-
 // ---------- Elements ----------
 const statusDot = document.getElementById('status-dot');
 const outputStatusDot = document.getElementById('output-status-dot');
@@ -399,11 +399,148 @@ const viewEditor = document.getElementById('view-editor');
 const viewOutput = document.getElementById('view-output');
 const outputTerminal = document.getElementById('output-terminal');
 
+// ---------- Adaptive Editor Setup (Monaco CDN + Native Fallback) ----------
+let editor = null;
+let activeEditorMode = 'loading'; // 'monaco' or 'native'
+const nativeWrapper = document.getElementById('native-editor-wrapper');
+const nativeCodeArea = document.getElementById('native-code-area');
+const nativeGutter = document.getElementById('native-gutter');
+const monacoDiv = document.getElementById('code-editor');
+
+function updateNativeGutter() {
+  if (!nativeCodeArea || !nativeGutter) return;
+  const linesCount = nativeCodeArea.value.split('\n').length;
+  let gutterHtml = '';
+  for (let i = 1; i <= linesCount; i++) {
+    gutterHtml += i + '<br>';
+  }
+  nativeGutter.innerHTML = gutterHtml;
+}
+
+function activateNativeFallback(reason) {
+  if (activeEditorMode === 'native' || activeEditorMode === 'monaco') return;
+  console.log('Switching to Native Editor fallback:', reason);
+  activeEditorMode = 'native';
+  if (monacoDiv) monacoDiv.style.display = 'none';
+  if (nativeWrapper) nativeWrapper.classList.add('active');
+  updateNativeGutter();
+  updateLineCounter();
+}
+
+if (nativeCodeArea) {
+  nativeCodeArea.addEventListener('input', () => {
+    updateNativeGutter();
+    updateLineCounter();
+  });
+  nativeCodeArea.addEventListener('scroll', () => {
+    if (nativeGutter) nativeGutter.scrollTop = nativeCodeArea.scrollTop;
+  });
+  nativeCodeArea.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = nativeCodeArea.selectionStart;
+      const end = nativeCodeArea.selectionEnd;
+      nativeCodeArea.value = nativeCodeArea.value.substring(0, start) + "    " + nativeCodeArea.value.substring(end);
+      nativeCodeArea.selectionStart = nativeCodeArea.selectionEnd = start + 4;
+      updateNativeGutter();
+    } else if (e.key === 'Enter') {
+      const start = nativeCodeArea.selectionStart;
+      const before = nativeCodeArea.value.substring(0, start);
+      const currentLine = before.split('\n').pop();
+      const match = currentLine.match(/^(\s+)/);
+      if (match) {
+        e.preventDefault();
+        const indent = match[1];
+        nativeCodeArea.value = nativeCodeArea.value.substring(0, start) + "\n" + indent + nativeCodeArea.value.substring(nativeCodeArea.selectionEnd);
+        nativeCodeArea.selectionStart = nativeCodeArea.selectionEnd = start + 1 + indent.length;
+        updateNativeGutter();
+        updateLineCounter();
+      }
+    }
+  });
+  nativeCodeArea.addEventListener('click', updateLineCounter);
+  nativeCodeArea.addEventListener('keyup', updateLineCounter);
+}
+
+// Unified Editor Interface
+function getEditorValue() {
+  if (activeEditorMode === 'monaco' && editor) {
+    return editor.getValue();
+  }
+  return nativeCodeArea ? nativeCodeArea.value : "";
+}
+
+function setEditorValue(content) {
+  if (activeEditorMode === 'monaco' && editor) {
+    editor.setValue(content);
+  } else if (nativeCodeArea) {
+    nativeCodeArea.value = content;
+    updateNativeGutter();
+  }
+}
+
 // ---------- Line:Col counter ----------
 function updateLineCounter() {
-  if (!editor) return;
-  const pos = editor.getPosition();
-  lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+  if (!lineCounter) return;
+  if (activeEditorMode === 'monaco' && editor) {
+    const pos = editor.getPosition();
+    if (pos) lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+  } else if (nativeCodeArea) {
+    const text = nativeCodeArea.value.substring(0, nativeCodeArea.selectionStart);
+    const lines = text.split('\n');
+    const ln = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    lineCounter.textContent = `Ln ${ln}, Col ${col}`;
+  }
+}
+
+// Timeout fallback if Monaco fails or hangs over offline / security restrictions
+const monacoLoadTimeout = setTimeout(() => {
+  if (activeEditorMode === 'loading') {
+    activateNativeFallback('Monaco CDN load timeout / offline mode');
+  }
+}, 1800);
+
+try {
+  // Prevent cross-origin web worker crashes inside Android WebView
+  window.MonacoEnvironment = {
+    getWorkerUrl: function() {
+      return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
+    }
+  };
+  require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+  require(['vs/editor/editor.main'], function() {
+    clearTimeout(monacoLoadTimeout);
+    if (activeEditorMode === 'native') return; // already fell back
+    try {
+      editor = monaco.editor.create(monacoDiv, {
+        value: "print('Zabacode Lokal Jalan!')\n",
+        language: 'python',
+        theme: 'vs-dark',
+        fontSize: 14,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        fontLigatures: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        formatOnPaste: true,
+        formatOnType: true,
+      });
+      activeEditorMode = 'monaco';
+      updateLineCounter();
+      editor.onDidChangeCursorPosition(updateLineCounter);
+    } catch (err) {
+      console.error('Monaco create error:', err);
+      activateNativeFallback('Monaco initialization exception');
+    }
+  }, function(err) {
+    console.warn('Monaco require error:', err);
+    clearTimeout(monacoLoadTimeout);
+    activateNativeFallback('Monaco CDN require error');
+  });
+} catch (e) {
+  clearTimeout(monacoLoadTimeout);
+  activateNativeFallback('Require/CORS exception: ' + e.message);
 }
 
 // ---------- Sidebar toggle ----------
@@ -435,7 +572,8 @@ document.getElementById('clear-btn').onclick = () => {
 
 // ---------- Run code ----------
 document.getElementById('run-btn').onclick = async () => {
-  if (!editor) return;
+  const code = getEditorValue();
+  if (code === undefined || code === null) return;
   
   const runBtn = document.getElementById('run-btn');
   runBtn.disabled = true;
@@ -448,7 +586,7 @@ document.getElementById('run-btn').onclick = async () => {
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: editor.getValue() }),
+      body: JSON.stringify({ code: code }),
     });
     const data = await res.json();
 
@@ -661,9 +799,10 @@ document.getElementById('key-dialog-save').onclick = async () => {
 async function sendAiMessage() {
   const input = document.getElementById('ai-input');
   const message = input.value.trim();
-  if (!message || !editor) return;
+  if (!message) return;
   const provider = document.getElementById('ai-provider').value;
   const sendBtn = document.getElementById('ai-send');
+  const codeContext = getEditorValue() || "";
   
   addMsg(message, 'user');
   input.value = '';
@@ -673,7 +812,7 @@ async function sendAiMessage() {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, provider, code: editor.getValue() }),
+      body: JSON.stringify({ message, provider, code: codeContext }),
     });
     const data = await res.json();
 
@@ -710,7 +849,7 @@ document.getElementById('file-dialog-cancel').onclick = () => {
 
 document.getElementById('file-dialog-save').onclick = async () => {
   const filename = fileSaveInput.value.trim();
-  if (!filename || !editor) return;
+  if (!filename) return;
   
   const saveBtn = document.getElementById('file-dialog-save');
   saveBtn.disabled = true;
@@ -720,7 +859,7 @@ document.getElementById('file-dialog-save').onclick = async () => {
     const res = await fetch(`/api/files/${filename}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: editor.getValue() }),
+      body: JSON.stringify({ content: getEditorValue() }),
     });
     const data = await res.json();
     if (data.ok) {
@@ -762,8 +901,8 @@ async function loadFileList() {
           if (action === 'open') {
             const res = await fetch(`/api/files/${filename}`);
             const data = await res.json();
-            if (data.ok && editor) {
-              editor.setValue(data.content);
+            if (data.ok) {
+              setEditorValue(data.content);
               fileDialogBackdrop.classList.remove('open');
             }
           } else if (action === 'delete') {

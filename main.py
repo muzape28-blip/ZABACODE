@@ -464,4 +464,6 @@ PROVIDER_HANDLERS = {
 if __name__ == "__main__":
     # Pake waitress server untuk WebView Android agar thread tidak freeze/force close
     # Unifikasi port ke 5000 agar sinkron dengan p4a.port bawaan/custom
-    serve(app, host="127.0.0.1", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"[ZABACODE] Starting local server on port {port}...")
+    serve(app, host="0.0.0.0", port=port, threads=4)

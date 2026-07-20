@@ -10,7 +10,7 @@ version = 0.1.0
 # lewat urllib bawaan). Tambahin library lain di sini (numpy, dst) pas
 # butuh beneran — itu yang bikin rebuild lewat GitHub Actions perlu jalan
 # lagi, bukan sesuatu yang user install sendiri di app yang udah jadi.
-requirements = python3,flask,waitress,requests,tinydb,beautifulsoup4,python-dotenv
+requirements = python3,pip,setuptools,flask,waitress,requests,tinydb,beautifulsoup4,python-dotenv
 
 # Seluruh UI Zabacode adalah satu WebView yang nampilin localhost, di-serve
 # oleh Flask yang jalan di thread Python background (lihat main.py).
@@ -24,6 +24,7 @@ fullscreen = 0
 # Kalau nanti mau nambahin dukungan HP 64-bit juga, tinggal tambah
 # arm64-v8a di baris ini.
 android.archs = armeabi-v7a
+android.accept_sdk_license = True
 android.api = 34
 android.minapi = 26
 android.ndk_api = 26

@@ -132,7 +132,12 @@ def _is_package_installed(package_name):
 
 @app.route("/api/libraries", methods=["GET"])
 def list_libraries():
-    return jsonify(KNOWN_LIBRARIES)
+    result = {}
+    for name, info in KNOWN_LIBRARIES.items():
+        item = info.copy()
+        item["installed"] = _is_package_installed(name)
+        result[name] = item
+    return jsonify(result)
 
 
 @app.route("/api/libraries/install", methods=["POST"])
@@ -150,12 +155,44 @@ def install_library():
             "message": f"'{name}' butuh compiled extension — tambahin ke requirements buildozer.spec.",
         })
 
+    # CEK CEPAT: Jika package sudah terinstal bawaan p4a atau user_packages, langsung return sukses!
+    if _is_package_installed(name):
+        return jsonify({"ok": True, "message": f"'{name}' sudah terinstall & siap pakai di ZABACODE!"})
+
     try:
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--target", str(USER_PACKAGES_DIR), name],
-            check=True, capture_output=True, text=True,
+        cache_dir = APP_DIR / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        env = os.environ.copy()
+        env["TMPDIR"] = str(cache_dir)
+        env["TEMP"] = str(cache_dir)
+        env["TMP"] = str(cache_dir)
+        env["PIP_NO_CACHE_DIR"] = "1"
+        env["PYTHONNOUSERSITE"] = "1"
+        # Mencegah pip mengakses keyring/DBus yang menyebabkan SIGSEGV di ARMv7 Android
+        env["PYTHONKEYRINGBACKEND"] = "keyring.backends.null.Keyring"
+        
+        cmd = [
+            sys.executable, "-m", "pip", "install",
+            "--disable-pip-version-check",
+            "--no-cache-dir",
+            "--target", str(USER_PACKAGES_DIR),
+            name
+        ]
+        
+        res = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120
         )
-        return jsonify({"ok": True, "message": f"'{name}' ke-install."})
+        if res.returncode == 0:
+            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall ke user_packages."})
+        else:
+            return jsonify({"ok": False, "message": f"Pip error ({res.returncode}): {res.stderr or res.stdout}"}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "message": "Proses instalasi timeout (>120s)."}), 500
     except Exception as e:
         return jsonify({"ok": False, "message": f"Gagal install: {e}"}), 500
 

@@ -152,8 +152,8 @@
   #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; min-width: 80px; }
   #run-btn:active { background: #2ecc0f; }
   #run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  #save-btn, #open-btn, #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
-  #save-btn:hover, #open-btn:hover, #clear-btn:hover { color: var(--text-bright); border-color: var(--border-bright); }
+  #save-btn, #open-btn, #theme-btn, #crt-btn, #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  #save-btn:hover, #open-btn:hover, #theme-btn:hover, #crt-btn:hover, #clear-btn:hover { color: var(--text-bright); border-color: var(--border-bright); }
 
   /* ---------- Output view (full screen terminal) ---------- */
   #output-terminal {
@@ -272,6 +272,7 @@
         <button id="save-btn" class="action" title="Save file">💾 SAVE</button>
         <button id="open-btn" class="action" title="Open file">📂 OPEN</button>
         <button id="theme-btn" class="action" title="Change theme">🎨 THEME</button>
+        <button id="crt-btn" class="action" title="Toggle CRT Scanlines">📺 CRT: ON</button>
         <button id="clear-btn" class="action">CLEAR</button>
       </div>
     </div>
@@ -570,6 +571,23 @@ document.getElementById('clear-btn').onclick = () => {
   outputTerminal.innerHTML = '';
 };
 
+// ---------- CRT Scanline Toggle ----------
+let crtEnabled = true;
+const scanlinesEl = document.getElementById('scanlines');
+const crtBtn = document.getElementById('crt-btn');
+if (crtBtn && scanlinesEl) {
+  crtBtn.onclick = () => {
+    crtEnabled = !crtEnabled;
+    if (crtEnabled) {
+      scanlinesEl.style.display = 'block';
+      crtBtn.textContent = '📺 CRT: ON';
+    } else {
+      scanlinesEl.style.display = 'none';
+      crtBtn.textContent = '📺 CRT: OFF';
+    }
+  };
+}
+
 // ---------- Run code ----------
 document.getElementById('run-btn').onclick = async () => {
   const code = getEditorValue();
@@ -604,6 +622,26 @@ document.getElementById('run-btn').onclick = async () => {
       block.className = 'stderr-block';
       block.textContent = data.stderr;
       outputTerminal.appendChild(block);
+
+      const fixBtn = document.createElement('button');
+      fixBtn.className = 'mini-btn';
+      fixBtn.style.background = 'var(--ai)';
+      fixBtn.style.color = '#1A0F00';
+      fixBtn.style.border = 'none';
+      fixBtn.style.fontWeight = 'bold';
+      fixBtn.style.marginTop = '8px';
+      fixBtn.style.padding = '6px 12px';
+      fixBtn.innerHTML = '⚡ ZABA AI: BENERIN ERROR INI!';
+      fixBtn.onclick = () => {
+        const aiPanelEl = document.getElementById('ai-panel');
+        if (aiPanelEl) aiPanelEl.classList.add('open');
+        const input = document.getElementById('ai-input');
+        if (input) {
+          input.value = `Kode gw error kemakan Traceback nih, salahnya di mana dan tolong benerin:\n${data.stderr}`;
+          if (typeof sendAiMessage === 'function') sendAiMessage();
+        }
+      };
+      outputTerminal.appendChild(fixBtn);
     }
     const exit = document.createElement('div');
     exit.className = `exit-line ${data.timeout ? 'timeout' : (data.ok ? 'ok' : 'err')}`;
@@ -635,16 +673,19 @@ async function loadLibraries() {
     for (const [name, info] of Object.entries(libs)) {
       const row = document.createElement('div');
       row.className = 'lib-row';
+      const isInstalled = info.installed || false;
+      const btnLabel = isInstalled ? 'ready ✓' : 'install';
+      const btnStyle = isInstalled ? 'style="color:var(--text-bright);border-color:var(--border-bright);"' : '';
       row.innerHTML = `<span>${name}<span class="tag ${info.tier}">${info.tier}</span></span>
-        <button class="mini-btn" data-name="${name}">install</button>`;
+        <button class="mini-btn" data-name="${name}" ${btnStyle}>${btnLabel}</button>`;
       list.appendChild(row);
     }
     list.querySelectorAll('button[data-name]').forEach(btn => {
       btn.onclick = async () => {
         const name = btn.dataset.name;
         btn.disabled = true;
-        btn.textContent = 'installing...';
-        showInstallToast(`Installing ${name}...`, 'loading');
+        btn.textContent = 'checking...';
+        showInstallToast(`Checking ${name}...`, 'loading');
 
         try {
           const res = await fetch('/api/libraries/install', {
@@ -656,6 +697,10 @@ async function loadLibraries() {
 
           if (data.ok) {
             showInstallToast(`✓ ${data.message}`, 'success');
+            btn.textContent = 'ready ✓';
+            btn.style.color = 'var(--text-bright)';
+            btn.style.borderColor = 'var(--border-bright)';
+            return;
           } else if (data.needs_rebuild) {
             showInstallToast(`⚠ ${data.message}`, 'error');
           } else {
@@ -663,10 +708,9 @@ async function loadLibraries() {
           }
         } catch (e) {
           showInstallToast(`✗ Error: ${e}`, 'error');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = 'install';
         }
+        btn.disabled = false;
+        btn.textContent = 'install';
       };
     });
   } catch (e) {

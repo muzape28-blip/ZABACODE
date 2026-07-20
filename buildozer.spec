@@ -15,6 +15,7 @@ requirements = python3,flask,waitress,requests,tinydb,beautifulsoup4,python-dote
 # Seluruh UI Zabacode adalah satu WebView yang nampilin localhost, di-serve
 # oleh Flask yang jalan di thread Python background (lihat main.py).
 p4a.bootstrap = webview
+p4a.port = 5000
 
 orientation = portrait
 fullscreen = 0

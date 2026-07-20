@@ -41,6 +41,7 @@ jobs:
       uses: android-actions/setup-android@v3
       with:
         accept-android-sdk-licenses: true
+        packages: 'tools platform-tools platforms;android-34 build-tools;34.0.0'
 
     - name: Bridge cmdline-tools to legacy sdkmanager path (buildozer needs this)
       run: |

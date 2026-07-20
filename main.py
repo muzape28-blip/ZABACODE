@@ -9,6 +9,7 @@ import os
 import sys
 import traceback
 import urllib.request
+import urllib.error
 import subprocess
 from pathlib import Path
 
@@ -60,12 +61,21 @@ def execute_code_isolated(code, timeout=30):
     untuk mencegah infinite loop menyandera server Flask utama.
     """
     try:
-        # Kita bisa melewatkan kode via stdin ke sys.executable
+        env = os.environ.copy()
+        python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
+        env["PYTHONPATH"] = python_path
+        env["PYTHONNOUSERSITE"] = "1"
+        env["TMPDIR"] = str(APP_DIR / "cache")
+        
+        # Kita melewatkan kode via -c dan menjalankan di dalam FILES_DIR
+        # agar user bisa import / open file .py yang mereka simpan di File Manager!
         res = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
             text=True,
-            timeout=timeout
+            timeout=timeout,
+            cwd=str(FILES_DIR),
+            env=env
         )
         return {
             "ok": res.returncode == 0,
@@ -202,16 +212,15 @@ def install_library():
 # ---------------------------------------------------------------------------
 
 def secure_filename_py(filename):
-    """Validasi dan amankan nama file untuk mencegah directory traversal dan ekstensi non-.py."""
-    if ".." in filename or "/" in filename or "\\" in filename:
+    """Validasi dan amankan nama file untuk mencegah directory traversal, null bytes, dan ekstensi non-.py."""
+    if not filename or ".." in filename or "/" in filename or "\\" in filename or "\x00" in filename:
         return None
-
-    if "." in filename:
-        if not filename.endswith(".py"):
-            return None
-        return filename
-    else:
-        return filename + ".py"
+    filename = filename.strip()
+    if not filename or filename == ".py":
+        return None
+    if not filename.endswith(".py"):
+        filename += ".py"
+    return filename
 
 
 @app.route("/api/files", methods=["GET"])
@@ -385,6 +394,21 @@ def ai_chat():
     return handler(api_key, message, code_context)
 
 
+def _handle_url_error(e, provider_name):
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            err_body = e.read().decode("utf-8", errors="ignore")
+            err_json = json.loads(err_body)
+            if isinstance(err_json.get("error"), dict):
+                msg = err_json["error"].get("message", str(e))
+            else:
+                msg = err_json.get("error") or str(e)
+            return jsonify({"ok": False, "message": f"{provider_name} error ({e.code}): {msg}"}), 502
+        except Exception:
+            return jsonify({"ok": False, "message": f"{provider_name} error ({e.code})"}), 502
+    return jsonify({"ok": False, "message": f"{provider_name} error: {e}"}), 502
+
+
 def _call_openrouter(api_key: str, message: str, code_context: str):
     system_prompt = (
         "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
@@ -408,7 +432,7 @@ def _call_openrouter(api_key: str, message: str, code_context: str):
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
-        return jsonify({"ok": False, "message": f"OpenRouter error: {e}"}), 502
+        return _handle_url_error(e, "OpenRouter")
 
 
 def _call_gemini(api_key: str, message: str, code_context: str):
@@ -435,7 +459,7 @@ def _call_gemini(api_key: str, message: str, code_context: str):
         reply = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"ok": True, "reply": reply})
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Gemini error: {e}"}), 502
+        return _handle_url_error(e, "Gemini")
 
 
 def _call_groq(api_key: str, message: str, code_context: str):
@@ -461,7 +485,7 @@ def _call_groq(api_key: str, message: str, code_context: str):
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Groq error: {e}"}), 502
+        return _handle_url_error(e, "Groq")
 
 
 def _call_mistral(api_key: str, message: str, code_context: str):
@@ -487,7 +511,7 @@ def _call_mistral(api_key: str, message: str, code_context: str):
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Mistral error: {e}"}), 502
+        return _handle_url_error(e, "Mistral")
 
 
 PROVIDER_HANDLERS = {

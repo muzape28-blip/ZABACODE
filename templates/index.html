@@ -269,11 +269,7 @@
       </div>
       <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXEC</button>
-        <button id="save-btn" class="action" title="Save file">💾 SAVE</button>
-        <button id="open-btn" class="action" title="Open file">📂 OPEN</button>
-        <button id="theme-btn" class="action" title="Change theme">🎨 THEME</button>
-        <button id="crt-btn" class="action" title="Toggle CRT Scanlines">📺 CRT: ON</button>
-        <button id="clear-btn" class="action">CLEAR</button>
+        <button id="clear-btn" class="action" title="Bersihkan Editor / Output">CLEAR</button>
       </div>
     </div>
 
@@ -281,7 +277,8 @@
       <div class="topbar">
         <button id="back-to-editor" class="icon-btn" aria-label="Kembali">◂ EDIT</button>
         <div id="app-title">output</div>
-        <div id="output-status-dot" style="margin-left:auto;width:8px;height:8px;border-radius:50%;"></div>
+        <button id="clear-output-btn" class="mini-btn" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);">CLEAR</button>
+        <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
       </div>
       <div id="output-terminal"></div>
     </div>
@@ -292,14 +289,18 @@
   <div id="sidebar">
     <div class="sidebar-header">zabacode</div>
     <div class="sidebar-section">
+      <h3>[ CONTROLS & THEMES ]</h3>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+        <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">📂 OPEN FILE (.py)</button>
+        <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">💾 SAVE AS FILE (.py)</button>
+        <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">🎨 CHANGE THEME</button>
+        <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">📺 CRT SCANLINES: ON</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
       <h3>[ LIBRARY MANAGER ]</h3>
       <div id="lib-list"></div>
       <div class="placeholder-note">runtime = aman install kapan aja. buildtime = butuh masuk buildozer.spec + rebuild ci.</div>
-    </div>
-    <div class="sidebar-section">
-      <h3>[ AI ASSISTANT ]</h3>
-      <div id="provider-list"></div>
-      <div class="placeholder-note">provider tanpa key bakal nanya otomatis pas pertama dipakai.</div>
     </div>
     <div class="sidebar-section">
       <h3>[ DOCS ]</h3>
@@ -568,25 +569,43 @@ function goToEditor() {
 document.getElementById('back-to-editor').onclick = goToEditor;
 
 document.getElementById('clear-btn').onclick = () => {
-  outputTerminal.innerHTML = '';
+  if (confirm('Kosongkan kode di editor dan terminal output?')) {
+    setEditorValue('');
+    outputTerminal.innerHTML = '';
+    updateLineCounter();
+    if (typeof showInstallToast === 'function') showInstallToast('✓ Editor & output dikosongkan', 'success');
+  }
 };
+
+const clearOutputBtn = document.getElementById('clear-output-btn');
+if (clearOutputBtn) {
+  clearOutputBtn.onclick = () => {
+    outputTerminal.innerHTML = '';
+    if (typeof showInstallToast === 'function') showInstallToast('✓ Output terminal dibersihkan', 'success');
+  };
+}
 
 // ---------- CRT Scanline Toggle ----------
 let crtEnabled = true;
 const scanlinesEl = document.getElementById('scanlines');
 const crtBtn = document.getElementById('crt-btn');
-if (crtBtn && scanlinesEl) {
-  crtBtn.onclick = () => {
-    crtEnabled = !crtEnabled;
-    if (crtEnabled) {
-      scanlinesEl.style.display = 'block';
-      crtBtn.textContent = '📺 CRT: ON';
-    } else {
-      scanlinesEl.style.display = 'none';
-      crtBtn.textContent = '📺 CRT: OFF';
-    }
-  };
+const sidebarCrtBtn = document.getElementById('sidebar-crt-btn');
+
+function toggleCrt() {
+  crtEnabled = !crtEnabled;
+  if (scanlinesEl) scanlinesEl.style.display = crtEnabled ? 'block' : 'none';
+  if (crtBtn) crtBtn.textContent = crtEnabled ? '📺 CRT: ON' : '📺 CRT: OFF';
+  if (sidebarCrtBtn) sidebarCrtBtn.textContent = crtEnabled ? '📺 CRT SCANLINES: ON' : '📺 CRT SCANLINES: OFF';
 }
+
+if (crtBtn) crtBtn.onclick = toggleCrt;
+if (sidebarCrtBtn) sidebarCrtBtn.onclick = () => {
+  toggleCrt();
+  const sb = document.getElementById('sidebar');
+  const sbBackdrop = document.getElementById('sidebar-backdrop');
+  if (sb) sb.classList.remove('open');
+  if (sbBackdrop) sbBackdrop.classList.remove('open');
+};
 
 // ---------- Run code ----------
 document.getElementById('run-btn').onclick = async () => {
@@ -882,13 +901,30 @@ const fileDialogBackdrop = document.getElementById('file-dialog-backdrop');
 const fileListContainer = document.getElementById('file-list-container');
 const fileSaveInput = document.getElementById('file-save-input');
 
-document.getElementById('open-btn').onclick = async () => {
-  fileDialogBackdrop.classList.add('open');
+async function openFileManager(focusSave) {
+  const sb = document.getElementById('sidebar');
+  const sbBackdrop = document.getElementById('sidebar-backdrop');
+  if (sb) sb.classList.remove('open');
+  if (sbBackdrop) sbBackdrop.classList.remove('open');
+  
+  if (fileDialogBackdrop) fileDialogBackdrop.classList.add('open');
   await loadFileList();
-};
+  if (focusSave && fileSaveInput) {
+    fileSaveInput.focus();
+  }
+}
+
+const openBtn = document.getElementById('open-btn');
+if (openBtn) openBtn.onclick = () => openFileManager(false);
+
+const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+if (sidebarOpenBtn) sidebarOpenBtn.onclick = () => openFileManager(false);
+
+const sidebarSaveBtn = document.getElementById('sidebar-save-btn');
+if (sidebarSaveBtn) sidebarSaveBtn.onclick = () => openFileManager(true);
 
 document.getElementById('file-dialog-cancel').onclick = () => {
-  fileDialogBackdrop.classList.remove('open');
+  if (fileDialogBackdrop) fileDialogBackdrop.classList.remove('open');
 };
 
 document.getElementById('file-dialog-save').onclick = async () => {
@@ -969,10 +1005,21 @@ async function loadFileList() {
 const themeDialogBackdrop = document.getElementById('theme-dialog-backdrop');
 const themeList = document.getElementById('theme-list');
 
-document.getElementById('theme-btn').onclick = () => {
-  themeDialogBackdrop.classList.add('open');
+function openThemeDialog() {
+  const sb = document.getElementById('sidebar');
+  const sbBackdrop = document.getElementById('sidebar-backdrop');
+  if (sb) sb.classList.remove('open');
+  if (sbBackdrop) sbBackdrop.classList.remove('open');
+  
+  if (themeDialogBackdrop) themeDialogBackdrop.classList.add('open');
   loadThemes();
-};
+}
+
+const themeBtn = document.getElementById('theme-btn');
+if (themeBtn) themeBtn.onclick = openThemeDialog;
+
+const sidebarThemeBtn = document.getElementById('sidebar-theme-btn');
+if (sidebarThemeBtn) sidebarThemeBtn.onclick = openThemeDialog;
 
 async function loadThemes() {
   try {

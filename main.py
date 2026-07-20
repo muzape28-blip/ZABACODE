@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import signal
 import sys
 import traceback
 import urllib.request
@@ -28,7 +29,7 @@ from flask import Flask, jsonify, render_template, request
 from waitress import serve
 
 # ---------------------------------------------------------------------------
-# Android & Local Path Initialization
+# Path Initialization
 # ANDROID_PRIVATE diatur oleh python-for-android secara otomatis.
 # ---------------------------------------------------------------------------
 if "ANDROID_PRIVATE" in os.environ:
@@ -48,11 +49,11 @@ USER_PACKAGES_DIR = APP_DIR / "user_packages"
 FILES_DIR = APP_DIR / "files"
 CACHE_DIR = APP_DIR / "cache"
 
-# Ensure all required directories exist
+# Dipastikan seluruh direktori krusial dibuat sejak awal server aktif
 for directory in [USER_PACKAGES_DIR, FILES_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# Add user packages dir to sys.path so installed packages can be imported immediately
+# Tambahkan user_packages ke sys.path agar paket terinstal langsung bisa di-import
 if str(USER_PACKAGES_DIR) not in sys.path:
     sys.path.insert(0, str(USER_PACKAGES_DIR))
 
@@ -65,13 +66,13 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# Milestone 1: Subprocess Code Execution Isolation
+# Isolation Engine: Subprocess dengan Protection dari Memory Leak & Process Group Leak
 # ---------------------------------------------------------------------------
 
 def execute_code_isolated(code, timeout=30):
     """
-    Eksekusi kode Python secara terisolasi menggunakan subprocess
-    untuk mencegah infinite loop menyandera server Flask utama.
+    Eksekusi kode Python secara terisolasi menggunakan subprocess.
+    Mencegah infinite loop, crash, serta pengaksesan karakter non-UTF8 yang memicu crash.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     try:
@@ -83,19 +84,22 @@ def execute_code_isolated(code, timeout=30):
         env["TEMP"] = str(CACHE_DIR)
         env["TMP"] = str(CACHE_DIR)
         
-        # Simpan state snapshot file sebelum eksekusi untuk deteksi output gambar (misal matplotlib/plot)
         existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
         
+        # Mencegah UnicodeDecodeError crash jika script pengguna menghasilkan output biner/invalid UTF-8
+        # Gunakan start_new_session pada Linux/Android agar child process terikat dalam 1 process group yang aman
         res = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout,
             cwd=str(FILES_DIR),
-            env=env
+            env=env,
+            start_new_session=True if os.name != 'nt' else False
         )
         
-        # Deteksi jika ada file gambar baru yang dibuat selama eksekusi
+        # Deteksi otomatis output file gambar baru hasil eksekusi (seperti Matplotlib/PIL)
         new_images = (set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))) - existing_images
         image_data = []
         for img_path in sorted(new_images):
@@ -114,8 +118,8 @@ def execute_code_isolated(code, timeout=30):
             "images": image_data
         }
     except subprocess.TimeoutExpired as e:
-        stdout_text = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-        stderr_text = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+        stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        stderr_text = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
         return {
             "ok": False,
             "stdout": stdout_text,
@@ -145,14 +149,13 @@ def run_code():
 def health_check():
     return jsonify({
         "ok": True,
-        "version": "0.3.0",
+        "version": "0.3.1",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
     })
 
 
 # ---------------------------------------------------------------------------
-# Milestone 2: Comprehensive Library Manager (`zabapip`)
-# Dukungan pustaka setara Pydroid 3 + pustaka ekstra
+# Library Manager (`zabapip`)
 # ---------------------------------------------------------------------------
 
 KNOWN_LIBRARIES = {
@@ -200,8 +203,7 @@ KNOWN_LIBRARIES = {
 
 
 def _is_package_installed(package_name):
-    """Cek apakah package sudah terinstall dan bisa diimport."""
-    # Penyesuaian nama modul import umum
+    """Cek apakah package sudah terinstall dan bisa diimport secara aman."""
     import_map = {
         "beautifulsoup4": "bs4",
         "google-generativeai": "google.generativeai",
@@ -237,7 +239,6 @@ def install_library():
 
     info = KNOWN_LIBRARIES.get(name)
 
-    # Jika library dikenal dan membutuhkan C-extension (buildtime)
     if info and info.get("tier") == "buildtime":
         return jsonify({
             "ok": False,
@@ -245,7 +246,6 @@ def install_library():
             "message": f"'{name}' memerlukan compiled C-extension. Tambahkan ke requirements di buildozer.spec lalu rebuild APK.",
         })
 
-    # CEK CEPAT: Jika package sudah terinstal, langsung return sukses!
     if _is_package_installed(name):
         return jsonify({"ok": True, "message": f"'{name}' sudah terinstall & siap digunakan di ZABACODE!"})
 
@@ -273,6 +273,7 @@ def install_library():
             env=env,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=180
         )
         if res.returncode == 0:
@@ -286,14 +287,17 @@ def install_library():
 
 
 # ---------------------------------------------------------------------------
-# Milestone 3: Safe File System & Custom Themes
+# Safe File System & Path Traversal Security Protection
 # ---------------------------------------------------------------------------
 
 def secure_filename_py(filename):
-    """Validasi dan amankan nama file untuk mencegah directory traversal, null bytes, dan ekstensi non-.py."""
+    """Validasi dan amankan nama file untuk mencegah directory traversal, null bytes, dan pengaksesan file tersembunyi/sistem."""
     if not filename or ".." in filename or "/" in filename or "\\" in filename or "\x00" in filename:
         return None
     filename = filename.strip()
+    # Mencegah pengaksesan/penghapusan file tersembunyi seperti .zabacode_keys.json
+    if filename.startswith(".") or filename.startswith("_"):
+        return None
     if not filename or filename == ".py":
         return None
     if not filename.endswith(".py"):
@@ -305,7 +309,8 @@ def secure_filename_py(filename):
 def list_files():
     files = []
     for p in FILES_DIR.glob("*.py"):
-        files.append({"name": p.name})
+        if not p.name.startswith("."):
+            files.append({"name": p.name})
     return jsonify({"files": files})
 
 
@@ -320,7 +325,7 @@ def read_file_api(filename):
         return jsonify({"ok": False, "message": f"File '{filename}' tidak ditemukan"}), 404
 
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding="utf-8", errors="replace")
         return jsonify({"ok": True, "content": content})
     except Exception as e:
         return jsonify({"ok": False, "message": f"Gagal membaca file: {e}"}), 500
@@ -417,13 +422,13 @@ def get_theme(name):
 
 
 # ---------------------------------------------------------------------------
-# Milestone 4: Multi-Provider AI Engine (Updated Endpoints)
+# Multi-Provider AI Engine
 # ---------------------------------------------------------------------------
 
 def load_keys() -> dict:
     if KEYS_FILE.exists():
         try:
-            return json.loads(KEYS_FILE.read_text())
+            return json.loads(KEYS_FILE.read_text(encoding="utf-8"))
         except Exception:
             return {}
     return {}
@@ -433,7 +438,7 @@ def save_key(provider: str, api_key: str) -> None:
     keys = load_keys()
     keys[provider] = api_key.strip()
     try:
-        KEYS_FILE.write_text(json.dumps(keys))
+        KEYS_FILE.write_text(json.dumps(keys), encoding="utf-8")
     except Exception as e:
         print(f"Gagal simpan key: {e}")
 
@@ -607,5 +612,6 @@ PROVIDER_HANDLERS = {
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print(f"[ZABACODE] Starting local server on port {port}...")
-    serve(app, host="0.0.0.0", port=port, threads=4)
+    print(f"[ZABACODE] Starting local server bound strictly to 127.0.0.1 on port {port}...")
+    # Keamanan: Binding ketat ke 127.0.0.1 localhost agar tidak terbuka di Wi-Fi publik
+    serve(app, host="127.0.0.1", port=port, threads=4)

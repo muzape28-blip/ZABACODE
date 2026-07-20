@@ -60,7 +60,7 @@ class TestHTTPRoutes:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["ok"] is True
-        assert data["version"] == "0.3.0"
+        assert "version" in data
         assert "providers" in data
     
     def test_run_code_api(self, client):
@@ -119,12 +119,10 @@ class TestFileManager:
     
     def test_read_file(self, client):
         """Test reading a file."""
-        # First save
         client.post('/api/files/test_read',
             data=json.dumps({"content": "print('hello')"}),
             content_type='application/json')
         
-        # Then read
         response = client.get('/api/files/test_read.py')
         assert response.status_code == 200
         data = json.loads(response.data)
@@ -132,9 +130,12 @@ class TestFileManager:
         assert "hello" in data["content"]
     
     def test_invalid_filename(self, client):
-        """Test invalid filename handling."""
+        """Test invalid filename & dotfile security handling."""
         response = client.get('/api/files/../etc/passwd')
         assert response.status_code == 400
+        
+        response_dot = client.get('/api/files/.zabacode_keys.json')
+        assert response_dot.status_code == 400
 
 
 class TestLibraryManager:

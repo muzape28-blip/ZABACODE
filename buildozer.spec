@@ -23,7 +23,7 @@ fullscreen = 0
 # Kalau nanti mau nambahin dukungan HP 64-bit juga, tinggal tambah
 # arm64-v8a di baris ini.
 android.archs = armeabi-v7a
-android.api = 31
+android.api = 34
 android.minapi = 26
 android.ndk_api = 26
 android.permissions = INTERNET

@@ -7,41 +7,40 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  ZABACODE v0.2.0                                │
+│  ZABACODE v0.2.3                                │
 │  [ OK ] python engine ready                     │
-│  [ OK ] monaco editor loaded                    │
-│  [ OK ] zabacode ai: standby (mulutnya pedas)   │
+│  [ OK ] adaptive monaco/native editor loaded    │
+│  [ OK ] zabacode ai: standby (auto-fix active)  │
 │  > ready_                                       │
 └─────────────────────────────────────────────────┘
 ```
 
 ## Features
 
-✅ **Milestone 1: Code Execution**
-- Python code editor dengan Monaco Editor (syntax highlighting, auto-indent)
-- Eksekusi code dalam isolated subprocess (tidak hang app saat infinite loop)
-- Timeout protection (30 detik default)
-- Real-time output dengan distinction stdout (mint) vs stderr (merah)
+✅ **Milestone 1: Code Execution & Subprocess Isolation**
+- Python code editor terisolasi dalam *isolated subprocess* (`execute_code_isolated`)
+- Mencegah *infinite loop* atau crash menyandera server utama (timeout protection 30s)
+- Eksekusi langsung di direktori internal `FILES_DIR` sehingga mendukung import antar-file `.py` lokal
+- Real-time output terminal dengan distinction `stdout` (mint) vs `stderr` (merah ala Pydroid)
 
-✅ **Milestone 2: Library Manager**
+✅ **Milestone 2: Library Manager (`zabapip`)**
 - 2-tier package system: `runtime` (pure Python, install langsung) vs `buildtime` (C-extension, rebuild APK)
-- 15+ popular libraries (requests, beautifulsoup4, click, pillow, pandas, numpy, scipy, dll)
-- Live install feedback (loading, success, error states)
+- Pengecekan cerdas (`_is_package_installed`) — paket bawaan APK (`requests`, `beautifulsoup4`, `tinydb`, dll.) langsung terdeteksi `ready ✓` dalam <1ms tanpa risiko crash `SIGSEGV`
+- Isolasi environment `pip` (`TMPDIR`, `--no-cache-dir`) untuk kompabilitas penuh di Android ARMv7
 
-✅ **Milestone 3: Enhanced UI**
-- **Monaco Editor**: syntax highlighting, auto-complete, bracket matching, language support
-- **File Manager**: Save/Open/Delete Python files ke internal storage
-- **3 Theme Presets**: Retro Green, Solarized Dark, Dracula
-- **Line:Col counter** ala Pydroid
-- **Responsive sidebar** dengan Library Manager, AI status, Docs link
+✅ **Milestone 3: Enhanced UI & Adaptive Editor**
+- **Adaptive Editor Engine**: otomatis menggunakan **Monaco Editor** (syntax highlighting, auto-complete) saat online, atau mulus beralih ke **Native Fallback Editor** (dengan gutter nomor baris & auto-indent Tab/Enter) saat offline / terblokir CORS WebView
+- **Streamlined Controls**: halaman editor hanya menampilkan tombol utama **`[ ▶ EXEC ]`** dan **`[ CLEAR ]`** (responsif dwi-opsi: clear editor/terminal)
+- **Controls & Themes Sidebar**: menu `📂 OPEN FILE`, `💾 SAVE AS FILE`, `🎨 CHANGE THEME` (`Retro Green`, `Solarized Dark`, `Dracula`), dan `📺 CRT SCANLINES Toggle` tertata rapi di sidebar kiri
+- **File Manager Terisolasi**: Save/Open/Delete Python files di internal storage dengan proteksi *path traversal* (`secure_filename_py`)
 
-✅ **Milestone 4: Multi-Provider AI**
-- **OpenRouter** (Qwen3 Coder, DeepSeek) — state-of-the-art code generation
+✅ **Milestone 4: Multi-Provider AI & Traceback Auto-Fix**
+- **OpenRouter** (`qwen/qwen3-coder:free`, `deepseek-r1`) — state-of-the-art code generation
 - **Google Gemini** (1M context window) — perfect buat baca banyak file
 - **Groq** (ultra-fast inference) — respons instan saat coding
 - **Mistral Codestral** — khusus code generation & refactoring
-- Auto-prompt API key dialog (symmetric encryption via Android Keystore)
-- Context-sharing otomatis: code yang kebuka langsung attached ke chat
+- **`⚡ ZABA AI: BENERIN ERROR INI!` Button**: tombol auto-fix pintar yang muncul otomatis di terminal saat *Traceback / error* terjadi untuk langsung menganalisis dan memberi solusi perbaikan
+- Auto-prompt API key dialog & context-sharing otomatis (kode aktif dan pesan error terkirim langsung tanpa copas manual)
 
 ✅ **Security**
 - Encrypted API key storage via Android Keystore (fallback plaintext di dev)
@@ -251,9 +250,9 @@ Kontribusi welcome! Areas:
 
 ## License
 
-GNU General Public License v3.0 — lihat [LICENSE](LICENSE) file.
+GNU General Public License v3.0 — lihat berkas [LICENSE](LICENSE) (Official English Text + Panduan & Ringkasan Resmi Bahasa Indonesia).
 
-**TLDR:** Kode ini gratis, bisa dimodifikasi, tapi derivative works juga harus open-source.
+**TLDR:** Kode ini gratis dan open-source. Lu bebas pakai, pelajari, ubah, dan bagikan. Setiap modifikasi atau karya turunan wajib dirilis kembali di bawah lisensi GPLv3 dan source code-nya dibuka gratis untuk publik.
 
 ---
 

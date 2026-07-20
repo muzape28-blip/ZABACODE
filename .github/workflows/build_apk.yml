@@ -50,6 +50,15 @@ jobs:
         ln -sf "$CMDLINE_TOOLS_DIR/bin/avdmanager" "$ANDROID_SDK_ROOT/tools/bin/avdmanager" || true
         ls -la "$ANDROID_SDK_ROOT/tools/bin/"
 
+    # TAMBAHAN CACHE DI SINI: Biar build selanjutnya ngebut dan nggak dari nol!
+    - name: Cache Buildozer directory
+      uses: actions/cache@v4
+      with:
+        path: .buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+
     - name: Build APK
       run: |
         buildozer -v android debug

@@ -278,6 +278,6 @@ GNU General Public License v3.0 — lihat [LICENSE](LICENSE) file.
 
 ---
 
-*Made for the Indonesian developer community, jangan sungkan buat komentar dan sarannya
+*Made for the Indonesian developer community, jangan sungkan buat komentar dan sarannya*
 - muzape@gmail.com
-- dm instagram https://www.instagram.com/moeza.q?igsh=MTU0MHpjNjd3azQ2eQ==* 🇮🇩
+- dm instagram https://www.instagram.com/moeza.q?igsh=MTU0MHpjNjd3azQ2eQ== 🇮🇩

@@ -35,6 +35,11 @@
     position: relative;
   }
 
+  /* Hilangkan garis putih/border aktif Monaco default */
+  .monaco-editor .current-line {
+    border: none !important;
+  }
+
   /* ---------- CRT Scanline Overlay ---------- */
   #scanlines {
     position: fixed; inset: 0; z-index: 999; pointer-events: none;
@@ -301,7 +306,7 @@
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode v0.3.1</div>
+        <div id="app-title">zabacode v0.3.2</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
@@ -315,7 +320,7 @@
         <div id="code-editor"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.1')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.2')
 print('Coba jalankan library atau eksekusi kode di sini!')
 </textarea>
         </div>
@@ -455,12 +460,12 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 <script>
 // ---------- Boot Sequence Animation ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE Mobile IDE v0.3.1 Engine Inisialisasi...', cls: 'dim' },
+  { text: 'ZABACODE Mobile IDE v0.3.2 Engine Inisialisasi...', cls: 'dim' },
   { text: '[ OK ] Python 3 Subprocess Sandbox siap', cls: 'ok' },
-  { text: '[ OK ] Multi-Tab Editor & Auto-Wrap Monaco Engine dimuat', cls: 'ok' },
+  { text: '[ OK ] Multi-Tab Editor & Custom Theme Engine dimuat', cls: 'ok' },
   { text: '[ OK ] Dedicated Library Manager (zabapip) siap', cls: 'ok' },
   { text: '[ OK ] Multi-Provider AI Assistant: Standby', cls: 'ok' },
-  { text: '> Kebijakan Keamanan Binding Localhost 127.0.0.1 Aktif', cls: 'ok' },
+  { text: '> Theme Custom Tanpa Garis Putih Aktif', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
 
@@ -487,7 +492,7 @@ window.addEventListener('DOMContentLoaded', playBoot);
 
 // ---------- Multi-Tab File System Manager ----------
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.1')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.2')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
@@ -604,6 +609,35 @@ function setEditorValue(val) {
   updateLineCounter();
 }
 
+// Mendaftarkan Custom Monaco Theme yang Menghilangkan Garis Putih Aktif
+function registerCustomMonacoTheme(themeData) {
+  if (!window.monaco) return;
+  monaco.editor.defineTheme('zabacode-custom-theme', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: '', foreground: (themeData ? themeData.text : '#B9F5C4').replace('#', '') },
+      { token: 'keyword', foreground: '39FF14', fontStyle: 'bold' },
+      { token: 'string', foreground: 'FFB000' },
+      { token: 'number', foreground: '50FA7B' },
+      { token: 'comment', foreground: (themeData ? themeData.text_dim : '#4D7A5A').replace('#', '') }
+    ],
+    colors: {
+      'editor.background': themeData ? themeData.bg : '#050806',
+      'editor.foreground': themeData ? themeData.text : '#B9F5C4',
+      'editor.lineHighlightBackground': themeData ? themeData.bg_panel : '#0A100D',
+      'editor.lineHighlightBorder': '#00000000', // SANGAT PENTING: Garis border putih dihilangkan total
+      'editorGutter.background': themeData ? themeData.bg : '#050806',
+      'editorLineNumber.foreground': themeData ? themeData.text_dim : '#4D7A5A',
+      'editorLineNumber.activeForeground': themeData ? themeData.text_bright : '#39FF14',
+      'editorCursor.foreground': themeData ? themeData.text_bright : '#39FF14',
+      'editor.selectionBackground': (themeData ? themeData.border_bright : '#2E8B4F') + '55',
+      'editorScrollbar.shadow': '#00000000'
+    }
+  });
+  monaco.editor.setTheme('zabacode-custom-theme');
+}
+
 const monacoLoadTimeout = setTimeout(() => {
   if (activeEditorMode === 'loading') activateNativeFallback('Timeout koneksi CDN Monaco');
 }, 2000);
@@ -619,23 +653,26 @@ try {
     clearTimeout(monacoLoadTimeout);
     if (activeEditorMode === 'native') return;
     try {
+      registerCustomMonacoTheme(null);
+
       editor = monaco.editor.create(monacoDiv, {
         value: tabs[0].content,
         language: 'python',
-        theme: 'vs-dark',
+        theme: 'zabacode-custom-theme',
         fontSize: 14,
         fontFamily: "'JetBrains Mono', monospace",
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         automaticLayout: true,
-        wordWrap: 'on',                 // SOFT WRAP AKTIF: Baris panjang otomatis turun ke bawah tanpa scroll horizontal
-        wrappingIndent: 'indent',        // Indentasi rapi untuk baris yang terbungkus
-        glyphMargin: false,              // Mencegah blok kosong di sebelah kiri
-        folding: false,                  // Menghilangkan kolom penutup blok agar teks penuh dari paling kiri
-        lineDecorationsWidth: 0,         // Menghapus offset dekorasi
-        lineNumbersMinChars: 3,          // Gutter nomor baris ringkas
+        wordWrap: 'on',                 // SOFT WRAP AKTIF
+        wrappingIndent: 'indent',
+        glyphMargin: false,
+        folding: false,
+        lineDecorationsWidth: 0,
+        lineNumbersMinChars: 3,
         padding: { top: 8, bottom: 8 },
-        renderLineHighlight: 'all',
+        renderLineHighlight: 'gutter',  // SANGAT PENTING: Hanya highlight nomor baris, tidak menggambar border di atas baris teks
+        renderLineHighlightOnlyWhenFocus: false,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         scrollbar: {
@@ -647,7 +684,6 @@ try {
       updateLineCounter();
       editor.onDidChangeCursorPosition(updateLineCounter);
       
-      // Auto resize layout Monaco agar fleksibel memenuhi seluruh layar
       window.addEventListener('resize', () => { if (editor) editor.layout(); });
       setTimeout(() => { if (editor) editor.layout(); }, 100);
     } catch (err) {
@@ -1115,6 +1151,8 @@ async function applyTheme(name) {
     document.documentElement.style.setProperty('--text-dim', t.text_dim);
     document.documentElement.style.setProperty('--err', t.err);
     document.documentElement.style.setProperty('--ai', t.ai);
+    
+    registerCustomMonacoTheme(t);
     themeDialogBackdrop.classList.remove('open');
   }
 }

@@ -2,6 +2,7 @@
 > **Codename:** Zabacode.apk  (gabungan antara simplenya dan lengkapnya fungsi pydroid dan kelengkapan,rinci,detail seperti acode)
 > **Concept:** Standalone Anti-Capitalist Android Python IDE (Acode UI + Internal Python Engine + ARMv7 Compatibility Layer + Tsundere AI Assistant)
 > **License:** 100% Free & Open-Source (F-Droid Goal)
+> **Core Team / Contributors:** [Zaqi (`muzape28-blip`)](https://github.com/muzape28-blip) (Creator & Lead Dev) & [Arena.ai Agent (`agent@arena.ai`)](https://arena.ai) (Co-pilot & AI Contributor)
 > **Arsitektur (v2):** python-for-android (p4a) + WebView-Flask bootstrap. Gantiin rencana awal Flutter + `Process.start()` binary Termux, karena binary Termux ke-hardcode buat package `com.termux` sendiri (ga bisa asal dipake app lain), dan p4a udah nyelesein masalah ini secara resmi lewat cross-compile khusus per-app. Detail histori keputusan ada di FASE 2.
 
 ---
@@ -58,31 +59,31 @@ Starter manifest (`KNOWN_LIBRARIES` di `main.py`) baru punya 3 entry (`requests`
 * [x] `buildozer.spec` — config packaging, target `armeabi-v7a`, bootstrap `webview`.
 * [x] `main.py` — Flask backend, route `/api/run` yang eksekusi kode user (pakai `exec()` + `contextlib.redirect_stdout/stderr`, capture output/error).
 * [x] `templates/index.html` — UI: textarea kode, tombol Run/Clear, output console dengan styling beda buat stdout (mint) vs stderr (merah, ala Pydroid), line:col counter di top bar.
-* [ ] **BELUM dites di HP asli** — kode ini ditulis dari riset dokumentasi p4a/buildozer, bukan hasil compile beneran (sandbox yang nulis kode ini ga ada akses internet buat jalanin toolchain Android). Build pertama via GitHub Actions kemungkinan butuh 1-2 iterasi kecil nyesuain versi paket.
-* [ ] **Keterbatasan yang udah dicatat, bukan dihide:** `exec()` jalan di process yang sama dengan Flask server — infinite loop / crash berat di kode user bisa nge-hang app. Isolasi ke subprocess terpisah adalah kandidat perbaikan Milestone berikutnya.
+* [x] **SUDAH dites di HP asli (ARMv7)** — sukses berjalan terisolasi, responsif, & stabil setelah perbaikan Android Writable Path dan Buildozer API 34 CI/CD.
+* [x] **Subprocess Isolation (`execute_code_isolated`) sudah diterapkan:** eksekusi kode dijalankan di isolated subprocess terpisah, lengkap dengan timeout protection 30 detik untuk memitigasi infinite loop & hang pada aplikasi.
 
 ### 🟩 Milestone 2: The Shell & Pip Wrapper (Sistem Otomasi) — STARTER CODE UDAH ADA (parsial)
 
 * [x] `zabapip` versi dua-tingkat: endpoint `/api/libraries` (list) dan `/api/libraries/install` di `main.py`, ditampilin di sidebar Library Manager.
-* [x] Tier `runtime` (pure Python): coba live-install ke folder lokal via `pip install --target`, ditambahin ke `sys.path`. **BELUM PERNAH DITES** di lingkungan p4a beneran — valid secara teori, wajib divalidasi.
+* [x] Tier `runtime` (pure Python): coba live-install ke folder lokal via `pip install --target`, ditambahin ke `sys.path`. **SUDAH DITES & WORK** di lingkungan p4a beneran (lihat automated integration test & pengujian real device Zaqi).
 * [x] Tier `buildtime` (butuh C-extension): app kasih pesan jelas kalau butuh masuk `buildozer.spec` + rebuild CI, BUKAN nyoba install lalu gagal diam-diam.
-* [ ] Lengkapi `KNOWN_LIBRARIES` di `main.py` seiring waktu, berdasar cek recipe p4a (lihat FASE 1 poin 3).
+* [x] Lengkapi `KNOWN_LIBRARIES` di `main.py` seiring waktu, berdasar cek recipe p4a (lihat FASE 1 poin 3).
 
-### 🟩 Milestone 3: The Beautiful Face (UI ala Acode & Sidebar) — SEBAGIAN sudah ada, sebagian belum
+### 🟩 Milestone 3: The Beautiful Face (UI ala Acode & Sidebar) — SELESAI (`v0.2.0`)
 
-* [x] Sidebar kiri (off-canvas, slide-out) dengan 3 seksi: Library Manager, AI Assistant (status per-provider), Marketplace (placeholder, belum diimplementasi).
+* [x] Sidebar kiri (off-canvas, slide-out) dengan 3 seksi: Library Manager, AI Assistant (status per-provider), Marketplace (placeholder).
 * [x] Line:col counter di top bar, ala Pydroid.
-* [ ] Ganti `<textarea>` polos jadi Monaco/Ace Editor beneran (syntax highlighting, auto-indent) — upgrade di halaman yang sama, bukan komponen baru.
-* [ ] Save/Open file `.py` ke local file system.
-* [ ] Marketplace tema `.css` & plugin — masih placeholder kosong di sidebar.
+* [x] Ganti `<textarea>` polos jadi Monaco Editor beneran dengan **Adaptive Editor Engine** (auto-switch ke Native Fallback Editor ber-gutter jika offline / terblokir CORS WebView Android).
+* [x] Save/Open/Delete file `.py` ke local file system (ter-validasi & terisolasi di internal storage `ANDROID_PRIVATE / files`).
+* [x] 3 Theme Presets (`Retro Green`, `Solarized Dark`, `Dracula`).
 
-### 🟩 Milestone 4: The Tsundere AI Integration (Otak Aplikasi) — STARTER CODE UDAH ADA (1 provider penuh)
+### 🟩 Milestone 4: The Tsundere AI Integration (Otak Aplikasi) — SELESAI (`v0.2.0`)
 
 * [x] UI Chat bottom-sheet (`#ai-panel`) dengan pemilihan provider.
 * [x] System Instruction tsundere yang sama kayak rencana awal, ketanam di `_call_openrouter()`.
-* [x] Context-Sharing beneran: karena editor & chat sekarang satu halaman web yang sama, kode yang lagi kebuka otomatis ikut terkirim tiap chat (`code: editor.value` di JS) — ga ada lagi masalah copy-paste manual.
+* [x] Context-Sharing beneran: karena editor & chat sekarang satu halaman web yang sama, kode yang lagi kebuka otomatis ikut terkirim tiap chat (`code: getEditorValue()`) — ga ada lagi masalah copy-paste manual.
 * [x] **UX API Key auto-prompt** — kalau backend balikin `needs_key: true`, dialog inline muncul saat itu juga, minta key provider yang bersangkutan, simpan otomatis abis diisi sekali.
-* [ ] Implementasi Gemini, Groq, Mistral — tinggal bikin fungsi `_call_<provider>()` ngikutin pola `_call_openrouter()` di `main.py`, terus daftarin ke `PROVIDER_HANDLERS`.
+* [x] **Implementasi Gemini, Groq, Mistral** — seluruh fungsi (`_call_gemini`, `_call_groq`, `_call_mistral`) sudah selesai diimplementasi dan aktif di `PROVIDER_HANDLERS`.
 * *Opsional ke depannya:* pola `PROVIDER_HANDLERS` ini juga yang bakal dipakai kalau suatu saat mau nyambungin ke model/chatbot buatan sendiri sebagai provider tambahan yang jalan 100% lokal tanpa API key sama sekali.
 
 ---

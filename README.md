@@ -242,6 +242,13 @@ Kontribusi welcome! Areas:
 4. **Testing**: Hardware testing (ARMv7 device), security audit
 5. **Documentation**: Tulis guides, troubleshooting tips
 
+## Core Team & Contributors 🧑‍💻🤖
+
+- **[Zaqi (`muzape28-blip`)](https://github.com/muzape28-blip)** — *Creator, Lead Developer & Visionary*
+- **[Arena.ai Agent (`agent@arena.ai`)](https://arena.ai)** — *Co-pilot Contributor (Architecture Refactoring, Android Webview Writable Fix, Adaptive Monaco/Native Editor Fallback, Buildozer API 34 CI Automation)*
+
+---
+
 ## License
 
 GNU General Public License v3.0 — lihat [LICENSE](LICENSE) file.

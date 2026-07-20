@@ -7,34 +7,32 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  ZABACODE v0.3.0                                         │
+│  ZABACODE v0.3.3                                         │
 │  [ OK ] Subprocess sandbox Python engine ready           │
-│  [ OK ] Multi-tab adaptive Monaco / Native editor loaded │
-│  [ OK ] Dedicated Library Manager (zabapip) active       │
+│  [ OK ] __file__ Path Resolver active (_active_run.py)   │
+│  [ OK ] PyPI Direct Extractor active (SIGSEGV bypass)    │
+│  [ OK ] Multi-tab adaptive editor & In-App Docs ready    │
 │  [ OK ] Multi-provider AI (Qwen 2.5, Gemini, Groq) ready │
 │  > workspace ready_                                      │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Features & What's New in v0.3.0
+## Features & Critical Fixes in v0.3.3
 
-🚀 **Overhauled Library Manager Overlay (`zabapip`)**
-- Diubah dari daftar samping menjadi **Dedicated Layer/Overlay View** penuh dengan tampilan Card Grid, pencarian real-time, dan filter kategori (`🌟 Semua`, `🌐 Web & API`, `📊 Data & Sains`, `🤖 AI & Database`, `🎨 Media & Utils`).
-- **Custom PyPI Installer**: Memungkinkan pengguna memasukkan dan menginstall *pustaka apa saja* dari PyPI secara langsung via `pip install --target`.
-- Pustaka bawaan terintegrasi mencakup `requests`, `beautifulsoup4`, `httpx`, `fastapi`, `flask`, `tinydb`, `sqlalchemy`, `sympy`, `rich`, `colorama`, `pydantic`, dan puluhan lainnya.
+🛠️ **Automatic Script File Execution (`__file__` Fixed)**
+- Mengganti eksekusi `-c` mentah dengan file temporary `_active_run.py`.
+- **`Path(__file__)` terdefinisi sempurna**, sehingga script seperti `mjurran.py` yang menggunakan `Path(__file__).parent` tidak akan pernah mengalami `NameError: name '__file__' is not defined`.
 
-📁 **Multi-Tab File System Manager**
-- Pengguna dapat membuka dan berpindah antar-beberapa file Python sekaligus menggunakan tab bar interaktif di atas editor.
+📦 **Direct PyPI Wheel Extractor (Bypass `pip error (-11)`)**
+- Dilengkapi dengan *Automatic Pure Python Extractor* via PyPI JSON API. Jika eksekusi `pip` subprocess bawaan mengalami `SIGSEGV (-11)` akibat pembatasan kernel Android, Zabacode secara otomatis mengunduh `.whl` murni Python dan mengekstraknya via `zipfile` internal tanpa bergantung pada compiler C.
 
-🖼️ **Inline Output Image / Graphic Plot Rendering**
-- Eksekusi kode yang menghasilkan file gambar/grafik (seperti plot Matplotlib atau objek Pillow) secara otomatis dideteksi dan ditampilkan *inline* di terminal output.
+📖 **In-App Navigation & Theme Lock (No White Line Glitch)**
+- Dokumentasi & Roadmap dibuka dalam **Modal Internal** tanpa mengalihkan browser WebView ke luar, mencegah hilangnya state / tema editor.
+- **Aktifkan `pageshow` listener & matikan `lineHighlight` Monaco** untuk membasmi garis putih horisontal secara permanen.
 
-🤖 **Updated Multi-Provider AI Assistant**
+🤖 **Multi-Provider AI Assistant & Auto-Fix**
 - OpenRouter (`qwen/qwen-2.5-coder-32b-instruct:free`), Google Gemini (`gemini-1.5-flash`), Groq (`llama-3.1-8b-instant`), dan Mistral (`codestral-latest`).
-- **`⚡ ZABA AI: BENERIN ERROR INI!`**: Tombol auto-fix otomatis di terminal untuk analisis dan solusi perbaikan instan saat terjadi Traceback error.
-
-📱 **Dual-Arch Android Support**
-- `buildozer.spec` kini mendukung baik `armeabi-v7a` (32-bit) maupun `arm64-v8a` (64-bit) untuk kinerja optimal di HP Android modern maupun lawas.
+- **`⚡ ZABA AI: BENERIN ERROR INI!`**: Tombol auto-fix otomatis di terminal saat Traceback terjadi.
 
 ## Quick Start
 

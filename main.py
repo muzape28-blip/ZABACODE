@@ -22,6 +22,7 @@ import sys
 import traceback
 import urllib.request
 import urllib.error
+import zipfile
 import subprocess
 from pathlib import Path
 
@@ -66,16 +67,22 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# Isolation Engine: Subprocess dengan Protection dari Memory Leak & Process Group Leak
+# Isolation Engine: Exec via File untuk __file__ Definition & Line Tracking
 # ---------------------------------------------------------------------------
 
 def execute_code_isolated(code, timeout=30):
     """
-    Eksekusi kode Python secara terisolasi menggunakan subprocess.
-    Mencegah infinite loop, crash, serta pengaksesan karakter non-UTF8 yang memicu crash.
+    Eksekusi kode Python secara terisolasi menggunakan file temporary '_active_run.py'.
+    Menjamin __file__ terdefinisi sempurna sehingga script yang mengakses Path(__file__)
+    tidak akan pernah mengalami NameError!
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    temp_script = FILES_DIR / "_active_run.py"
+    
     try:
+        # Tulis kode aktif ke file script fisik agar __file__ otomatis terdefinisi oleh Python interpreter
+        temp_script.write_text(code, encoding="utf-8")
+        
         env = os.environ.copy()
         python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
         env["PYTHONPATH"] = python_path
@@ -86,10 +93,8 @@ def execute_code_isolated(code, timeout=30):
         
         existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
         
-        # Mencegah UnicodeDecodeError crash jika script pengguna menghasilkan output biner/invalid UTF-8
-        # Gunakan start_new_session pada Linux/Android agar child process terikat dalam 1 process group yang aman
         res = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "_active_run.py"],
             capture_output=True,
             text=True,
             errors="replace",
@@ -110,20 +115,24 @@ def execute_code_isolated(code, timeout=30):
             except Exception:
                 pass
 
+        # Bersihkan pesan traceback agar tidak menampilkan nama file temporary '_active_run.py'
+        stderr_cleaned = res.stderr.replace('_active_run.py', 'main.py') if res.stderr else ""
+
         return {
             "ok": res.returncode == 0,
             "stdout": res.stdout,
-            "stderr": res.stderr,
+            "stderr": stderr_cleaned,
             "timeout": False,
             "images": image_data
         }
     except subprocess.TimeoutExpired as e:
         stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         stderr_text = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+        stderr_cleaned = stderr_text.replace('_active_run.py', 'main.py')
         return {
             "ok": False,
             "stdout": stdout_text,
-            "stderr": stderr_text + f"\n[Process timed out after {timeout}s]",
+            "stderr": stderr_cleaned + f"\n[Process timed out after {timeout}s]",
             "timeout": True,
             "images": []
         }
@@ -149,13 +158,13 @@ def run_code():
 def health_check():
     return jsonify({
         "ok": True,
-        "version": "0.3.1",
+        "version": "0.3.3",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
     })
 
 
 # ---------------------------------------------------------------------------
-# Library Manager (`zabapip`)
+# Library Manager (`zabapip`) + PyPI Direct Extractor (Bypass SIGSEGV -11)
 # ---------------------------------------------------------------------------
 
 KNOWN_LIBRARIES = {
@@ -219,6 +228,40 @@ def _is_package_installed(package_name):
         return False
 
 
+def _fallback_pypi_download(name: str) -> tuple[bool, str]:
+    """
+    Fallback penyelamat jika subprocess pip mengalami SIGSEGV (-11) di Android.
+    Langsung mengunduh Pure Python Wheel (.whl) dari PyPI JSON API dan mengekstraknya via zipfile.
+    """
+    try:
+        pypi_url = f"https://pypi.org/pypi/{name}/json"
+        req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/0.3.3"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        
+        urls = data.get("urls", [])
+        target_wheel_url = None
+        for item in urls:
+            fn = item.get("filename", "").lower()
+            if fn.endswith("none-any.whl"):
+                target_wheel_url = item.get("url")
+                break
+        
+        if not target_wheel_url:
+            return False, f"'{name}' tidak memiliki pure-python wheel (.whl) di PyPI (memerlukan C-compiler)."
+
+        wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/0.3.3"})
+        with urllib.request.urlopen(wheel_req, timeout=45) as resp:
+            wheel_bytes = resp.read()
+
+        with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
+            z.extractall(USER_PACKAGES_DIR)
+
+        return True, f"'{name}' berhasil diinstall via Direct PyPI Extractor!"
+    except Exception as e:
+        return False, f"Direct PyPI Extractor error: {e}"
+
+
 @app.route("/api/libraries", methods=["GET"])
 def list_libraries():
     result = {}
@@ -264,6 +307,8 @@ def install_library():
             sys.executable, "-m", "pip", "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
+            "--prefer-binary",
+            "--only-binary=:all:",
             "--target", str(USER_PACKAGES_DIR),
             name
         ]
@@ -276,13 +321,24 @@ def install_library():
             errors="replace",
             timeout=180
         )
+        
         if res.returncode == 0:
-            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall ke user_packages!"})
+            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall!"})
         else:
-            return jsonify({"ok": False, "message": f"Pip error ({res.returncode}): {res.stderr or res.stdout}"}), 500
+            # Jika subprocess pip crash (misal exit code -11 SIGSEGV), gunakan Direct PyPI Extractor
+            ok, msg = _fallback_pypi_download(name)
+            if ok:
+                return jsonify({"ok": True, "message": msg})
+            return jsonify({"ok": False, "message": f"Gagal install: {msg} (Pip exit: {res.returncode})"}), 500
     except subprocess.TimeoutExpired:
+        ok, msg = _fallback_pypi_download(name)
+        if ok:
+            return jsonify({"ok": True, "message": msg})
         return jsonify({"ok": False, "message": "Proses instalasi pip timeout (>180s)."}), 500
     except Exception as e:
+        ok, msg = _fallback_pypi_download(name)
+        if ok:
+            return jsonify({"ok": True, "message": msg})
         return jsonify({"ok": False, "message": f"Gagal menginstall package: {e}"}), 500
 
 
@@ -295,7 +351,6 @@ def secure_filename_py(filename):
     if not filename or ".." in filename or "/" in filename or "\\" in filename or "\x00" in filename:
         return None
     filename = filename.strip()
-    # Mencegah pengaksesan/penghapusan file tersembunyi seperti .zabacode_keys.json
     if filename.startswith(".") or filename.startswith("_"):
         return None
     if not filename or filename == ".py":
@@ -309,7 +364,7 @@ def secure_filename_py(filename):
 def list_files():
     files = []
     for p in FILES_DIR.glob("*.py"):
-        if not p.name.startswith("."):
+        if not p.name.startswith(".") and not p.name.startswith("_"):
             files.append({"name": p.name})
     return jsonify({"files": files})
 
@@ -613,5 +668,4 @@ PROVIDER_HANDLERS = {
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"[ZABACODE] Starting local server bound strictly to 127.0.0.1 on port {port}...")
-    # Keamanan: Binding ketat ke 127.0.0.1 localhost agar tidak terbuka di Wi-Fi publik
     serve(app, host="127.0.0.1", port=port, threads=4)

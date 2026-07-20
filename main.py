@@ -1,5 +1,5 @@
 """
-ZABACODE — Standalone Anti-Capitalist Android Python IDE
+ZABACODE — Standalone Anti-Capitalist Mobile Python IDE
 Copyright (C) 2026 Zaqi (muzape28-blip) and ZABACODE Contributors
 
 This program is free software: you can redistribute it and/or modify
@@ -10,10 +10,13 @@ the Free Software Foundation, either version 3 of the License, or
 See LICENSE file for full legal terms and Indonesian summary guide.
 """
 
+import base64
 import contextlib
+import glob
 import io
 import json
 import os
+import re
 import sys
 import traceback
 import urllib.request
@@ -24,8 +27,10 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from waitress import serve
 
-# PERBAIKAN ANDROID PATH: Gunakan direktori data aplikasi yang bisa ditulis (Writable),
+# ---------------------------------------------------------------------------
+# Android & Local Path Initialization
 # ANDROID_PRIVATE diatur oleh python-for-android secara otomatis.
+# ---------------------------------------------------------------------------
 if "ANDROID_PRIVATE" in os.environ:
     APP_DIR = Path(os.environ["ANDROID_PRIVATE"])
 else:
@@ -36,18 +41,18 @@ else:
         activity = PythonActivity.mActivity
         APP_DIR = Path(activity.getFilesDir().getAbsolutePath())
     except Exception:
-        # Fallback kalau dites di komputer lokal/development
-        APP_DIR = Path(__file__).parent
+        APP_DIR = Path(__file__).parent.resolve()
 
 KEYS_FILE = APP_DIR / ".zabacode_keys.json"
 USER_PACKAGES_DIR = APP_DIR / "user_packages"
 FILES_DIR = APP_DIR / "files"
+CACHE_DIR = APP_DIR / "cache"
 
-# Ensure directories exist
-USER_PACKAGES_DIR.mkdir(parents=True, exist_ok=True)
-FILES_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure all required directories exist
+for directory in [USER_PACKAGES_DIR, FILES_DIR, CACHE_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
 
-# Add user packages dir to sys.path so installed packages can be imported
+# Add user packages dir to sys.path so installed packages can be imported immediately
 if str(USER_PACKAGES_DIR) not in sys.path:
     sys.path.insert(0, str(USER_PACKAGES_DIR))
 
@@ -60,7 +65,7 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# Milestone 1 & 2: eksekusi kode Python terisolasi (Subprocess)
+# Milestone 1: Subprocess Code Execution Isolation
 # ---------------------------------------------------------------------------
 
 def execute_code_isolated(code, timeout=30):
@@ -68,15 +73,19 @@ def execute_code_isolated(code, timeout=30):
     Eksekusi kode Python secara terisolasi menggunakan subprocess
     untuk mencegah infinite loop menyandera server Flask utama.
     """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     try:
         env = os.environ.copy()
         python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
         env["PYTHONPATH"] = python_path
         env["PYTHONNOUSERSITE"] = "1"
-        env["TMPDIR"] = str(APP_DIR / "cache")
+        env["TMPDIR"] = str(CACHE_DIR)
+        env["TEMP"] = str(CACHE_DIR)
+        env["TMP"] = str(CACHE_DIR)
         
-        # Kita melewatkan kode via -c dan menjalankan di dalam FILES_DIR
-        # agar user bisa import / open file .py yang mereka simpan di File Manager!
+        # Simpan state snapshot file sebelum eksekusi untuk deteksi output gambar (misal matplotlib/plot)
+        existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
+        
         res = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
@@ -85,26 +94,42 @@ def execute_code_isolated(code, timeout=30):
             cwd=str(FILES_DIR),
             env=env
         )
+        
+        # Deteksi jika ada file gambar baru yang dibuat selama eksekusi
+        new_images = (set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))) - existing_images
+        image_data = []
+        for img_path in sorted(new_images):
+            try:
+                b64 = base64.b64encode(img_path.read_bytes()).decode("utf-8")
+                mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
+                image_data.append({"name": img_path.name, "data_uri": f"data:{mime};base64,{b64}"})
+            except Exception:
+                pass
+
         return {
             "ok": res.returncode == 0,
             "stdout": res.stdout,
             "stderr": res.stderr,
-            "timeout": False
+            "timeout": False,
+            "images": image_data
         }
     except subprocess.TimeoutExpired as e:
-        # Kembalikan penanda timeout
+        stdout_text = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
+        stderr_text = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
         return {
             "ok": False,
-            "stdout": e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or ""),
-            "stderr": (e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")) + "\n[Process timed out after {}s]".format(timeout),
-            "timeout": True
+            "stdout": stdout_text,
+            "stderr": stderr_text + f"\n[Process timed out after {timeout}s]",
+            "timeout": True,
+            "images": []
         }
     except Exception as e:
         return {
             "ok": False,
             "stdout": "",
             "stderr": str(e),
-            "timeout": False
+            "timeout": False,
+            "images": []
         }
 
 
@@ -112,8 +137,6 @@ def execute_code_isolated(code, timeout=30):
 def run_code():
     payload = request.get_json(silent=True) or {}
     source = payload.get("code", "")
-
-    # Gunakan eksekusi terisolasi demi stabilitas
     result = execute_code_isolated(source, timeout=30)
     return jsonify(result)
 
@@ -122,27 +145,73 @@ def run_code():
 def health_check():
     return jsonify({
         "ok": True,
-        "version": "0.2.0",
+        "version": "0.3.0",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
     })
 
 
 # ---------------------------------------------------------------------------
-# Milestone 2: Library Manager
+# Milestone 2: Comprehensive Library Manager (`zabapip`)
+# Dukungan pustaka setara Pydroid 3 + pustaka ekstra
 # ---------------------------------------------------------------------------
 
 KNOWN_LIBRARIES = {
-    "requests": {"tier": "runtime", "reason": "Pure Python, aman di-install kapan aja."},
-    "beautifulsoup4": {"tier": "runtime", "reason": "Pure Python."},
-    "numpy": {"tier": "buildtime", "reason": "C-extension — tambahin ke buildozer.spec + rebuild CI."},
+    # --- Web & Networking ---
+    "requests": {"tier": "runtime", "category": "Web & API", "reason": "HTTP client paling populer untuk Python."},
+    "beautifulsoup4": {"tier": "runtime", "category": "Web & Scraping", "reason": "Pustaka HTML/XML parsing untuk web scraping."},
+    "httpx": {"tier": "runtime", "category": "Web & API", "reason": "Async & sync HTTP client modern dengan HTTP/2."},
+    "urllib3": {"tier": "runtime", "category": "Web & API", "reason": "HTTP client tangguh penyokong requests."},
+    "flask": {"tier": "runtime", "category": "Web & API", "reason": "Micro web framework yang ringan."},
+    "fastapi": {"tier": "runtime", "category": "Web & API", "reason": "Web framework berperforma tinggi berbasis ASGI."},
+    "aiohttp": {"tier": "runtime", "category": "Web & API", "reason": "HTTP client/server asinkronus."},
+    "mechanize": {"tier": "runtime", "category": "Web & Scraping", "reason": "Stateful programmatic web browsing."},
+
+    # --- Data, Math & Science ---
+    "numpy": {"tier": "buildtime", "category": "Data & Math", "reason": "Komputasi matriks C-extension — tambahkan ke buildozer.spec."},
+    "pandas": {"tier": "buildtime", "category": "Data & Math", "reason": "Pustaka analisis & manipulasi data spreadsheet."},
+    "scipy": {"tier": "buildtime", "category": "Data & Math", "reason": "Modul ilmiah & sains C-extension."},
+    "matplotlib": {"tier": "buildtime", "category": "Data & Math", "reason": "Visualisasi grafik & diagram 2D."},
+    "sympy": {"tier": "runtime", "category": "Data & Math", "reason": "Matematika simbolik & aljabar murni dalam Python."},
+
+    # --- Database & Storage ---
+    "tinydb": {"tier": "runtime", "category": "Database", "reason": "Dokumen NoSQL JSON ringan murni Python."},
+    "peewee": {"tier": "runtime", "category": "Database", "reason": "ORM ORM sederhana & ekspresif."},
+    "sqlalchemy": {"tier": "runtime", "category": "Database", "reason": "Toolkit SQL & ORM standar industri."},
+    "redis": {"tier": "runtime", "category": "Database", "reason": "Client untuk in-memory data store Redis."},
+
+    # --- AI & Automation ---
+    "openai": {"tier": "runtime", "category": "AI & Automation", "reason": "Pustaka API resmi OpenAI ChatGPT & Embeddings."},
+    "google-generativeai": {"tier": "runtime", "category": "AI & Automation", "reason": "SDK resmi Google Gemini AI."},
+    "schedule": {"tier": "runtime", "category": "AI & Automation", "reason": "Penjadwalan job/task berkala yang fleksibel."},
+
+    # --- Formatting & Utilities ---
+    "rich": {"tier": "runtime", "category": "Utilities", "reason": "Teks berformat, warna terminal, dan tabel kaya."},
+    "colorama": {"tier": "runtime", "category": "Utilities", "reason": "Format warna ANSI terminal silang platform."},
+    "tabulate": {"tier": "runtime", "category": "Utilities", "reason": "Format cetak tabel dari array/dict."},
+    "pydantic": {"tier": "runtime", "category": "Utilities", "reason": "Validasi data & pengaturan bertipe."},
+    "pytz": {"tier": "runtime", "category": "Utilities", "reason": "Pengelolaan zona waktu dunia."},
+    "pyjwt": {"tier": "runtime", "category": "Utilities", "reason": "Enkodasi dan dekodasi JSON Web Tokens."},
+
+    # --- Media, Image & GUI ---
+    "pillow": {"tier": "buildtime", "category": "Media & Images", "reason": "Pustaka pemrosesan gambar PIL C-extension."},
+    "pygame": {"tier": "buildtime", "category": "Games & Media", "reason": "Engine pembuatan game 2D & grafik."},
+    "pydub": {"tier": "runtime", "category": "Games & Media", "reason": "Manipulasi audio sederhana dengan antarmuka bersih."},
 }
 
 
 def _is_package_installed(package_name):
     """Cek apakah package sudah terinstall dan bisa diimport."""
+    # Penyesuaian nama modul import umum
+    import_map = {
+        "beautifulsoup4": "bs4",
+        "google-generativeai": "google.generativeai",
+        "python-dotenv": "dotenv",
+        "pillow": "PIL",
+        "pyjwt": "jwt",
+    }
+    module_to_check = import_map.get(package_name.lower(), package_name.lower().replace("-", "_"))
     try:
-        # Coba import package
-        __import__(package_name)
+        __import__(module_to_check)
         return True
     except ImportError:
         return False
@@ -160,34 +229,35 @@ def list_libraries():
 
 @app.route("/api/libraries/install", methods=["POST"])
 def install_library():
-    name = (request.get_json(silent=True) or {}).get("name", "")
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name", "").strip()
+
+    if not name:
+        return jsonify({"ok": False, "message": "Nama package tidak boleh kosong."}), 400
+
     info = KNOWN_LIBRARIES.get(name)
 
-    if info is None:
-        return jsonify({"ok": False, "message": f"'{name}' belum ada di manifest."}), 404
-
-    if info["tier"] == "buildtime":
+    # Jika library dikenal dan membutuhkan C-extension (buildtime)
+    if info and info.get("tier") == "buildtime":
         return jsonify({
             "ok": False,
             "needs_rebuild": True,
-            "message": f"'{name}' butuh compiled extension — tambahin ke requirements buildozer.spec.",
+            "message": f"'{name}' memerlukan compiled C-extension. Tambahkan ke requirements di buildozer.spec lalu rebuild APK.",
         })
 
-    # CEK CEPAT: Jika package sudah terinstal bawaan p4a atau user_packages, langsung return sukses!
+    # CEK CEPAT: Jika package sudah terinstal, langsung return sukses!
     if _is_package_installed(name):
-        return jsonify({"ok": True, "message": f"'{name}' sudah terinstall & siap pakai di ZABACODE!"})
+        return jsonify({"ok": True, "message": f"'{name}' sudah terinstall & siap digunakan di ZABACODE!"})
 
     try:
-        cache_dir = APP_DIR / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
         
         env = os.environ.copy()
-        env["TMPDIR"] = str(cache_dir)
-        env["TEMP"] = str(cache_dir)
-        env["TMP"] = str(cache_dir)
+        env["TMPDIR"] = str(CACHE_DIR)
+        env["TEMP"] = str(CACHE_DIR)
+        env["TMP"] = str(CACHE_DIR)
         env["PIP_NO_CACHE_DIR"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
-        # Mencegah pip mengakses keyring/DBus yang menyebabkan SIGSEGV di ARMv7 Android
         env["PYTHONKEYRINGBACKEND"] = "keyring.backends.null.Keyring"
         
         cmd = [
@@ -203,20 +273,20 @@ def install_library():
             env=env,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=180
         )
         if res.returncode == 0:
-            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall ke user_packages."})
+            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall ke user_packages!"})
         else:
             return jsonify({"ok": False, "message": f"Pip error ({res.returncode}): {res.stderr or res.stdout}"}), 500
     except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "message": "Proses instalasi timeout (>120s)."}), 500
+        return jsonify({"ok": False, "message": "Proses instalasi pip timeout (>180s)."}), 500
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Gagal install: {e}"}), 500
+        return jsonify({"ok": False, "message": f"Gagal menginstall package: {e}"}), 500
 
 
 # ---------------------------------------------------------------------------
-# Milestone 3: File Manager & Themes
+# Milestone 3: Safe File System & Custom Themes
 # ---------------------------------------------------------------------------
 
 def secure_filename_py(filename):
@@ -347,7 +417,7 @@ def get_theme(name):
 
 
 # ---------------------------------------------------------------------------
-# Milestone 4: AI Assistant
+# Milestone 4: Multi-Provider AI Engine (Updated Endpoints)
 # ---------------------------------------------------------------------------
 
 def load_keys() -> dict:
@@ -361,7 +431,7 @@ def load_keys() -> dict:
 
 def save_key(provider: str, api_key: str) -> None:
     keys = load_keys()
-    keys[provider] = api_key
+    keys[provider] = api_key.strip()
     try:
         KEYS_FILE.write_text(json.dumps(keys))
     except Exception as e:
@@ -420,11 +490,11 @@ def _handle_url_error(e, provider_name):
 def _call_openrouter(api_key: str, message: str, code_context: str):
     system_prompt = (
         "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
-        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android ARMv7."
+        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android."
     )
-    user_content = f"Kode yang lagi dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
+    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
     body = json.dumps({
-        "model": "qwen/qwen3-coder:free",
+        "model": "qwen/qwen-2.5-coder-32b-instruct:free",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -433,7 +503,12 @@ def _call_openrouter(api_key: str, message: str, code_context: str):
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
         data=body,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/muzape28-blip/ZABACODE",
+            "X-Title": "Zabacode Mobile IDE"
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -446,9 +521,9 @@ def _call_openrouter(api_key: str, message: str, code_context: str):
 def _call_gemini(api_key: str, message: str, code_context: str):
     system_prompt = (
         "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
-        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android ARMv7."
+        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android."
     )
-    user_content = f"Kode yang lagi dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
+    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
     body = json.dumps({
         "contents": [{
             "parts": [
@@ -457,7 +532,7 @@ def _call_gemini(api_key: str, message: str, code_context: str):
         }]
     }).encode()
     req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
         data=body,
         headers={"Content-Type": "application/json"},
     )
@@ -473,11 +548,11 @@ def _call_gemini(api_key: str, message: str, code_context: str):
 def _call_groq(api_key: str, message: str, code_context: str):
     system_prompt = (
         "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
-        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android ARMv7."
+        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android."
     )
-    user_content = f"Kode yang lagi dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
+    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
     body = json.dumps({
-        "model": "llama3-8b-8192",
+        "model": "llama-3.1-8b-instant",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -499,9 +574,9 @@ def _call_groq(api_key: str, message: str, code_context: str):
 def _call_mistral(api_key: str, message: str, code_context: str):
     system_prompt = (
         "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
-        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android ARMv7."
+        "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android."
     )
-    user_content = f"Kode yang lagi dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
+    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}"
     body = json.dumps({
         "model": "codestral-latest",
         "messages": [
@@ -531,8 +606,6 @@ PROVIDER_HANDLERS = {
 
 
 if __name__ == "__main__":
-    # Pake waitress server untuk WebView Android agar thread tidak freeze/force close
-    # Unifikasi port ke 5000 agar sinkron dengan p4a.port bawaan/custom
     port = int(os.environ.get("PORT", 5000))
     print(f"[ZABACODE] Starting local server on port {port}...")
     serve(app, host="0.0.0.0", port=port, threads=4)

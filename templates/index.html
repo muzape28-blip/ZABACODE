@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Zabacode</title>
+<title>Zabacode IDE</title>
 
 <!-- Monaco Editor CDN -->
 <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.css">
@@ -25,7 +25,7 @@
     --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', ui-monospace, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
+  html, body { height: 100%; margin: 0; padding: 0; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -35,7 +35,7 @@
     position: relative;
   }
 
-  /* ---------- CRT scanline overlay ---------- */
+  /* ---------- CRT Scanline Overlay ---------- */
   #scanlines {
     position: fixed; inset: 0; z-index: 999; pointer-events: none;
     background: repeating-linear-gradient(
@@ -50,7 +50,7 @@
     box-shadow: inset 0 0 120px rgba(0,0,0,.65);
   }
 
-  /* ---------- Boot screen ---------- */
+  /* ---------- Boot Screen ---------- */
   #boot-screen {
     position: fixed; inset: 0; background: var(--bg); z-index: 1000;
     display: flex; align-items: center; justify-content: center;
@@ -68,9 +68,9 @@
   @keyframes blink { 50% { opacity: 0; } }
 
   #app { display: none; flex: 1; min-height: 0; flex-direction: column; opacity: 0; transition: opacity .3s; }
-  #app.ready { opacity: 1; }
+  #app.ready { opacity: 1; display: flex; }
 
-  /* ---------- Views (editor / output) — full-screen slide swap ---------- */
+  /* ---------- Main View Swap ---------- */
   .view {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     transform: translateX(0); transition: transform .25s ease; background: var(--bg);
@@ -81,19 +81,35 @@
   #view-editor.behind { transform: translateX(-15%); }
   #view-root { position: relative; flex: 1; min-height: 0; }
 
-  /* ---------- Top bar ---------- */
+  /* ---------- Top Bar ---------- */
   .topbar {
-    height: 46px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    height: 44px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
     padding: 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
   }
   .icon-btn { background: none; border: none; color: var(--text-bright); font-size: 18px; cursor: pointer; padding: 6px; font-family: var(--mono); }
-  #app-title { font-weight: 700; letter-spacing: .04em; font-size: 14px; color: var(--text-bright); text-shadow: 0 0 8px rgba(57,255,20,.4); }
+  #app-title { font-weight: 700; letter-spacing: .04em; font-size: 13px; color: var(--text-bright); text-shadow: 0 0 8px rgba(57,255,20,.4); }
   #app-title::before { content: '> '; }
   #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
   #status-dot.running { background: var(--ai); animation: blink .6s infinite; }
   #status-dot.ok { background: var(--text-bright); box-shadow: 0 0 6px var(--text-bright); }
   #status-dot.err { background: var(--err); box-shadow: 0 0 6px var(--err); }
   #line-counter { margin-left: auto; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+  /* ---------- Multi-Tab Bar ---------- */
+  #tab-bar {
+    display: flex; background: var(--bg-panel-2); border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; height: 32px;
+  }
+  #tab-bar::-webkit-scrollbar { display: none; }
+  .editor-tab {
+    display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 11px;
+    color: var(--text-dim); border-right: 1px solid var(--border); cursor: pointer;
+    background: transparent; white-space: nowrap; user-select: none; transition: all .15s;
+  }
+  .editor-tab.active { background: var(--bg); color: var(--text-bright); border-top: 2px solid var(--text-bright); }
+  .tab-close { font-size: 10px; opacity: 0.6; padding: 2px 4px; border-radius: 2px; }
+  .tab-close:hover { opacity: 1; background: var(--err-dim); color: var(--err); }
+  #add-tab-btn { padding: 0 10px; color: var(--text-bright); font-weight: bold; cursor: pointer; display: flex; align-items: center; border-right: 1px solid var(--border); }
 
   /* ---------- Sidebar ---------- */
   #sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 29; display: none; }
@@ -107,59 +123,34 @@
   #sidebar.open { transform: translateX(0); }
   .sidebar-header { padding: 14px 16px; font-weight: 700; color: var(--text-bright); border-bottom: 1px solid var(--border); }
   .sidebar-header::before { content: '/// '; color: var(--text-dim); }
-  .sidebar-section { border-bottom: 1px solid var(--border); }
-  .sidebar-section h3 {
-    font-size: 11px; letter-spacing: .06em; color: var(--text-dim);
-    margin: 0; padding: 12px 16px 6px;
-  }
-  .lib-row, .provider-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 16px; font-size: 12px; }
-  .tag { font-size: 9px; padding: 2px 6px; border: 1px solid; margin-left: 6px; }
-  .tag.runtime { border-color: var(--border-bright); color: var(--text-bright); }
-  .tag.buildtime { border-color: var(--ai-dim); color: var(--ai); }
-  .tag.ready { border-color: var(--border-bright); color: var(--text-bright); }
-  .tag.no-key { border-color: var(--err-dim); color: var(--err); }
+  .sidebar-section { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  .sidebar-section h3 { font-size: 11px; letter-spacing: .06em; color: var(--text-dim); margin: 0; padding: 12px 16px 6px; }
+  
   .mini-btn {
     background: transparent; color: var(--text-bright); border: 1px solid var(--border-bright);
-    padding: 3px 9px; font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s;
+    padding: 6px 12px; font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s;
   }
   .mini-btn:active { background: var(--border-bright); color: var(--bg); }
   .mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .placeholder-note { padding: 8px 16px; font-size: 11px; color: var(--text-dim); line-height: 1.5; }
 
-  /* ---------- Editor ---------- */
-  #code-editor-container {
-    flex: 1; background: var(--bg); overflow: hidden; position: relative; display: flex;
-  }
+  /* ---------- Editor Area ---------- */
+  #code-editor-container { flex: 1; background: var(--bg); overflow: hidden; position: relative; display: flex; }
   #code-editor { width: 100%; height: 100%; flex: 1; }
-  /* Native Fallback Editor styling */
-  #native-editor-wrapper {
-    display: none; width: 100%; height: 100%; flex: 1; overflow: hidden;
-    background: var(--bg); font-family: var(--mono);
-  }
+  #native-editor-wrapper { display: none; width: 100%; height: 100%; flex: 1; overflow: hidden; background: var(--bg); font-family: var(--mono); }
   #native-editor-wrapper.active { display: flex; }
-  #native-gutter {
-    width: 45px; background: var(--bg-panel); color: var(--text-dim);
-    padding: 12px 6px; text-align: right; font-size: 14px; line-height: 1.5;
-    user-select: none; overflow: hidden; border-right: 1px solid var(--border);
-  }
-  #native-code-area {
-    flex: 1; background: transparent; color: var(--text); border: none; outline: none;
-    padding: 12px; font-family: var(--mono); font-size: 14px; line-height: 1.5;
-    resize: none; overflow: auto; white-space: pre; tab-size: 4;
-  }
-  #editor-controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); flex-wrap: wrap; }
+  #native-gutter { width: 45px; background: var(--bg-panel); color: var(--text-dim); padding: 12px 6px; text-align: right; font-size: 13px; line-height: 1.5; user-select: none; overflow: hidden; border-right: 1px solid var(--border); }
+  #native-code-area { flex: 1; background: transparent; color: var(--text); border: none; outline: none; padding: 12px; font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: none; overflow: auto; white-space: pre; tab-size: 4; }
+  
+  #editor-controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); }
   button.action { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; border-radius: 2px; padding: 10px 18px; cursor: pointer; transition: all .15s; }
-  #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; min-width: 80px; }
+  #run-btn { background: var(--text-bright); color: #00190A; border: none; flex: 1; }
   #run-btn:active { background: #2ecc0f; }
   #run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  #save-btn, #open-btn, #theme-btn, #crt-btn, #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
-  #save-btn:hover, #open-btn:hover, #theme-btn:hover, #crt-btn:hover, #clear-btn:hover { color: var(--text-bright); border-color: var(--border-bright); }
+  #clear-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
 
-  /* ---------- Output view (full screen terminal) ---------- */
-  #output-terminal {
-    flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.6;
-    white-space: pre-wrap; word-break: break-word;
-  }
+  /* ---------- Output View ---------- */
+  #output-terminal { flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
   .prompt-line { color: var(--text-bright); margin-bottom: 8px; }
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
@@ -168,14 +159,13 @@
   #output-terminal .exit-line.ok { color: var(--text-bright); }
   #output-terminal .exit-line.err { color: var(--err); }
   #output-terminal .exit-line.timeout { color: var(--ai); }
-  #back-to-editor { color: var(--text-bright); }
 
-  /* ---------- AI chat (bottom sheet) ---------- */
+  /* ---------- AI Bottom Sheet ---------- */
   #ai-fab {
-    position: fixed; width: 50px; height: 50px; border-radius: 50%;
-    background: var(--ai); color: #1A0F00; border: none; font-size: 18px; cursor: grab;
+    position: fixed; width: 48px; height: 48px; border-radius: 50%;
+    background: var(--ai); color: #1A0F00; border: none; font-size: 16px; cursor: grab;
     box-shadow: 0 0 16px rgba(255,176,0,.5); z-index: 25; font-family: var(--mono); font-weight: 700;
-    touch-action: none; user-select: none;
+    touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center;
   }
   #ai-panel {
     position: fixed; left: 0; right: 0; bottom: 0; height: 62%;
@@ -183,8 +173,7 @@
     transform: translateY(100%); transition: transform .2s ease; z-index: 40; display: flex; flex-direction: column;
   }
   #ai-panel.open { transform: translateY(0); }
-  #ai-panel-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--ai); font-weight: 700; font-size: 13px; }
-  #ai-panel-header::before { content: '~ '; }
+  #ai-panel-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--ai); font-weight: 700; font-size: 13px; }
   #ai-panel-header select { background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 4px 6px; font-size: 11px; margin-left: auto; font-family: var(--mono); }
   #ai-close { background: none; border: none; color: var(--text-dim); font-size: 16px; cursor: pointer; }
   #ai-messages { flex: 1; overflow-y: auto; padding: 12px 14px; font-size: 12px; }
@@ -194,51 +183,85 @@
   .msg.system-hint { border: none; color: var(--text-dim); font-style: italic; text-align: center; max-width: 100%; }
   #ai-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
   #ai-input { flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 12px; font-size: 12px; outline: none; font-family: var(--mono); }
-  #ai-send { background: var(--ai); color: #1A0F00; border: none; padding: 9px 16px; font-weight: 700; cursor: pointer; font-family: var(--mono); transition: all .15s; }
-  #ai-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  #ai-send { background: var(--ai); color: #1A0F00; border: none; padding: 9px 16px; font-weight: 700; cursor: pointer; font-family: var(--mono); }
 
-  /* ---------- API key dialog ---------- */
-  #key-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
-  #key-dialog-backdrop.open { display: flex; }
-  #key-dialog { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 86%; max-width: 340px; padding: 18px; }
-  #key-dialog h4 { margin: 0 0 6px; color: var(--text-bright); font-size: 14px; }
-  #key-dialog p { font-size: 11px; color: var(--text-dim); margin: 0 0 12px; }
-  #key-dialog input { width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 10px; font-size: 12px; margin-bottom: 12px; font-family: var(--mono); }
-  #key-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
-
-  /* ---------- File manager dialog ---------- */
-  #file-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
-  #file-dialog-backdrop.open { display: flex; }
-  #file-dialog { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 90%; max-width: 380px; padding: 18px; max-height: 70vh; overflow-y: auto; }
-  #file-dialog h4 { margin: 0 0 12px; color: var(--text-bright); font-size: 14px; }
-  .file-list { display: flex; flex-direction: column; gap: 6px; }
-  .file-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-panel-2); border: 1px solid var(--border); }
-  .file-item-name { flex: 1; font-size: 12px; color: var(--text); cursor: pointer; }
-  .file-item-actions { display: flex; gap: 4px; }
-  .file-item-actions button { padding: 3px 6px; font-size: 10px; }
-  #file-save-input { width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 10px; font-size: 12px; margin-bottom: 12px; font-family: var(--mono); }
-  #file-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-
-  /* ---------- Theme selector dialog ---------- */
-  #theme-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 50; display: none; align-items: center; justify-content: center; }
-  #theme-dialog-backdrop.open { display: flex; }
-  #theme-dialog { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 90%; max-width: 320px; padding: 18px; }
-  #theme-dialog h4 { margin: 0 0 12px; color: var(--text-bright); font-size: 14px; }
-  .theme-list { display: flex; flex-direction: column; gap: 8px; }
-  .theme-option { padding: 10px 12px; background: var(--bg-panel-2); border: 2px solid var(--border); cursor: pointer; text-align: center; font-size: 12px; transition: all .15s; }
-  .theme-option:hover { border-color: var(--border-bright); }
-  .theme-option.active { border-color: var(--text-bright); color: var(--text-bright); }
-
-  /* ---------- Install status toast ---------- */
-  .install-toast {
-    position: fixed; bottom: 80px; left: 16px; right: 16px; max-width: 340px;
+  /* ---------- FULL DEDICATED LIBRARY MANAGER MODAL ---------- */
+  #lib-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60;
+    display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+  }
+  #lib-modal-backdrop.open { display: flex; }
+  #lib-modal {
     background: var(--bg-panel); border: 1px solid var(--border-bright);
-    padding: 12px 14px; font-size: 12px; z-index: 45; animation: slideUp .3s ease;
+    width: 92%; max-width: 720px; height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 0 30px rgba(46,139,79,.3);
+  }
+  .lib-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg-panel-2);
+  }
+  .lib-modal-title { font-weight: 700; font-size: 14px; color: var(--text-bright); }
+  .lib-modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
+
+  .lib-search-bar {
+    display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--bg-panel);
+  }
+  .lib-search-input {
+    flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 12px; font-size: 12px; font-family: var(--mono); outline: none;
+  }
+
+  .lib-categories {
+    display: flex; gap: 6px; padding: 10px 18px; overflow-x: auto; border-bottom: 1px solid var(--border);
+    scrollbar-width: none; background: var(--bg-panel-2);
+  }
+  .lib-cat-pill {
+    padding: 4px 10px; font-size: 11px; border: 1px solid var(--border); color: var(--text-dim);
+    cursor: pointer; white-space: nowrap; transition: all .15s;
+  }
+  .lib-cat-pill.active { border-color: var(--text-bright); color: var(--text-bright); background: rgba(57,255,20,.1); }
+
+  .lib-grid {
+    flex: 1; overflow-y: auto; padding: 16px 18px; display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-content: start;
+  }
+  .lib-card {
+    background: var(--bg-panel-2); border: 1px solid var(--border); padding: 12px;
+    display: flex; flex-direction: column; justify-content: space-between; transition: border-color .15s;
+  }
+  .lib-card:hover { border-color: var(--border-bright); }
+  .lib-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .lib-card-name { font-weight: 700; font-size: 13px; color: var(--text-bright); }
+  .lib-card-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin-bottom: 10px; }
+  .lib-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+
+  .custom-pip-box {
+    padding: 12px 18px; border-top: 1px solid var(--border); background: var(--bg-panel-2);
+    display: flex; gap: 8px; align-items: center;
+  }
+
+  /* ---------- Dialog Base Styles ---------- */
+  .dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 50; display: none; align-items: center; justify-content: center; }
+  .dialog-backdrop.open { display: flex; }
+  .dialog-box { background: var(--bg-panel); border: 1px solid var(--border-bright); width: 90%; max-width: 380px; padding: 18px; }
+  .dialog-box h4 { margin: 0 0 10px; color: var(--text-bright); font-size: 14px; }
+  .dialog-input { width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; font-size: 12px; margin-bottom: 12px; font-family: var(--mono); }
+  .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ---------- Toast ---------- */
+  .install-toast {
+    position: fixed; bottom: 80px; left: 16px; right: 16px; max-width: 360px;
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    padding: 12px 14px; font-size: 12px; z-index: 70; animation: slideUp .3s ease;
   }
   .install-toast.success { border-color: var(--text-bright); color: var(--text-bright); }
   .install-toast.error { border-color: var(--err); color: var(--err); }
   .install-toast.loading { border-color: var(--ai); color: var(--ai); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  .tag { font-size: 9px; padding: 2px 6px; border: 1px solid; }
+  .tag.runtime { border-color: var(--border-bright); color: var(--text-bright); }
+  .tag.buildtime { border-color: var(--ai-dim); color: var(--ai); }
 </style>
 </head>
 <body>
@@ -252,31 +275,40 @@
 <div id="app">
   <div id="view-root">
 
+    <!-- VIEW EDITOR -->
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode v0.2</div>
+        <div id="app-title">zabacode v0.3</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
+
+      <!-- Multi-Tab Bar -->
+      <div id="tab-bar">
+        <div id="add-tab-btn">+</div>
+      </div>
+
       <div id="code-editor-container">
         <div id="code-editor"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Zabacode Lokal Jalan!')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3')
+print('Coba jalankan library atau eksekusi kode di sini!')
 </textarea>
         </div>
       </div>
       <div id="editor-controls">
-        <button id="run-btn" class="action">▶ EXEC</button>
-        <button id="clear-btn" class="action" title="Bersihkan Editor / Output">CLEAR</button>
+        <button id="run-btn" class="action">▶ EXECUTE</button>
+        <button id="clear-btn" class="action" title="Bersihkan Editor / Terminal">CLEAR</button>
       </div>
     </div>
 
+    <!-- VIEW OUTPUT TERMINAL -->
     <div id="view-output" class="view">
       <div class="topbar">
         <button id="back-to-editor" class="icon-btn" aria-label="Kembali">◂ EDIT</button>
-        <div id="app-title">output</div>
+        <div id="app-title">output terminal</div>
         <button id="clear-output-btn" class="mini-btn" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);">CLEAR</button>
         <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
       </div>
@@ -285,279 +317,315 @@
 
   </div>
 
+  <!-- SIDEBAR MENU -->
   <div id="sidebar-backdrop"></div>
   <div id="sidebar">
     <div class="sidebar-header">zabacode</div>
     <div class="sidebar-section">
-      <h3>[ CONTROLS & THEMES ]</h3>
-      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-        <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">📂 OPEN FILE (.py)</button>
-        <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">💾 SAVE AS FILE (.py)</button>
-        <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">🎨 CHANGE THEME</button>
-        <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 13px;">📺 CRT SCANLINES: ON</button>
+      <h3>[ FITUR & KONTROL ]</h3>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 0 16px;">
+        <button id="sidebar-lib-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05);">📦 LIBRARY MANAGER (zabapip)</button>
+        <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
+        <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
+        <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">🎨 CHANGE THEME</button>
+        <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📺 CRT SCANLINES: ON</button>
       </div>
     </div>
     <div class="sidebar-section">
-      <h3>[ LIBRARY MANAGER ]</h3>
-      <div id="lib-list"></div>
-      <div class="placeholder-note">runtime = aman install kapan aja. buildtime = butuh masuk buildozer.spec + rebuild ci.</div>
-    </div>
-    <div class="sidebar-section">
-      <h3>[ DOCS ]</h3>
-      <div class="placeholder-note"><a href="https://github.com/muzape28-blip/ZABACODE/blob/main/ZABACODEE.md" target="_blank" style="color:var(--text-bright)">📖 Roadmap & Docs</a></div>
+      <h3>[ DOCS & ROADMAP ]</h3>
+      <div class="placeholder-note">
+        <a href="https://github.com/muzape28-blip/ZABACODE/blob/main/ZABACODEE.md" target="_blank" style="color:var(--text-bright)">📖 Roadmap & Dokumentasi Repositori</a>
+      </div>
     </div>
   </div>
 
+  <!-- AI FAB & PANEL -->
   <button id="ai-fab" aria-label="AI Assistant">AI</button>
   <div id="ai-panel">
     <div id="ai-panel-header">
       zabacode ai
       <select id="ai-provider">
-        <option value="openrouter">openrouter</option>
-        <option value="gemini">gemini</option>
-        <option value="groq">groq</option>
-        <option value="mistral">mistral</option>
+        <option value="openrouter">openrouter (qwen 2.5 coder)</option>
+        <option value="gemini">gemini (1.5 flash)</option>
+        <option value="groq">groq (llama 3.1 8b)</option>
+        <option value="mistral">mistral (codestral)</option>
       </select>
       <button id="ai-close">✕</button>
     </div>
     <div id="ai-messages">
-      <div class="msg system-hint">ai ini otomatis baca kode yang lagi kebuka — ga usah copas manual.</div>
+      <div class="msg system-hint">AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.</div>
     </div>
     <div id="ai-input-row">
-      <input id="ai-input" type="text" placeholder="tanya soal kode lo...">
+      <input id="ai-input" type="text" placeholder="tanya atau minta solusi AI...">
       <button id="ai-send">KIRIM</button>
     </div>
   </div>
 
-  <div id="key-dialog-backdrop">
-    <div id="key-dialog">
-      <h4>&gt; masukin api key <span id="key-dialog-provider"></span>_</h4>
-      <p>sekali diisi, disimpan terenkripsi dan ga bakal ditanya lagi kecuali key-nya invalid/expired.</p>
-      <input id="key-dialog-input" type="password" placeholder="api key...">
-      <div id="key-dialog-actions">
+  <!-- DEDICATED FULL LIBRARY MANAGER MODAL -->
+  <div id="lib-modal-backdrop">
+    <div id="lib-modal">
+      <div class="lib-modal-header">
+        <div class="lib-modal-title">📦 ZABACODE LIBRARY MANAGER (zabapip)</div>
+        <button class="lib-modal-close" id="lib-modal-close">✕</button>
+      </div>
+      
+      <div class="lib-search-bar">
+        <input type="text" id="lib-search" class="lib-search-input" placeholder="Cari nama library (misal: requests, pandas, fastapi)...">
+      </div>
+
+      <div class="lib-categories" id="lib-cat-container">
+        <div class="lib-cat-pill active" data-cat="all">🌟 Semua</div>
+        <div class="lib-cat-pill" data-cat="Web & API">🌐 Web & API</div>
+        <div class="lib-cat-pill" data-cat="Data & Math">📊 Data & Sains</div>
+        <div class="lib-cat-pill" data-cat="Database">🤖 AI & Database</div>
+        <div class="lib-cat-pill" data-cat="Utilities">🎨 Media & Utils</div>
+      </div>
+
+      <div class="lib-grid" id="lib-grid-container"></div>
+
+      <div class="custom-pip-box">
+        <input type="text" id="custom-pip-input" class="lib-search-input" placeholder="Install library PyPI custom (misal: fake-useragent, colorama)...">
+        <button class="mini-btn" id="custom-pip-btn" style="background:var(--text-bright);color:#00190A;border:none;font-weight:bold;">Install via Pip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API KEY DIALOG -->
+  <div id="key-dialog-backdrop" class="dialog-backdrop">
+    <div class="dialog-box">
+      <h4>&gt; Masukkan API Key <span id="key-dialog-provider"></span>_</h4>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Disimpan lokal di perangkat untuk akses AI Provider.</p>
+      <input id="key-dialog-input" class="dialog-input" type="password" placeholder="api key...">
+      <div class="dialog-actions">
         <button class="mini-btn" id="key-dialog-cancel">batal</button>
         <button class="mini-btn" id="key-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan</button>
       </div>
     </div>
   </div>
 
-  <div id="file-dialog-backdrop">
-    <div id="file-dialog">
-      <h4>&gt; file manager _</h4>
-      <div id="file-list-container" class="file-list"></div>
-      <input id="file-save-input" type="text" placeholder="nama file (tanpa .py)...">
-      <div id="file-dialog-actions">
+  <!-- FILE MANAGER DIALOG -->
+  <div id="file-dialog-backdrop" class="dialog-backdrop">
+    <div class="dialog-box" style="max-width:420px;">
+      <h4>&gt; File Manager _</h4>
+      <div id="file-list-container" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
+      <input id="file-save-input" class="dialog-input" type="text" placeholder="nama file (tanpa .py)...">
+      <div class="dialog-actions">
         <button class="mini-btn" id="file-dialog-cancel">tutup</button>
-        <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan baru</button>
+        <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan file</button>
       </div>
     </div>
   </div>
 
-  <div id="theme-dialog-backdrop">
-    <div id="theme-dialog">
-      <h4>&gt; pilih theme _</h4>
-      <div class="theme-list" id="theme-list"></div>
+  <!-- THEME SELECTOR DIALOG -->
+  <div id="theme-dialog-backdrop" class="dialog-backdrop">
+    <div class="dialog-box">
+      <h4>&gt; Pilih Tema Visual _</h4>
+      <div id="theme-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+      <div class="dialog-actions">
+        <button class="mini-btn" id="theme-dialog-cancel">tutup</button>
+      </div>
     </div>
   </div>
+
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 <script>
-// ---------- Boot sequence ----------
-const bootLines = [
-  { text: 'ZABACODE v0.2.0', cls: 'ok' },
-  { text: '[ OK ] mounting sandbox...', cls: 'dim' },
-  { text: '[ OK ] python engine ready', cls: 'dim' },
-  { text: '[ OK ] monaco editor loaded', cls: 'dim' },
-  { text: '[ OK ] zabacode ai: standby (mulutnya pedas, tapi jago)', cls: 'dim' },
-  { text: '> ready_', cls: 'ok' },
+// ---------- Boot Sequence Animation ----------
+const BOOT_MESSAGES = [
+  { text: 'ZABACODE Mobile IDE v0.3.0 Engine Inisialisasi...', cls: 'dim' },
+  { text: '[ OK ] Python 3 Subprocess Sandbox siap', cls: 'ok' },
+  { text: '[ OK ] Multi-Tab Editor & Adaptive Monaco Engine dimuat', cls: 'ok' },
+  { text: '[ OK ] Dedicated Library Manager (zabapip) siap', cls: 'ok' },
+  { text: '[ OK ] Multi-Provider AI Assistant: Standby', cls: 'ok' },
+  { text: '> Sistem Siap. Membuka Workspace...', cls: 'ok' }
 ];
-const bootContainer = document.getElementById('boot-lines');
-bootLines.forEach((l, i) => {
-  const div = document.createElement('div');
-  div.className = `line ${l.cls}`;
-  div.style.animationDelay = `${i * 0.18}s`;
-  div.textContent = l.text;
-  bootContainer.appendChild(div);
-});
-setTimeout(() => {
-  document.getElementById('boot-screen').style.display = 'none';
-  const app = document.getElementById('app');
-  app.style.display = 'flex';
-  requestAnimationFrame(() => app.classList.add('ready'));
-}, bootLines.length * 180 + 500);
-document.getElementById('boot-screen').addEventListener('click', () => {
-  document.getElementById('boot-screen').style.display = 'none';
-  const app = document.getElementById('app');
-  app.style.display = 'flex';
-  requestAnimationFrame(() => app.classList.add('ready'));
-});
 
-// ---------- Elements ----------
-const statusDot = document.getElementById('status-dot');
-const outputStatusDot = document.getElementById('output-status-dot');
-const lineCounter = document.getElementById('line-counter');
-const viewEditor = document.getElementById('view-editor');
-const viewOutput = document.getElementById('view-output');
-const outputTerminal = document.getElementById('output-terminal');
+const bootLines = document.getElementById('boot-lines');
+let bootIdx = 0;
+function playBoot() {
+  if (bootIdx < BOOT_MESSAGES.length) {
+    const msg = BOOT_MESSAGES[bootIdx++];
+    const line = document.createElement('div');
+    line.className = `line ${msg.cls}`;
+    line.textContent = msg.text;
+    bootLines.appendChild(line);
+    setTimeout(playBoot, 120);
+  } else {
+    setTimeout(() => {
+      document.getElementById('boot-screen').style.display = 'none';
+      const app = document.getElementById('app');
+      app.classList.add('ready');
+    }, 250);
+  }
+}
+window.addEventListener('DOMContentLoaded', playBoot);
 
-// ---------- Adaptive Editor Setup (Monaco CDN + Native Fallback) ----------
+// ---------- Multi-Tab File System Manager ----------
+let tabs = [
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+];
+let activeTabId = 'tab-1';
 let editor = null;
-let activeEditorMode = 'loading'; // 'monaco' or 'native'
+let activeEditorMode = 'loading';
+
+const tabBarEl = document.getElementById('tab-bar');
+const addTabBtn = document.getElementById('add-tab-btn');
+
+function renderTabs() {
+  tabBarEl.querySelectorAll('.editor-tab').forEach(el => el.remove());
+  tabs.forEach(tab => {
+    const tabEl = document.createElement('div');
+    tabEl.className = `editor-tab ${tab.id === activeTabId ? 'active' : ''}`;
+    tabEl.innerHTML = `<span>${tab.name}</span><span class="tab-close" data-id="${tab.id}">✕</span>`;
+    
+    tabEl.onclick = (e) => {
+      if (e.target.classList.contains('tab-close')) return;
+      switchTab(tab.id);
+    };
+    
+    tabEl.querySelector('.tab-close').onclick = (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    };
+    
+    tabBarEl.insertBefore(tabEl, addTabBtn);
+  });
+}
+
+function switchTab(id) {
+  if (activeTabId) {
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    if (currentTab) currentTab.content = getEditorValue();
+  }
+  activeTabId = id;
+  const targetTab = tabs.find(t => t.id === activeTabId);
+  if (targetTab) {
+    setEditorValue(targetTab.content);
+  }
+  renderTabs();
+}
+
+function closeTab(id) {
+  if (tabs.length <= 1) {
+    alert('Minimal harus ada 1 tab aktif!');
+    return;
+  }
+  tabs = tabs.filter(t => t.id !== id);
+  if (activeTabId === id) {
+    activeTabId = tabs[tabs.length - 1].id;
+  }
+  switchTab(activeTabId);
+}
+
+addTabBtn.onclick = () => {
+  const newId = 'tab-' + Date.now();
+  tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "# Kode Python Baru\n" });
+  switchTab(newId);
+};
+
+// ---------- Adaptive Monaco / Native Fallback Editor ----------
+const monacoDiv = document.getElementById('code-editor');
 const nativeWrapper = document.getElementById('native-editor-wrapper');
 const nativeCodeArea = document.getElementById('native-code-area');
 const nativeGutter = document.getElementById('native-gutter');
-const monacoDiv = document.getElementById('code-editor');
+const lineCounter = document.getElementById('line-counter');
 
-function updateNativeGutter() {
-  if (!nativeCodeArea || !nativeGutter) return;
-  const linesCount = nativeCodeArea.value.split('\n').length;
-  let gutterHtml = '';
-  for (let i = 1; i <= linesCount; i++) {
-    gutterHtml += i + '<br>';
+function updateLineCounter() {
+  if (activeEditorMode === 'monaco' && editor) {
+    const pos = editor.getPosition();
+    lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+  } else {
+    const val = nativeCodeArea.value;
+    const selStart = nativeCodeArea.selectionStart || 0;
+    const lines = val.substring(0, selStart).split('\n');
+    const line = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    lineCounter.textContent = `Ln ${line}, Col ${col}`;
   }
-  nativeGutter.innerHTML = gutterHtml;
 }
 
+function updateNativeGutter() {
+  const linesCount = nativeCodeArea.value.split('\n').length;
+  let numbers = '';
+  for (let i = 1; i <= linesCount; i++) numbers += i + '\n';
+  nativeGutter.textContent = numbers;
+}
+
+nativeCodeArea.addEventListener('input', () => { updateNativeGutter(); updateLineCounter(); });
+nativeCodeArea.addEventListener('keyup', updateLineCounter);
+nativeCodeArea.addEventListener('click', updateLineCounter);
+
 function activateNativeFallback(reason) {
-  if (activeEditorMode === 'native' || activeEditorMode === 'monaco') return;
-  console.log('Switching to Native Editor fallback:', reason);
   activeEditorMode = 'native';
-  if (monacoDiv) monacoDiv.style.display = 'none';
-  if (nativeWrapper) nativeWrapper.classList.add('active');
+  monacoDiv.style.display = 'none';
+  nativeWrapper.classList.add('active');
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  if (activeTab) nativeCodeArea.value = activeTab.content;
   updateNativeGutter();
   updateLineCounter();
 }
 
-if (nativeCodeArea) {
-  nativeCodeArea.addEventListener('input', () => {
-    updateNativeGutter();
-    updateLineCounter();
-  });
-  nativeCodeArea.addEventListener('scroll', () => {
-    if (nativeGutter) nativeGutter.scrollTop = nativeCodeArea.scrollTop;
-  });
-  nativeCodeArea.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const start = nativeCodeArea.selectionStart;
-      const end = nativeCodeArea.selectionEnd;
-      nativeCodeArea.value = nativeCodeArea.value.substring(0, start) + "    " + nativeCodeArea.value.substring(end);
-      nativeCodeArea.selectionStart = nativeCodeArea.selectionEnd = start + 4;
-      updateNativeGutter();
-    } else if (e.key === 'Enter') {
-      const start = nativeCodeArea.selectionStart;
-      const before = nativeCodeArea.value.substring(0, start);
-      const currentLine = before.split('\n').pop();
-      const match = currentLine.match(/^(\s+)/);
-      if (match) {
-        e.preventDefault();
-        const indent = match[1];
-        nativeCodeArea.value = nativeCodeArea.value.substring(0, start) + "\n" + indent + nativeCodeArea.value.substring(nativeCodeArea.selectionEnd);
-        nativeCodeArea.selectionStart = nativeCodeArea.selectionEnd = start + 1 + indent.length;
-        updateNativeGutter();
-        updateLineCounter();
-      }
-    }
-  });
-  nativeCodeArea.addEventListener('click', updateLineCounter);
-  nativeCodeArea.addEventListener('keyup', updateLineCounter);
-}
-
-// Unified Editor Interface
 function getEditorValue() {
-  if (activeEditorMode === 'monaco' && editor) {
-    return editor.getValue();
-  }
-  return nativeCodeArea ? nativeCodeArea.value : "";
+  return activeEditorMode === 'monaco' && editor ? editor.getValue() : nativeCodeArea.value;
 }
 
-function setEditorValue(content) {
+function setEditorValue(val) {
   if (activeEditorMode === 'monaco' && editor) {
-    editor.setValue(content);
-  } else if (nativeCodeArea) {
-    nativeCodeArea.value = content;
+    editor.setValue(val);
+  } else {
+    nativeCodeArea.value = val;
     updateNativeGutter();
   }
+  updateLineCounter();
 }
 
-// ---------- Line:Col counter ----------
-function updateLineCounter() {
-  if (!lineCounter) return;
-  if (activeEditorMode === 'monaco' && editor) {
-    const pos = editor.getPosition();
-    if (pos) lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
-  } else if (nativeCodeArea) {
-    const text = nativeCodeArea.value.substring(0, nativeCodeArea.selectionStart);
-    const lines = text.split('\n');
-    const ln = lines.length;
-    const col = lines[lines.length - 1].length + 1;
-    lineCounter.textContent = `Ln ${ln}, Col ${col}`;
-  }
-}
-
-// Timeout fallback if Monaco fails or hangs over offline / security restrictions
 const monacoLoadTimeout = setTimeout(() => {
-  if (activeEditorMode === 'loading') {
-    activateNativeFallback('Monaco CDN load timeout / offline mode');
-  }
-}, 1800);
+  if (activeEditorMode === 'loading') activateNativeFallback('Timeout koneksi CDN Monaco');
+}, 2000);
 
 try {
-  // Prevent cross-origin web worker crashes inside Android WebView
   window.MonacoEnvironment = {
     getWorkerUrl: function() {
-      return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
+      return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
     }
   };
   require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
   require(['vs/editor/editor.main'], function() {
     clearTimeout(monacoLoadTimeout);
-    if (activeEditorMode === 'native') return; // already fell back
+    if (activeEditorMode === 'native') return;
     try {
       editor = monaco.editor.create(monacoDiv, {
-        value: "print('Zabacode Lokal Jalan!')\n",
+        value: tabs[0].content,
         language: 'python',
         theme: 'vs-dark',
         fontSize: 14,
-        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-        fontLigatures: true,
+        fontFamily: "'JetBrains Mono', monospace",
         minimap: { enabled: false },
-        scrollBeyondLastLine: false,
         automaticLayout: true,
-        formatOnPaste: true,
-        formatOnType: true,
       });
       activeEditorMode = 'monaco';
       updateLineCounter();
       editor.onDidChangeCursorPosition(updateLineCounter);
     } catch (err) {
-      console.error('Monaco create error:', err);
-      activateNativeFallback('Monaco initialization exception');
+      activateNativeFallback('Gagal inisialisasi Monaco');
     }
-  }, function(err) {
-    console.warn('Monaco require error:', err);
+  }, function() {
     clearTimeout(monacoLoadTimeout);
-    activateNativeFallback('Monaco CDN require error');
+    activateNativeFallback('Error CDN Monaco');
   });
 } catch (e) {
   clearTimeout(monacoLoadTimeout);
-  activateNativeFallback('Require/CORS exception: ' + e.message);
+  activateNativeFallback('Exception Monaco: ' + e.message);
 }
 
-// ---------- Sidebar toggle ----------
-const sidebar = document.getElementById('sidebar');
-const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-document.getElementById('hamburger').onclick = () => {
-  sidebar.classList.add('open');
-  sidebarBackdrop.classList.add('open');
-};
-sidebarBackdrop.onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-};
+// ---------- View Swap Logic ----------
+const viewEditor = document.getElementById('view-editor');
+const viewOutput = document.getElementById('view-output');
+const outputTerminal = document.getElementById('output-terminal');
+const statusDot = document.getElementById('status-dot');
+const outputStatusDot = document.getElementById('output-status-dot');
 
-// ---------- View switching ----------
 function goToOutput() {
   viewEditor.classList.add('behind');
   viewOutput.classList.add('active');
@@ -569,49 +637,29 @@ function goToEditor() {
 document.getElementById('back-to-editor').onclick = goToEditor;
 
 document.getElementById('clear-btn').onclick = () => {
-  if (confirm('Kosongkan kode di editor dan terminal output?')) {
+  if (confirm('Bersihkan isi editor & terminal output?')) {
     setEditorValue('');
     outputTerminal.innerHTML = '';
-    updateLineCounter();
-    if (typeof showInstallToast === 'function') showInstallToast('✓ Editor & output dikosongkan', 'success');
+    showToast('✓ Editor & terminal dibersihkan', 'success');
   }
 };
-
-const clearOutputBtn = document.getElementById('clear-output-btn');
-if (clearOutputBtn) {
-  clearOutputBtn.onclick = () => {
-    outputTerminal.innerHTML = '';
-    if (typeof showInstallToast === 'function') showInstallToast('✓ Output terminal dibersihkan', 'success');
-  };
-}
-
-// ---------- CRT Scanline Toggle ----------
-let crtEnabled = true;
-const scanlinesEl = document.getElementById('scanlines');
-const crtBtn = document.getElementById('crt-btn');
-const sidebarCrtBtn = document.getElementById('sidebar-crt-btn');
-
-function toggleCrt() {
-  crtEnabled = !crtEnabled;
-  if (scanlinesEl) scanlinesEl.style.display = crtEnabled ? 'block' : 'none';
-  if (crtBtn) crtBtn.textContent = crtEnabled ? '📺 CRT: ON' : '📺 CRT: OFF';
-  if (sidebarCrtBtn) sidebarCrtBtn.textContent = crtEnabled ? '📺 CRT SCANLINES: ON' : '📺 CRT SCANLINES: OFF';
-}
-
-if (crtBtn) crtBtn.onclick = toggleCrt;
-if (sidebarCrtBtn) sidebarCrtBtn.onclick = () => {
-  toggleCrt();
-  const sb = document.getElementById('sidebar');
-  const sbBackdrop = document.getElementById('sidebar-backdrop');
-  if (sb) sb.classList.remove('open');
-  if (sbBackdrop) sbBackdrop.classList.remove('open');
+document.getElementById('clear-output-btn').onclick = () => {
+  outputTerminal.innerHTML = '';
+  showToast('✓ Output terminal dibersihkan', 'success');
 };
 
-// ---------- Run code ----------
+// ---------- CRT Toggle ----------
+let crtEnabled = true;
+function toggleCrt() {
+  crtEnabled = !crtEnabled;
+  document.getElementById('scanlines').style.display = crtEnabled ? 'block' : 'none';
+  document.getElementById('sidebar-crt-btn').textContent = crtEnabled ? '📺 CRT SCANLINES: ON' : '📺 CRT SCANLINES: OFF';
+}
+document.getElementById('sidebar-crt-btn').onclick = toggleCrt;
+
+// ---------- Run Code Subprocess ----------
 document.getElementById('run-btn').onclick = async () => {
   const code = getEditorValue();
-  if (code === undefined || code === null) return;
-  
   const runBtn = document.getElementById('run-btn');
   runBtn.disabled = true;
   statusDot.className = 'running';
@@ -623,12 +671,11 @@ document.getElementById('run-btn').onclick = async () => {
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code }),
+      body: JSON.stringify({ code }),
     });
     const data = await res.json();
 
-    const prompt = outputTerminal.querySelector('.prompt-line');
-    prompt.innerHTML = `<span class="user">zaba@zabacode:~$</span> python3 main.py`;
+    outputTerminal.querySelector('.prompt-line').innerHTML = `<span class="user">zaba@zabacode:~$</span> python3 main.py`;
 
     if (data.stdout) {
       const line = document.createElement('div');
@@ -636,6 +683,18 @@ document.getElementById('run-btn').onclick = async () => {
       line.textContent = data.stdout;
       outputTerminal.appendChild(line);
     }
+    
+    // Tampilkan gambar jika ada output plot/grafik yang dihasilkan
+    if (data.images && data.images.length > 0) {
+      data.images.forEach(img => {
+        const imgDiv = document.createElement('div');
+        imgDiv.style.margin = '10px 0';
+        imgDiv.innerHTML = `<div style="font-size:11px;color:var(--text-bright);margin-bottom:4px;">📷 Gambar Dihasilkan: ${img.name}</div>
+          <img src="${img.data_uri}" style="max-width:100%;border:1px solid var(--border-bright);border-radius:4px;">`;
+        outputTerminal.appendChild(imgDiv);
+      });
+    }
+
     if (data.stderr) {
       const block = document.createElement('div');
       block.className = 'stderr-block';
@@ -644,37 +703,26 @@ document.getElementById('run-btn').onclick = async () => {
 
       const fixBtn = document.createElement('button');
       fixBtn.className = 'mini-btn';
-      fixBtn.style.background = 'var(--ai)';
-      fixBtn.style.color = '#1A0F00';
-      fixBtn.style.border = 'none';
-      fixBtn.style.fontWeight = 'bold';
-      fixBtn.style.marginTop = '8px';
-      fixBtn.style.padding = '6px 12px';
+      fixBtn.style.cssText = 'background:var(--ai);color:#1A0F00;border:none;font-weight:bold;margin-top:8px;padding:6px 12px;cursor:pointer;';
       fixBtn.innerHTML = '⚡ ZABA AI: BENERIN ERROR INI!';
       fixBtn.onclick = () => {
-        const aiPanelEl = document.getElementById('ai-panel');
-        if (aiPanelEl) aiPanelEl.classList.add('open');
+        document.getElementById('ai-panel').classList.add('open');
         const input = document.getElementById('ai-input');
-        if (input) {
-          input.value = `Kode gw error kemakan Traceback nih, salahnya di mana dan tolong benerin:\n${data.stderr}`;
-          if (typeof sendAiMessage === 'function') sendAiMessage();
-        }
+        input.value = `Kode saya mengalami error berikut, tolong analisis dan berikan solusinya:\n${data.stderr}`;
+        sendAiMessage();
       };
       outputTerminal.appendChild(fixBtn);
     }
+
     const exit = document.createElement('div');
     exit.className = `exit-line ${data.timeout ? 'timeout' : (data.ok ? 'ok' : 'err')}`;
-    if (data.timeout) {
-      exit.textContent = '[process finished — timeout]';
-    } else {
-      exit.textContent = data.ok ? '[process finished — exit 0]' : '[process finished — exit 1]';
-    }
+    exit.textContent = data.timeout ? '[process timed out — killed]' : (data.ok ? '[process finished — exit 0]' : '[process finished — exit 1]');
     outputTerminal.appendChild(exit);
 
     statusDot.className = data.ok ? 'ok' : 'err';
     outputStatusDot.style.background = data.ok ? 'var(--text-bright)' : 'var(--err)';
   } catch (e) {
-    outputTerminal.innerHTML += `<div class="stderr-block">gagal konek ke backend: ${e}</div>`;
+    outputTerminal.innerHTML += `<div class="stderr-block">Gagal terhubung ke backend server: ${e}</div>`;
     statusDot.className = 'err';
     outputStatusDot.style.background = 'var(--err)';
   } finally {
@@ -682,143 +730,163 @@ document.getElementById('run-btn').onclick = async () => {
   }
 };
 
-// ---------- Library Manager ----------
-async function loadLibraries() {
-  const list = document.getElementById('lib-list');
+// ---------- Sidebar Navigation ----------
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+document.getElementById('hamburger').onclick = () => {
+  sidebar.classList.add('open');
+  sidebarBackdrop.classList.add('open');
+};
+sidebarBackdrop.onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+};
+
+// ---------- DEDICATED FULL LIBRARY MANAGER (zabapip) ----------
+const libModalBackdrop = document.getElementById('lib-modal-backdrop');
+const libGridContainer = document.getElementById('lib-grid-container');
+const libSearchInput = document.getElementById('lib-search');
+let allLibraries = {};
+let activeCategory = 'all';
+
+function openLibraryManager() {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  libModalBackdrop.classList.add('open');
+  fetchAndRenderLibraries();
+}
+
+document.getElementById('sidebar-lib-btn').onclick = openLibraryManager;
+document.getElementById('lib-modal-close').onclick = () => libModalBackdrop.classList.remove('open');
+
+document.querySelectorAll('.lib-cat-pill').forEach(pill => {
+  pill.onclick = () => {
+    document.querySelectorAll('.lib-cat-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    activeCategory = pill.dataset.cat;
+    renderLibraryGrid();
+  };
+});
+
+libSearchInput.addEventListener('input', renderLibraryGrid);
+
+async function fetchAndRenderLibraries() {
   try {
     const res = await fetch('/api/libraries');
-    const libs = await res.json();
-    list.innerHTML = '';
-    for (const [name, info] of Object.entries(libs)) {
-      const row = document.createElement('div');
-      row.className = 'lib-row';
-      const isInstalled = info.installed || false;
-      const btnLabel = isInstalled ? 'ready ✓' : 'install';
-      const btnStyle = isInstalled ? 'style="color:var(--text-bright);border-color:var(--border-bright);"' : '';
-      row.innerHTML = `<span>${name}<span class="tag ${info.tier}">${info.tier}</span></span>
-        <button class="mini-btn" data-name="${name}" ${btnStyle}>${btnLabel}</button>`;
-      list.appendChild(row);
-    }
-    list.querySelectorAll('button[data-name]').forEach(btn => {
-      btn.onclick = async () => {
-        const name = btn.dataset.name;
-        btn.disabled = true;
-        btn.textContent = 'checking...';
-        showInstallToast(`Checking ${name}...`, 'loading');
-
-        try {
-          const res = await fetch('/api/libraries/install', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-          });
-          const data = await res.json();
-
-          if (data.ok) {
-            showInstallToast(`✓ ${data.message}`, 'success');
-            btn.textContent = 'ready ✓';
-            btn.style.color = 'var(--text-bright)';
-            btn.style.borderColor = 'var(--border-bright)';
-            return;
-          } else if (data.needs_rebuild) {
-            showInstallToast(`⚠ ${data.message}`, 'error');
-          } else {
-            showInstallToast(`✗ ${data.message}`, 'error');
-          }
-        } catch (e) {
-          showInstallToast(`✗ Error: ${e}`, 'error');
-        }
-        btn.disabled = false;
-        btn.textContent = 'install';
-      };
-    });
+    allLibraries = await res.json();
+    renderLibraryGrid();
   } catch (e) {
-    list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>';
+    libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--err);">Gagal memuat daftar library dari backend.</div>';
   }
 }
-loadLibraries();
 
-function showInstallToast(msg, type) {
-  const toast = document.createElement('div');
-  toast.className = `install-toast ${type}`;
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4000);
+function renderLibraryGrid() {
+  const query = libSearchInput.value.toLowerCase().trim();
+  libGridContainer.innerHTML = '';
+
+  let entries = Object.entries(allLibraries);
+  
+  if (activeCategory !== 'all') {
+    entries = entries.filter(([_, info]) => info.category === activeCategory);
+  }
+
+  if (query) {
+    entries = entries.filter(([name, info]) => name.toLowerCase().includes(query) || (info.reason && info.reason.toLowerCase().includes(query)));
+  }
+
+  if (entries.length === 0) {
+    libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);text-align:center;padding:20px;">Library tidak ditemukan. Gunakan input Custom PyPI di bawah untuk menginstall package pilihan Anda!</div>';
+    return;
+  }
+
+  entries.forEach(([name, info]) => {
+    const card = document.createElement('div');
+    card.className = 'lib-card';
+    const isInstalled = info.installed;
+    const isBuildtime = info.tier === 'buildtime';
+
+    card.innerHTML = `
+      <div>
+        <div class="lib-card-top">
+          <span class="lib-card-name">${name}</span>
+          <span class="tag ${info.tier}">${info.tier}</span>
+        </div>
+        <div class="lib-card-desc">${info.reason || ''}</div>
+      </div>
+      <div class="lib-card-footer">
+        <span style="font-size:10px;color:var(--text-dim);">${info.category || 'General'}</span>
+        <button class="mini-btn install-lib-btn" data-name="${name}" ${isInstalled ? 'style="color:var(--text-bright);border-color:var(--border-bright);"' : ''}>
+          ${isInstalled ? 'ready ✓' : (isBuildtime ? 'buildtime ⚠' : 'install')}
+        </button>
+      </div>
+    `;
+
+    card.querySelector('.install-lib-btn').onclick = () => handleInstallLibrary(name);
+    libGridContainer.appendChild(card);
+  });
 }
 
-// ---------- AI provider status ----------
-async function loadProviderStatus() {
-  const list = document.getElementById('provider-list');
+async function handleInstallLibrary(name) {
+  showToast(`Memproses instalasi ${name}...`, 'loading');
   try {
-    const res = await fetch('/api/keys/status');
-    const status = await res.json();
-    list.innerHTML = '';
-    for (const [provider, hasKey] of Object.entries(status)) {
-      const row = document.createElement('div');
-      row.className = 'provider-row';
-      row.innerHTML = `<span>${provider}</span><span class="tag ${hasKey ? 'ready' : 'no-key'}">${hasKey ? '✓ ready' : '✗ no key'}</span>`;
-      list.appendChild(row);
+    const res = await fetch('/api/libraries/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✓ ${data.message}`, 'success');
+      fetchAndRenderLibraries();
+    } else if (data.needs_rebuild) {
+      alert(`⚠ ${data.message}`);
+    } else {
+      showToast(`✗ ${data.message}`, 'error');
     }
   } catch (e) {
-    list.innerHTML = '<div class="placeholder-note">ga bisa konek ke backend.</div>';
+    showToast(`✗ Error: ${e}`, 'error');
   }
 }
-loadProviderStatus();
 
-// ---------- AI chat ----------
+document.getElementById('custom-pip-btn').onclick = () => {
+  const customName = document.getElementById('custom-pip-input').value.trim();
+  if (customName) {
+    handleInstallLibrary(customName);
+    document.getElementById('custom-pip-input').value = '';
+  }
+};
+
+// ---------- AI Chat & Panel Floating FAB ----------
+const aiFab = document.getElementById('ai-fab');
 const aiPanel = document.getElementById('ai-panel');
 document.getElementById('ai-close').onclick = () => aiPanel.classList.remove('open');
 
-// ---------- AI FAB: draggable ----------
-const aiFab = document.getElementById('ai-fab');
-const FAB_SIZE = 50, FAB_MARGIN = 14;
+let dragging = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+const FAB_SIZE = 48;
 
-function defaultFabPosition() {
-  const controlsH = document.getElementById('editor-controls').offsetHeight || 60;
-  aiFab.style.left = `${window.innerWidth - FAB_SIZE - FAB_MARGIN}px`;
-  aiFab.style.top = `${window.innerHeight - FAB_SIZE - FAB_MARGIN - controlsH}px`;
-}
-defaultFabPosition();
-window.addEventListener('resize', defaultFabPosition);
+aiFab.addEventListener('pointerdown', e => {
+  dragging = true; moved = false;
+  startX = e.clientX; startY = e.clientY;
+  const rect = aiFab.getBoundingClientRect();
+  startLeft = rect.left; startTop = rect.top;
+  aiFab.setPointerCapture(e.pointerId);
+});
 
-(function makeDraggable(el) {
-  let dragging = false, moved = false, startX, startY, startLeft, startTop;
+aiFab.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - startX, dy = e.clientY - startY;
+  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+  if (moved) {
+    aiFab.style.left = `${Math.max(4, Math.min(window.innerWidth - FAB_SIZE - 4, startLeft + dx))}px`;
+    aiFab.style.top = `${Math.max(4, Math.min(window.innerHeight - FAB_SIZE - 4, startTop + dy))}px`;
+  }
+});
 
-  el.addEventListener('pointerdown', (e) => {
-    dragging = true; moved = false;
-    startX = e.clientX; startY = e.clientY;
-    startLeft = el.offsetLeft; startTop = el.offsetTop;
-    el.setPointerCapture(e.pointerId);
-    el.style.cursor = 'grabbing';
-  });
+aiFab.addEventListener('pointerup', () => {
+  dragging = false;
+  if (!moved) aiPanel.classList.add('open');
+});
 
-  el.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const dx = e.clientX - startX, dy = e.clientY - startY;
-    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
-    if (!moved) return;
-    const newLeft = Math.max(4, Math.min(window.innerWidth - FAB_SIZE - 4, startLeft + dx));
-    const newTop = Math.max(4, Math.min(window.innerHeight - FAB_SIZE - 4, startTop + dy));
-    el.style.left = `${newLeft}px`;
-    el.style.top = `${newTop}px`;
-  });
-
-  el.addEventListener('pointerup', () => {
-    dragging = false;
-    el.style.cursor = 'grab';
-    if (moved) {
-      const centerX = el.offsetLeft + FAB_SIZE / 2;
-      const snapLeft = centerX < window.innerWidth / 2 ? FAB_MARGIN : window.innerWidth - FAB_SIZE - FAB_MARGIN;
-      el.style.transition = 'left .18s ease';
-      el.style.left = `${snapLeft}px`;
-      setTimeout(() => { el.style.transition = ''; }, 200);
-    } else {
-      aiPanel.classList.add('open');
-    }
-  });
-})(aiFab);
-
-// ---------- AI chat messages ----------
 const aiMessages = document.getElementById('ai-messages');
 function addMsg(text, cls) {
   const div = document.createElement('div');
@@ -828,7 +896,7 @@ function addMsg(text, cls) {
   aiMessages.scrollTop = aiMessages.scrollHeight;
 }
 
-// ---------- API key dialog ----------
+// ---------- Key Dialog Handlers ----------
 const keyDialogBackdrop = document.getElementById('key-dialog-backdrop');
 const keyDialogProvider = document.getElementById('key-dialog-provider');
 const keyDialogInput = document.getElementById('key-dialog-input');
@@ -843,20 +911,13 @@ function openKeyDialog(provider) {
 document.getElementById('key-dialog-cancel').onclick = () => keyDialogBackdrop.classList.remove('open');
 document.getElementById('key-dialog-save').onclick = async () => {
   if (!keyDialogInput.value) return;
-  const saveBtn = document.getElementById('key-dialog-save');
-  saveBtn.disabled = true;
-  try {
-    await fetch('/api/keys', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
-    });
-    keyDialogBackdrop.classList.remove('open');
-    loadProviderStatus();
-    addMsg(`key ${pendingProvider} tersimpan. coba kirim pesan lagi.`, 'system-hint');
-  } finally {
-    saveBtn.disabled = false;
-  }
+  await fetch('/api/keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
+  });
+  keyDialogBackdrop.classList.remove('open');
+  addMsg(`API Key ${pendingProvider} berhasil disimpan.`, 'system-hint');
 };
 
 async function sendAiMessage() {
@@ -865,7 +926,6 @@ async function sendAiMessage() {
   if (!message) return;
   const provider = document.getElementById('ai-provider').value;
   const sendBtn = document.getElementById('ai-send');
-  const codeContext = getEditorValue() || "";
   
   addMsg(message, 'user');
   input.value = '';
@@ -875,17 +935,16 @@ async function sendAiMessage() {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, provider, code: codeContext }),
+      body: JSON.stringify({ message, provider, code: getEditorValue() }),
     });
     const data = await res.json();
 
     if (res.status === 401 && data.needs_key) {
-      addMsg(`provider '${provider}' belum ada api key.`, 'system-hint');
       openKeyDialog(provider);
       return;
     }
     if (!data.ok) {
-      addMsg(`error: ${data.message || 'gagal manggil ai'}`, 'system-hint');
+      addMsg(`Error AI: ${data.message || 'Gagal merespons.'}`, 'system-hint');
       return;
     }
     addMsg(data.reply, 'ai');
@@ -893,185 +952,137 @@ async function sendAiMessage() {
     sendBtn.disabled = false;
   }
 }
+
 document.getElementById('ai-send').onclick = sendAiMessage;
 document.getElementById('ai-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(); });
 
-// ---------- File Manager ----------
+// ---------- File Manager Modal ----------
 const fileDialogBackdrop = document.getElementById('file-dialog-backdrop');
 const fileListContainer = document.getElementById('file-list-container');
 const fileSaveInput = document.getElementById('file-save-input');
 
-async function openFileManager(focusSave) {
-  const sb = document.getElementById('sidebar');
-  const sbBackdrop = document.getElementById('sidebar-backdrop');
-  if (sb) sb.classList.remove('open');
-  if (sbBackdrop) sbBackdrop.classList.remove('open');
-  
-  if (fileDialogBackdrop) fileDialogBackdrop.classList.add('open');
-  await loadFileList();
-  if (focusSave && fileSaveInput) {
-    fileSaveInput.focus();
-  }
+function openFileManager(isSave) {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  fileDialogBackdrop.classList.add('open');
+  loadFileList();
+  if (isSave) fileSaveInput.focus();
 }
 
-const openBtn = document.getElementById('open-btn');
-if (openBtn) openBtn.onclick = () => openFileManager(false);
-
-const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
-if (sidebarOpenBtn) sidebarOpenBtn.onclick = () => openFileManager(false);
-
-const sidebarSaveBtn = document.getElementById('sidebar-save-btn');
-if (sidebarSaveBtn) sidebarSaveBtn.onclick = () => openFileManager(true);
-
-document.getElementById('file-dialog-cancel').onclick = () => {
-  if (fileDialogBackdrop) fileDialogBackdrop.classList.remove('open');
-};
+document.getElementById('sidebar-open-btn').onclick = () => openFileManager(false);
+document.getElementById('sidebar-save-btn').onclick = () => openFileManager(true);
+document.getElementById('file-dialog-cancel').onclick = () => fileDialogBackdrop.classList.remove('open');
 
 document.getElementById('file-dialog-save').onclick = async () => {
   const filename = fileSaveInput.value.trim();
   if (!filename) return;
   
-  const saveBtn = document.getElementById('file-dialog-save');
-  saveBtn.disabled = true;
-  showInstallToast(`Saving ${filename}...`, 'loading');
-
-  try {
-    const res = await fetch(`/api/files/${filename}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: getEditorValue() }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      showInstallToast(`✓ ${data.message}`, 'success');
-      fileSaveInput.value = '';
-      await loadFileList();
-    } else {
-      showInstallToast(`✗ Save gagal: ${data.message}`, 'error');
-    }
-  } finally {
-    saveBtn.disabled = false;
+  const res = await fetch(`/api/files/${filename}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: getEditorValue() }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    showToast(`✓ ${data.message}`, 'success');
+    fileSaveInput.value = '';
+    loadFileList();
   }
 };
 
 async function loadFileList() {
-  try {
-    const res = await fetch('/api/files');
-    const data = await res.json();
-    fileListContainer.innerHTML = '';
-    if (data.files && data.files.length > 0) {
-      data.files.forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.innerHTML = `
-          <div class="file-item-name">${file.name}</div>
-          <div class="file-item-actions">
-            <button class="mini-btn" data-action="open" data-file="${file.name}">open</button>
-            <button class="mini-btn" data-action="delete" data-file="${file.name}">del</button>
-          </div>
-        `;
-        fileListContainer.appendChild(item);
-      });
+  const res = await fetch('/api/files');
+  const data = await res.json();
+  fileListContainer.innerHTML = '';
+  if (data.files && data.files.length > 0) {
+    data.files.forEach(f => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg-panel-2);border:1px solid var(--border);';
+      row.innerHTML = `<span style="font-size:12px;">${f.name}</span>
+        <div>
+          <button class="mini-btn open-f-btn" data-file="${f.name}">Buka</button>
+          <button class="mini-btn del-f-btn" data-file="${f.name}" style="border-color:var(--err-dim);color:var(--err);">Hapus</button>
+        </div>`;
       
-      fileListContainer.querySelectorAll('button').forEach(btn => {
-        btn.onclick = async () => {
-          const filename = btn.dataset.file;
-          const action = btn.dataset.action;
-          
-          if (action === 'open') {
-            const res = await fetch(`/api/files/${filename}`);
-            const data = await res.json();
-            if (data.ok) {
-              setEditorValue(data.content);
-              fileDialogBackdrop.classList.remove('open');
-            }
-          } else if (action === 'delete') {
-            if (confirm(`Delete ${filename}?`)) {
-              await fetch(`/api/files/${filename}`, { method: 'DELETE' });
-              await loadFileList();
-            }
+      row.querySelector('.open-f-btn').onclick = async () => {
+        const fileRes = await fetch(`/api/files/${f.name}`);
+        const fileData = await fileRes.json();
+        if (fileData.ok) {
+          const activeTab = tabs.find(t => t.id === activeTabId);
+          if (activeTab) {
+            activeTab.name = f.name;
+            activeTab.content = fileData.content;
+            switchTab(activeTabId);
           }
-        };
-      });
-    } else {
-      fileListContainer.innerHTML = '<div class="placeholder-note">Belum ada file tersimpan.</div>';
-    }
-  } catch (e) {
-    fileListContainer.innerHTML = '<div class="placeholder-note">Error loading files.</div>';
+          fileDialogBackdrop.classList.remove('open');
+        }
+      };
+      
+      row.querySelector('.del-f-btn').onclick = async () => {
+        if (confirm(`Hapus file ${f.name}?`)) {
+          await fetch(`/api/files/${f.name}`, { method: 'DELETE' });
+          loadFileList();
+        }
+      };
+
+      fileListContainer.appendChild(row);
+    });
+  } else {
+    fileListContainer.innerHTML = '<div style="font-size:11px;color:var(--text-dim);">Belum ada file tersimpan.</div>';
   }
 }
 
-// ---------- Theme Selector ----------
+// ---------- Theme Dialog Handlers ----------
 const themeDialogBackdrop = document.getElementById('theme-dialog-backdrop');
 const themeList = document.getElementById('theme-list');
 
-function openThemeDialog() {
-  const sb = document.getElementById('sidebar');
-  const sbBackdrop = document.getElementById('sidebar-backdrop');
-  if (sb) sb.classList.remove('open');
-  if (sbBackdrop) sbBackdrop.classList.remove('open');
-  
-  if (themeDialogBackdrop) themeDialogBackdrop.classList.add('open');
+document.getElementById('sidebar-theme-btn').onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  themeDialogBackdrop.classList.add('open');
   loadThemes();
-}
-
-const themeBtn = document.getElementById('theme-btn');
-if (themeBtn) themeBtn.onclick = openThemeDialog;
-
-const sidebarThemeBtn = document.getElementById('sidebar-theme-btn');
-if (sidebarThemeBtn) sidebarThemeBtn.onclick = openThemeDialog;
+};
+document.getElementById('theme-dialog-cancel').onclick = () => themeDialogBackdrop.classList.remove('open');
 
 async function loadThemes() {
-  try {
-    const res = await fetch('/api/themes');
-    const data = await res.json();
-    themeList.innerHTML = '';
-    const currentTheme = localStorage.getItem('zabacode-theme') || 'retro';
-    
-    for (const [key, name] of Object.entries(data.themes)) {
-      const btn = document.createElement('button');
-      btn.className = `theme-option ${key === currentTheme ? 'active' : ''}`;
-      btn.textContent = name;
-      btn.onclick = () => applyTheme(key);
-      themeList.appendChild(btn);
-    }
-  } catch (e) {
-    themeList.innerHTML = '<div class="placeholder-note">Error loading themes.</div>';
+  const res = await fetch('/api/themes');
+  const data = await res.json();
+  themeList.innerHTML = '';
+  for (const [k, name] of Object.entries(data.themes)) {
+    const btn = document.createElement('button');
+    btn.className = 'mini-btn';
+    btn.style.cssText = 'padding:10px;text-align:center;font-size:12px;';
+    btn.textContent = name;
+    btn.onclick = () => applyTheme(k);
+    themeList.appendChild(btn);
   }
 }
 
 async function applyTheme(name) {
-  try {
-    const res = await fetch(`/api/themes/${name}`);
-    const data = await res.json();
-    if (data.ok) {
-      const theme = data.theme;
-      document.documentElement.style.setProperty('--bg', theme.bg);
-      document.documentElement.style.setProperty('--bg-panel', theme.bg_panel);
-      document.documentElement.style.setProperty('--border', theme.border);
-      document.documentElement.style.setProperty('--border-bright', theme.border_bright);
-      document.documentElement.style.setProperty('--text', theme.text);
-      document.documentElement.style.setProperty('--text-bright', theme.text_bright);
-      document.documentElement.style.setProperty('--text-dim', theme.text_dim);
-      document.documentElement.style.setProperty('--err', theme.err);
-      document.documentElement.style.setProperty('--ai', theme.ai);
-      
-      localStorage.setItem('zabacode-theme', name);
-      themeDialogBackdrop.classList.remove('open');
-      loadThemes();
-    }
-  } catch (e) {
-    alert('Error applying theme');
+  const res = await fetch(`/api/themes/${name}`);
+  const data = await res.json();
+  if (data.ok) {
+    const t = data.theme;
+    document.documentElement.style.setProperty('--bg', t.bg);
+    document.documentElement.style.setProperty('--bg-panel', t.bg_panel);
+    document.documentElement.style.setProperty('--border', t.border);
+    document.documentElement.style.setProperty('--border-bright', t.border_bright);
+    document.documentElement.style.setProperty('--text', t.text);
+    document.documentElement.style.setProperty('--text-bright', t.text_bright);
+    document.documentElement.style.setProperty('--text-dim', t.text_dim);
+    document.documentElement.style.setProperty('--err', t.err);
+    document.documentElement.style.setProperty('--ai', t.ai);
+    themeDialogBackdrop.classList.remove('open');
   }
 }
 
-// Load saved theme on startup
-window.addEventListener('load', () => {
-  const savedTheme = localStorage.getItem('zabacode-theme');
-  if (savedTheme) {
-    applyTheme(savedTheme);
-  }
-});
+function showToast(msg, type) {
+  const toast = document.createElement('div');
+  toast.className = `install-toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
 </script>
 </body>
 </html>

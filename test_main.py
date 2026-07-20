@@ -1,7 +1,7 @@
 """
-Zabacode Unit Tests
+Zabacode Comprehensive Unit Tests
 
-Run: pytest test_main.py -v --cov=main
+Run: pytest test_main.py -v
 """
 
 import json
@@ -37,7 +37,7 @@ class TestCodeExecution:
         result = execute_code_isolated('while True: pass', timeout=2)
         assert result["timeout"] is True
         assert result["ok"] is False
-    
+
     def test_import_standard_lib(self):
         """Test standard library import."""
         result = execute_code_isolated('import sys\nprint(sys.version_info.major)')
@@ -60,7 +60,7 @@ class TestHTTPRoutes:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["ok"] is True
-        assert "version" in data
+        assert data["version"] == "0.3.0"
         assert "providers" in data
     
     def test_run_code_api(self, client):
@@ -79,6 +79,8 @@ class TestHTTPRoutes:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert "requests" in data
+        assert "fastapi" in data
+        assert "tinydb" in data
         assert data["requests"]["tier"] in ["runtime", "buildtime"]
     
     def test_keys_status(self, client):
@@ -139,8 +141,8 @@ class TestLibraryManager:
     """Test library management."""
     
     def test_known_libraries_complete(self):
-        """Test that KNOWN_LIBRARIES has essential packages."""
-        required = ["requests", "beautifulsoup4", "numpy"]
+        """Test that KNOWN_LIBRARIES has extensive packages across categories."""
+        required = ["requests", "beautifulsoup4", "numpy", "tinydb", "fastapi", "rich"]
         for lib in required:
             assert lib in KNOWN_LIBRARIES
     
@@ -148,6 +150,7 @@ class TestLibraryManager:
         """Test library tier is valid."""
         for name, info in KNOWN_LIBRARIES.items():
             assert info["tier"] in ["runtime", "buildtime"]
+            assert "category" in info
             assert "reason" in info
 
 
@@ -160,13 +163,13 @@ class TestSecurityBoundaries:
         assert response.status_code == 400
     
     def test_no_file_extension_bypass(self, client):
-        """Test that non-.py files are rejected."""
-        response = client.post('/api/files/malicious.txt',
-            data=json.dumps({"content": "rm -rf /"}),
+        """Test that non-.py files are auto-appended with .py safely."""
+        response = client.post('/api/files/script_file',
+            data=json.dumps({"content": "print(1)"}),
             content_type='application/json')
-        # Should be rejected or auto-renamed to .py
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
+        assert response.get_json()["filename"] == "script_file.py"
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=main"])
+    pytest.main([__file__, "-v"])

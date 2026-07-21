@@ -6,7 +6,7 @@ Run: pytest test_main.py -v
 
 import json
 import pytest
-from main import app, execute_code_isolated, _is_package_installed, KNOWN_LIBRARIES, AUTH_TOKEN
+from main import app, execute_code_isolated, _is_package_installed, _normalize_code, KNOWN_LIBRARIES, AUTH_TOKEN
 
 
 @pytest.fixture
@@ -44,6 +44,30 @@ class TestCodeExecution:
         result = execute_code_isolated('import sys, os\nprint("file:", os.path.exists("_active_run.py"))')
         assert result["ok"] is True
         assert "True" in result["stdout"]
+    
+    def test_windows_line_endings_normalized(self):
+        """Test that Windows line endings are handled correctly."""
+        code_windows = 'print("test 1")\r\nprint("test 2")\r\n'
+        normalized = _normalize_code(code_windows)
+        assert '\r\n' not in normalized
+        assert '\r' not in normalized
+        result = execute_code_isolated(code_windows)
+        assert result["ok"] is True
+    
+    def test_trailing_whitespace_normalized(self):
+        """Test that trailing whitespace is cleaned."""
+        code = 'print("test")   \nprint("next")   \n'
+        normalized = _normalize_code(code)
+        lines = normalized.split('\n')
+        assert lines[0] == 'print("test")'
+        assert lines[1] == 'print("next")'
+    
+    def test_bom_removed(self):
+        """Test that BOM is removed from code."""
+        code_with_bom = '\ufeffprint("hello")'
+        normalized = _normalize_code(code_with_bom)
+        assert not normalized.startswith('\ufeff')
+        assert normalized.startswith('print')
 
 
 class TestHTTPRoutes:
@@ -110,6 +134,39 @@ class TestHTTPRoutes:
         assert "themes" in data
         assert "retro" in data["themes"]
         assert "cyberpunk" in data["themes"]
+    
+    def test_code_check_valid(self, client):
+        """Test /api/check endpoint with valid code."""
+        response = client.post('/api/check',
+            data=json.dumps({"code": "print('hello')\nprint('world')"}),
+            content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["ok"] is True
+        assert data["valid"] is True
+        assert len(data["issues"]) == 0
+    
+    def test_code_check_unbalanced_parens(self, client):
+        """Test /api/check detects unbalanced parentheses."""
+        response = client.post('/api/check',
+            data=json.dumps({"code": "print('hello'"}),
+            content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["ok"] is True
+        assert data["valid"] is False
+        assert any("()" in issue for issue in data["issues"])
+    
+    def test_code_check_unbalanced_brackets(self, client):
+        """Test /api/check detects unbalanced brackets."""
+        response = client.post('/api/check',
+            data=json.dumps({"code": "x = [1, 2, 3"}),
+            content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["ok"] is True
+        assert data["valid"] is False
+        assert any("[]" in issue for issue in data["issues"])
 
 
 class TestFileManager:

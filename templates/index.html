@@ -1039,15 +1039,63 @@ function toggleCrt() {
 }
 document.getElementById('sidebar-crt-btn').onclick = toggleCrt;
 
+// ---------- SYNTAX PRE-CHECKER (Cegah EOF Errors) ----------
+function checkCodeHealth(code) {
+  const issues = [];
+  
+  // Normalize line endings first
+  code = code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
+  // Check balanced parentheses
+  const parenCount = (code.match(/\(/g) || []).length;
+  const parenClose = (code.match(/\)/g) || []).length;
+  if (parenCount !== parenClose) {
+    issues.push('Kurung () tidak seimbang: ' + parenCount + ' ( vs ' + parenClose + ' )');
+  }
+  
+  // Check balanced brackets
+  const bracketCount = (code.match(/\[/g) || []).length;
+  const bracketClose = (code.match(/\]/g) || []).length;
+  if (bracketCount !== bracketClose) {
+    issues.push('Kurung siku [] tidak seimbang: ' + bracketCount + ' [ vs ' + bracketClose + ' ]');
+  }
+  
+  // Check balanced braces
+  const braceCount = (code.match(/\{/g) || []).length;
+  const braceClose = (code.match(/\}/g) || []).length;
+  if (braceCount !== braceClose) {
+    issues.push('Kurung kurawal {} tidak seimbang: ' + braceCount + ' { vs ' + braceClose + ' }');
+  }
+  
+  return issues;
+}
+
+function showCodeHealthWarning(code) {
+  const issues = checkCodeHealth(code);
+  if (issues.length > 0) {
+    const message = '⚠️ DETEKSI MASALAH KODE:\n\n' + issues.join('\n');
+    if (confirm(message + '\n\nTetap jalankan?')) {
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 // ---------- Run Code Subprocess ----------
 document.getElementById('run-btn').onclick = async () => {
   let code = getEditorValue();
 
-  // Plugin: Syntax Linter Guard
+  // PRE-CHECK: Syntax Health Checker (ALL code, not just plugin)
+  if (!showCodeHealthWarning(code)) {
+    return; // User cancel
+  }
+
+  // Plugin: Syntax Linter Guard (additional check)
   if (installedPlugins['syntax_linter']) {
-    const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
-    if (unclosedParen) {
-      alert('🔍 Syntax Guard: Jumlah tanda kurung ( ) tidak seimbang!');
+    const issues = checkCodeHealth(code);
+    if (issues.length > 0) {
+      alert('🔍 Syntax Linter: Ditemukan masalah:\n\n' + issues.join('\n'));
       return;
     }
   }

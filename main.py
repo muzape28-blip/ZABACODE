@@ -112,6 +112,24 @@ def index():
 # Isolation Subprocess Code Execution Engine
 # ---------------------------------------------------------------------------
 
+def _normalize_code(code: str) -> str:
+    """
+    Normalisasi kode Python untuk mencegah EOF/syntax errors.
+    - Konversi Windows line endings (\\r\\n) ke Unix (\\n)
+    - Hapus BOM jika ada
+    - Trim trailing whitespace per baris
+    """
+    # Konversi Windows/Mac line endings ke Unix
+    code = code.replace('\r\n', '\n').replace('\r', '\n')
+    # Hapus BOM jika ada
+    if code.startswith('\ufeff'):
+        code = code[1:]
+    # Normalisasi trailing whitespace per baris
+    lines = code.split('\n')
+    normalized_lines = [line.rstrip() for line in lines]
+    return '\n'.join(normalized_lines)
+
+
 def execute_code_isolated(code, timeout=30):
     """Run user code in a separate process; this is not a security sandbox."""
     if not isinstance(code, str) or len(code.encode("utf-8")) > MAX_CODE_BYTES:
@@ -123,6 +141,8 @@ def execute_code_isolated(code, timeout=30):
     temp_script = FILES_DIR / "_active_run.py"
     
     try:
+        # Normalisasi kode: fix Windows line endings, BOM, trailing whitespace
+        code = _normalize_code(code)
         temp_script.write_text(code, encoding="utf-8")
         
         env = os.environ.copy()
@@ -207,6 +227,56 @@ def health_check():
         "ok": True,
         "version": "0.3.5",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
+    })
+
+
+@app.route("/api/check", methods=["POST"])
+def check_code():
+    """Pre-execution syntax & structure validation untuk mencegah EOFError."""
+    payload = request.get_json(silent=True) or {}
+    code = payload.get("code", "")
+    
+    # Normalize line endings
+    code = _normalize_code(code)
+    
+    issues = []
+    
+    # Check balanced parentheses
+    paren_open = code.count('(')
+    paren_close = code.count(')')
+    if paren_open != paren_close:
+        issues.append(f"Parenthesis () tidak seimbang: {paren_open} '(' vs {paren_close} ')'")
+    
+    # Check balanced brackets
+    bracket_open = code.count('[')
+    bracket_close = code.count(']')
+    if bracket_open != bracket_close:
+        issues.append(f"Brackets [] tidak seimbang: {bracket_open} '[' vs {bracket_close} ']'")
+    
+    # Check balanced braces
+    brace_open = code.count('{')
+    brace_close = code.count('}')
+    if brace_open != brace_close:
+        issues.append(f"Braces tidak seimbang: {brace_open} '{{' vs {brace_close} '}}'")
+    
+    # Check string balance (basic heuristic)
+    # Remove triple-quoted strings first
+    code_no_triple = re.sub(r'""".*?"""', '', code, flags=re.DOTALL)
+    code_no_triple = re.sub(r"'''.*?'''", '', code_no_triple, flags=re.DOTALL)
+    
+    # Count remaining quotes
+    sq = code_no_triple.count("'")
+    dq = code_no_triple.count('"')
+    if sq % 2 != 0:
+        issues.append("Single quotes (') tidak seimbang")
+    if dq % 2 != 0:
+        issues.append('Double quotes (") tidak seimbang')
+    
+    return jsonify({
+        "ok": True,
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "hint": "Fix semua masalah di atas sebelum menjalankan kode" if issues else None
     })
 
 

@@ -6,14 +6,15 @@ Run: pytest test_main.py -v
 
 import json
 import pytest
-from main import app, execute_code_isolated, _is_package_installed, KNOWN_LIBRARIES
+from main import app, execute_code_isolated, _is_package_installed, KNOWN_LIBRARIES, AUTH_TOKEN
 
 
 @pytest.fixture
 def client():
-    """Create test client."""
+    """Create test client with X-Zabacode-Token header."""
     app.config['TESTING'] = True
     with app.test_client() as client:
+        client.environ_base['HTTP_X_ZABACODE_TOKEN'] = AUTH_TOKEN
         yield client
 
 
@@ -39,10 +40,10 @@ class TestCodeExecution:
         assert result["ok"] is False
 
     def test_import_standard_lib(self):
-        """Test standard library import."""
-        result = execute_code_isolated('import sys\nprint(sys.version_info.major)')
+        """Test standard library import and __file__ definition."""
+        result = execute_code_isolated('import sys, os\nprint("file:", os.path.exists("_active_run.py"))')
         assert result["ok"] is True
-        assert "3" in result["stdout"]
+        assert "True" in result["stdout"]
 
 
 class TestHTTPRoutes:
@@ -60,11 +61,11 @@ class TestHTTPRoutes:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["ok"] is True
-        assert "version" in data
+        assert data["version"] == "0.3.5"
         assert "providers" in data
     
     def test_run_code_api(self, client):
-        """Test /api/run endpoint."""
+        """Test /api/run endpoint with auth token."""
         response = client.post('/api/run',
             data=json.dumps({"code": "print('test')"}),
             content_type='application/json')
@@ -72,6 +73,14 @@ class TestHTTPRoutes:
         data = json.loads(response.data)
         assert data["ok"] is True
         assert "test" in data["stdout"]
+
+    def test_unauthorized_access(self):
+        """Test blocking unauthorized requests without token."""
+        with app.test_client() as unauth_client:
+            response = unauth_client.post('/api/run',
+                data=json.dumps({"code": "print('fail')"}),
+                content_type='application/json')
+            assert response.status_code == 401
     
     def test_list_libraries(self, client):
         """Test /api/libraries endpoint."""
@@ -100,8 +109,7 @@ class TestHTTPRoutes:
         data = json.loads(response.data)
         assert "themes" in data
         assert "retro" in data["themes"]
-        assert "solarized" in data["themes"]
-        assert "dracula" in data["themes"]
+        assert "cyberpunk" in data["themes"]
 
 
 class TestFileManager:

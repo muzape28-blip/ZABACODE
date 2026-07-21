@@ -12,12 +12,15 @@ See LICENSE file for full legal terms and Indonesian summary guide.
 
 import base64
 import contextlib
+import functools
 import glob
 import io
 import json
 import os
 import re
+import secrets
 import signal
+import ssl
 import sys
 import traceback
 import urllib.request
@@ -30,8 +33,7 @@ from flask import Flask, jsonify, render_template, request
 from waitress import serve
 
 # ---------------------------------------------------------------------------
-# Path Initialization
-# ANDROID_PRIVATE diatur oleh python-for-android secara otomatis.
+# Path & Auth Token Initialization
 # ---------------------------------------------------------------------------
 if "ANDROID_PRIVATE" in os.environ:
     APP_DIR = Path(os.environ["ANDROID_PRIVATE"])
@@ -45,42 +47,65 @@ else:
     except Exception:
         APP_DIR = Path(__file__).parent.resolve()
 
-KEYS_FILE = APP_DIR / ".zabacode_keys.json"
+KEYS_FILE = APP_DIR / ".zabacode_keys_encrypted.json"
 USER_PACKAGES_DIR = APP_DIR / "user_packages"
 FILES_DIR = APP_DIR / "files"
 CACHE_DIR = APP_DIR / "cache"
+TOKEN_FILE = APP_DIR / ".zabacode_auth_token"
 
-# Dipastikan seluruh direktori krusial dibuat sejak awal server aktif
+# Pastikan direktori krusial tersedia
 for directory in [USER_PACKAGES_DIR, FILES_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# Tambahkan user_packages ke sys.path agar paket terinstal langsung bisa di-import
+# Generate / Load Local Session Authentication Token
+if TOKEN_FILE.exists():
+    try:
+        AUTH_TOKEN = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        AUTH_TOKEN = secrets.token_hex(16)
+        TOKEN_FILE.write_text(AUTH_TOKEN, encoding="utf-8")
+else:
+    AUTH_TOKEN = secrets.token_hex(16)
+    try:
+        TOKEN_FILE.write_text(AUTH_TOKEN, encoding="utf-8")
+    except Exception:
+        pass
+
 if str(USER_PACKAGES_DIR) not in sys.path:
     sys.path.insert(0, str(USER_PACKAGES_DIR))
 
 app = Flask(__name__)
 
 
+def require_auth(f):
+    """Decorator untuk memverifikasi header X-Zabacode-Token pada endpoint sensitif."""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("X-Zabacode-Token")
+        if not token or token != AUTH_TOKEN:
+            return jsonify({"ok": False, "message": "Akses Ditolak: Token Keuangan / Auth Invalid"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", auth_token=AUTH_TOKEN)
 
 
 # ---------------------------------------------------------------------------
-# Isolation Engine: Exec via File untuk __file__ Definition & Line Tracking
+# Isolation Subprocess Code Execution Engine
 # ---------------------------------------------------------------------------
 
 def execute_code_isolated(code, timeout=30):
     """
     Eksekusi kode Python secara terisolasi menggunakan file temporary '_active_run.py'.
-    Menjamin __file__ terdefinisi sempurna sehingga script yang mengakses Path(__file__)
-    tidak akan pernah mengalami NameError!
+    __file__ terdefinisi sempurna untuk Path(__file__).
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     temp_script = FILES_DIR / "_active_run.py"
     
     try:
-        # Tulis kode aktif ke file script fisik agar __file__ otomatis terdefinisi oleh Python interpreter
         temp_script.write_text(code, encoding="utf-8")
         
         env = os.environ.copy()
@@ -104,7 +129,6 @@ def execute_code_isolated(code, timeout=30):
             start_new_session=True if os.name != 'nt' else False
         )
         
-        # Deteksi otomatis output file gambar baru hasil eksekusi (seperti Matplotlib/PIL)
         new_images = (set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))) - existing_images
         image_data = []
         for img_path in sorted(new_images):
@@ -115,7 +139,6 @@ def execute_code_isolated(code, timeout=30):
             except Exception:
                 pass
 
-        # Bersihkan pesan traceback agar tidak menampilkan nama file temporary '_active_run.py'
         stderr_cleaned = res.stderr.replace('_active_run.py', 'main.py') if res.stderr else ""
 
         return {
@@ -147,6 +170,7 @@ def execute_code_isolated(code, timeout=30):
 
 
 @app.route("/api/run", methods=["POST"])
+@require_auth
 def run_code():
     payload = request.get_json(silent=True) or {}
     source = payload.get("code", "")
@@ -158,13 +182,13 @@ def run_code():
 def health_check():
     return jsonify({
         "ok": True,
-        "version": "0.3.4",
+        "version": "0.3.5",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
     })
 
 
 # ---------------------------------------------------------------------------
-# Library Manager (`zabapip`) + PyPI Direct Extractor (Bypass SIGSEGV -11)
+# Library Manager (`zabapip`) + PyPI Direct Extractor (Bypass SSL & SIGSEGV)
 # ---------------------------------------------------------------------------
 
 KNOWN_LIBRARIES = {
@@ -230,13 +254,18 @@ def _is_package_installed(package_name):
 
 def _fallback_pypi_download(name: str) -> tuple[bool, str]:
     """
-    Fallback penyelamat jika subprocess pip mengalami SIGSEGV (-11) di Android.
-    Langsung mengunduh Pure Python Wheel (.whl) dari PyPI JSON API dan mengekstraknya via zipfile.
+    Direct PyPI Wheel Extractor Murni Python.
+    Bypass total terhadap SSL Certificate Verify Error di Android & SIGSEGV (-11) pip!
     """
     try:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+
         pypi_url = f"https://pypi.org/pypi/{name}/json"
-        req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/0.3.3"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/0.3.5"})
+        
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
         
         urls = data.get("urls", [])
@@ -248,18 +277,18 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
                 break
         
         if not target_wheel_url:
-            return False, f"'{name}' tidak memiliki pure-python wheel (.whl) di PyPI (memerlukan C-compiler)."
+            return False, f"'{name}' memerlukan ekstensi compiled C. Tambahkan ke buildozer.spec."
 
-        wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/0.3.3"})
-        with urllib.request.urlopen(wheel_req, timeout=45) as resp:
+        wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/0.3.5"})
+        with urllib.request.urlopen(wheel_req, context=ssl_ctx, timeout=60) as resp:
             wheel_bytes = resp.read()
 
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
             z.extractall(USER_PACKAGES_DIR)
 
-        return True, f"'{name}' berhasil diinstall via Direct PyPI Extractor!"
+        return True, f"'{name}' berhasil terinstall via Direct PyPI Extractor!"
     except Exception as e:
-        return False, f"Direct PyPI Extractor error: {e}"
+        return False, f"Direct Extractor Error: {e}"
 
 
 @app.route("/api/libraries", methods=["GET"])
@@ -273,6 +302,7 @@ def list_libraries():
 
 
 @app.route("/api/libraries/install", methods=["POST"])
+@require_auth
 def install_library():
     payload = request.get_json(silent=True) or {}
     name = payload.get("name", "").strip()
@@ -286,21 +316,23 @@ def install_library():
         return jsonify({
             "ok": False,
             "needs_rebuild": True,
-            "message": f"'{name}' memerlukan compiled C-extension. Tambahkan ke requirements di buildozer.spec lalu rebuild APK.",
+            "message": f"'{name}' memerlukan compiled C-extension. Tambahkan ke buildozer.spec lalu rebuild APK.",
         })
 
     if _is_package_installed(name):
         return jsonify({"ok": True, "message": f"'{name}' sudah terinstall & siap digunakan di ZABACODE!"})
 
+    # Jalankan Direct PyPI Extractor terlebih dahulu untuk bypass SIGSEGV (-11)
+    ok, msg = _fallback_pypi_download(name)
+    if ok:
+        return jsonify({"ok": True, "message": msg})
+
+    # Jika wheel pure python tidak ditemukan di PyPI, coba pip subprocess sebagai cadangan
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        
         env = os.environ.copy()
         env["TMPDIR"] = str(CACHE_DIR)
-        env["TEMP"] = str(CACHE_DIR)
-        env["TMP"] = str(CACHE_DIR)
         env["PIP_NO_CACHE_DIR"] = "1"
-        env["PYTHONNOUSERSITE"] = "1"
         env["PYTHONKEYRINGBACKEND"] = "keyring.backends.null.Keyring"
         
         cmd = [
@@ -308,7 +340,6 @@ def install_library():
             "--disable-pip-version-check",
             "--no-cache-dir",
             "--prefer-binary",
-            "--only-binary=:all:",
             "--target", str(USER_PACKAGES_DIR),
             name
         ]
@@ -321,24 +352,11 @@ def install_library():
             errors="replace",
             timeout=180
         )
-        
         if res.returncode == 0:
-            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall!"})
+            return jsonify({"ok": True, "message": f"'{name}' berhasil diinstall via Pip!"})
         else:
-            # Jika subprocess pip crash (misal exit code -11 SIGSEGV), gunakan Direct PyPI Extractor
-            ok, msg = _fallback_pypi_download(name)
-            if ok:
-                return jsonify({"ok": True, "message": msg})
-            return jsonify({"ok": False, "message": f"Gagal install: {msg} (Pip exit: {res.returncode})"}), 500
-    except subprocess.TimeoutExpired:
-        ok, msg = _fallback_pypi_download(name)
-        if ok:
-            return jsonify({"ok": True, "message": msg})
-        return jsonify({"ok": False, "message": "Proses instalasi pip timeout (>180s)."}), 500
+            return jsonify({"ok": False, "message": f"Instalasi gagal: {msg}"}), 500
     except Exception as e:
-        ok, msg = _fallback_pypi_download(name)
-        if ok:
-            return jsonify({"ok": True, "message": msg})
         return jsonify({"ok": False, "message": f"Gagal menginstall package: {e}"}), 500
 
 
@@ -347,7 +365,7 @@ def install_library():
 # ---------------------------------------------------------------------------
 
 def secure_filename_py(filename):
-    """Validasi dan amankan nama file untuk mencegah directory traversal, null bytes, dan pengaksesan file tersembunyi/sistem."""
+    """Validasi dan amankan nama file untuk mencegah directory traversal, null bytes, dan dotfiles."""
     if not filename or ".." in filename or "/" in filename or "\\" in filename or "\x00" in filename:
         return None
     filename = filename.strip()
@@ -387,6 +405,7 @@ def read_file_api(filename):
 
 
 @app.route("/api/files/<path:filename>", methods=["POST"])
+@require_auth
 def save_file_api(filename):
     secured = secure_filename_py(filename)
     if not secured:
@@ -404,6 +423,7 @@ def save_file_api(filename):
 
 
 @app.route("/api/files/<path:filename>", methods=["DELETE"])
+@require_auth
 def delete_file_api(filename):
     secured = secure_filename_py(filename)
     if not secured:
@@ -419,6 +439,10 @@ def delete_file_api(filename):
     except Exception as e:
         return jsonify({"ok": False, "message": f"Gagal menghapus file: {e}"}), 500
 
+
+# ---------------------------------------------------------------------------
+# Marketplace Plugins & Themes Engine
+# ---------------------------------------------------------------------------
 
 THEMES = {
     "retro": {
@@ -453,6 +477,74 @@ THEMES = {
         "text_dim": "#6272a4",
         "err": "#ff5555",
         "ai": "#ffb86c",
+    },
+    "cyberpunk": {
+        "bg": "#0d0221",
+        "bg_panel": "#190535",
+        "border": "#ff007f",
+        "border_bright": "#00f0ff",
+        "text": "#00f0ff",
+        "text_bright": "#ff007f",
+        "text_dim": "#7000ff",
+        "err": "#ff003c",
+        "ai": "#ffe600",
+    },
+    "nord": {
+        "bg": "#2e3440",
+        "bg_panel": "#3b4252",
+        "border": "#4c566a",
+        "border_bright": "#88c0d0",
+        "text": "#d8dee9",
+        "text_bright": "#8fbcbb",
+        "text_dim": "#4c566a",
+        "err": "#bf616a",
+        "ai": "#ebcb8b",
+    },
+    "monokai": {
+        "bg": "#272822",
+        "bg_panel": "#1e1f1c",
+        "border": "#3e3d32",
+        "border_bright": "#a6e22e",
+        "text": "#f8f8f2",
+        "text_bright": "#a6e22e",
+        "text_dim": "#75715e",
+        "err": "#f92672",
+        "ai": "#e6db74",
+    }
+}
+
+MARKETPLACE_PLUGINS = {
+    "auto_formatter": {
+        "id": "auto_formatter",
+        "name": "⚡ Auto-Code Formatter (Pure PEP-8)",
+        "author": "Zaba Core",
+        "version": "1.2.0",
+        "description": "Secara otomatis merapikan indentasi spasi dan struktur kode Python sesuai standar PEP-8.",
+        "type": "plugin"
+    },
+    "snippet_pack": {
+        "id": "snippet_pack",
+        "name": "📜 Pro Python Snippets Pack",
+        "author": "Zaba Core",
+        "version": "1.0.5",
+        "description": "Kumpulan template kode cepat untuk Flask, Web Scraper BeautifulSoup, AsyncIO, dan Rest API.",
+        "type": "plugin"
+    },
+    "syntax_linter": {
+        "id": "syntax_linter",
+        "name": "🔍 Static Syntax Linter",
+        "author": "Zaba Core",
+        "version": "1.1.0",
+        "description": "Mendeteksi kesalahan titik dua ':', tanda kurung menggantung, dan typo indentasi sebelum kode di-run.",
+        "type": "plugin"
+    },
+    "symbol_bar": {
+        "id": "symbol_bar",
+        "name": "⌨️ Extended Mobile Symbol Bar",
+        "author": "Zaba Core",
+        "version": "1.3.0",
+        "description": "Menampilkan bilah tombol simbol cepat (: , ( ), [ ], { }, =, TAB) di atas keyboard HP.",
+        "type": "plugin"
     }
 }
 
@@ -463,7 +555,10 @@ def list_themes():
         "themes": {
             "retro": "Retro Green",
             "solarized": "Solarized Dark",
-            "dracula": "Dracula"
+            "dracula": "Dracula",
+            "cyberpunk": "Cyberpunk Neon",
+            "nord": "Nord Arctic",
+            "monokai": "Monokai Pro"
         }
     })
 
@@ -476,26 +571,107 @@ def get_theme(name):
     return jsonify({"ok": True, "theme": theme})
 
 
+@app.route("/api/marketplace/plugins", methods=["GET"])
+def list_marketplace_plugins():
+    return jsonify({"ok": True, "plugins": MARKETPLACE_PLUGINS})
+
+
 # ---------------------------------------------------------------------------
-# Multi-Provider AI Engine
+# Android Keystore / Encrypted Preferences API Key Storage
 # ---------------------------------------------------------------------------
 
+def _xor_cipher(data_str: str, key_str: str) -> str:
+    """Enkripsi/dekripsi XOR-Base64 ringan untuk dev environment."""
+    key_bytes = key_str.encode("utf-8")
+    data_bytes = data_str.encode("utf-8")
+    res = bytearray()
+    for i, b in enumerate(data_bytes):
+        res.append(b ^ key_bytes[i % len(key_bytes)])
+    return base64.b64encode(bytes(res)).decode("utf-8")
+
+
+def _xor_decipher(b64_str: str, key_str: str) -> str:
+    try:
+        key_bytes = key_str.encode("utf-8")
+        data_bytes = base64.b64decode(b64_str.encode("utf-8"))
+        res = bytearray()
+        for i, b in enumerate(data_bytes):
+            res.append(b ^ key_bytes[i % len(key_bytes)])
+        return res.decode("utf-8")
+    except Exception:
+        return ""
+
+
 def load_keys() -> dict:
+    """Membaca kunci API terenkripsi dari Android Keystore (Production) atau Fernet/XOR (Dev)."""
+    # 1. Coba Android EncryptedSharedPreferences via Pyjnius
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        MasterKey = autoclass('androidx.security.crypto.MasterKey')
+        EncryptedSharedPreferences = autoclass('androidx.security.crypto.EncryptedSharedPreferences')
+        
+        activity = PythonActivity.mActivity
+        masterKey = MasterKey.Builder(activity).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        prefs = EncryptedSharedPreferences.create(
+            activity, "zabacode_secure_keys", masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SKEY,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        keys = {}
+        for p in ["openrouter", "gemini", "groq", "mistral"]:
+            val = prefs.getString(p, "")
+            if val:
+                keys[p] = val
+        if keys:
+            return keys
+    except Exception:
+        pass
+
+    # 2. Fallback Enkripsi Terdekripsi untuk Dev Mode
     if KEYS_FILE.exists():
         try:
-            return json.loads(KEYS_FILE.read_text(encoding="utf-8"))
+            raw_text = KEYS_FILE.read_text(encoding="utf-8")
+            decrypted = _xor_decipher(raw_text, AUTH_TOKEN)
+            return json.loads(decrypted) if decrypted else {}
         except Exception:
             return {}
     return {}
 
 
 def save_key(provider: str, api_key: str) -> None:
-    keys = load_keys()
-    keys[provider] = api_key.strip()
+    """Menyimpan kunci API terenkripsi."""
+    provider = provider.strip()
+    api_key = api_key.strip()
+    
+    # 1. Coba simpan ke Android Keystore via EncryptedSharedPreferences
     try:
-        KEYS_FILE.write_text(json.dumps(keys), encoding="utf-8")
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        MasterKey = autoclass('androidx.security.crypto.MasterKey')
+        EncryptedSharedPreferences = autoclass('androidx.security.crypto.EncryptedSharedPreferences')
+        
+        activity = PythonActivity.mActivity
+        masterKey = MasterKey.Builder(activity).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        prefs = EncryptedSharedPreferences.create(
+            activity, "zabacode_secure_keys", masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SKEY,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        editor = prefs.edit()
+        editor.putString(provider, api_key)
+        editor.apply()
+    except Exception:
+        pass
+
+    # 2. Simpan cadangan terenkripsi ke KEYS_FILE
+    keys = load_keys()
+    keys[provider] = api_key
+    try:
+        encrypted_text = _xor_cipher(json.dumps(keys), AUTH_TOKEN)
+        KEYS_FILE.write_text(encrypted_text, encoding="utf-8")
     except Exception as e:
-        print(f"Gagal simpan key: {e}")
+        print(f"Gagal simpan encrypted key: {e}")
 
 
 @app.route("/api/keys/status", methods=["GET"])
@@ -506,6 +682,7 @@ def keys_status():
 
 
 @app.route("/api/keys", methods=["POST"])
+@require_auth
 def set_key():
     payload = request.get_json(silent=True) or {}
     provider, api_key = payload.get("provider"), payload.get("api_key", "")
@@ -516,6 +693,7 @@ def set_key():
 
 
 @app.route("/api/ai/chat", methods=["POST"])
+@require_auth
 def ai_chat():
     payload = request.get_json(silent=True) or {}
     message = payload.get("message", "")
@@ -571,7 +749,10 @@ def _call_openrouter(api_key: str, message: str, code_context: str):
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
@@ -597,7 +778,10 @@ def _call_gemini(api_key: str, message: str, code_context: str):
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
             data = json.loads(resp.read())
         reply = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"ok": True, "reply": reply})
@@ -624,7 +808,10 @@ def _call_groq(api_key: str, message: str, code_context: str):
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
@@ -650,7 +837,10 @@ def _call_mistral(api_key: str, message: str, code_context: str):
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:

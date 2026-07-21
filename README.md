@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/muzape28-blip/ZABACODE/actions/workflows/build_apk.yml"><img src="https://github.com/muzape28-blip/ZABACODE/actions/workflows/build_apk.yml/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v0.3.4-39FF14.svg?style=flat&logo=android" alt="Version"></a>
+  <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v0.3.5-39FF14.svg?style=flat&logo=android" alt="Version"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3 License"></a>
   <img src="https://img.shields.io/badge/Architecture-ARMv7%20%7C%20ARM64-FFB000.svg" alt="Architecture">
   <img src="https://img.shields.io/badge/Telemetry-ZERO-brightgreen.svg" alt="Zero Telemetry">
@@ -25,7 +25,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ZABACODE v0.3.4 — Standalone Mobile Engine Active                          │
+│  ZABACODE v0.3.5 — Standalone Mobile Engine Active                          │
 │  [ OK ] Subprocess Sandbox Engine Ready                                     │
 │  [ OK ] Path Resolver Active (_active_run.py -> Path(__file__) OK)          │
 │  [ OK ] Direct PyPI Wheel Extractor Active (SIGSEGV -11 Bypass)             │
@@ -49,7 +49,7 @@ Dalam dunia pengembangan software mobile yang dipenuhi oleh aplikasi beriklan, p
 
 ---
 
-## ✨ Feature Highlights (`v0.3.4`)
+## ✨ Feature Highlights (`v0.3.5`)
 
 ### 🧠 1. Subprocess Isolation & Automatic `__file__` Resolution
 * **Full Process Isolation:** Setiap skrip Python dieksekusi di dalam *subprocess* terpisah dengan batas *timeout* 30 detik untuk memitigasi *infinite loop* yang menyandera aplikasi.
@@ -104,7 +104,7 @@ Dalam dunia pengembangan software mobile yang dipenuhi oleh aplikasi beriklan, p
 
 ## 📊 Comparison: ZABACODE vs Pydroid 3 vs Acode
 
-| Fitur / Karakteristik | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE v0.3.4 |
+| Fitur / Karakteristik | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE v0.3.5 |
 | :--- | :--- | :--- | :--- |
 | **Model Lisensi** | Freemium / Paywall | Berbayar Play Store | **100% Gratis & Open-Source (GPLv3)** |
 | **Iklan & Telemetry** | Ada Iklan & Tracker | Ada Analytics | **ZERO Telemetry & ZERO Ads** |
@@ -120,7 +120,7 @@ Dalam dunia pengembangan software mobile yang dipenuhi oleh aplikasi beriklan, p
 
 ### Option 1: Download Pre-compiled APK (Recommended)
 1. Buka halaman [GitHub Releases](https://github.com/muzape28-blip/ZABACODE/releases) atau tab **Actions** pada repo ini.
-2. Unduh file `Zabacode-Universal-v0.3.4.apk`.
+2. Unduh file `Zabacode-Universal-v0.3.5.apk`.
 3. Install di HP Android kamu (Android 8.0 / API 26 ke atas).
 
 ### Option 2: Running Development Server Locally

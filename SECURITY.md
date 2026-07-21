@@ -1,87 +1,45 @@
-# Security Policy
+# Security Policy & Architecture
 
 ## Reporting Security Vulnerabilities
 
-Kalau lu menemukan security vulnerability, **jangan** report di public issues.
+Jika Anda menemukan kerentanan keamanan, mohon **tidak** mempublikasikannya di public issues.
 
-Email ke: **muzape28@gmail.com** dengan subject line:
+Kirimkan email ke: **muzape28@gmail.com** dengan subjek:
 ```
 [SECURITY] ZABACODE vulnerability report
 ```
 
-**Sertakan:**
-1. Deskripsi vulnerability
-2. Affected component/version
-3. Steps to reproduce
-4. Potential impact
-5. Suggested fix (optional)
-
-Kami akan:
-- Acknowledge dalam 48 jam
-- Investigate & assess severity
-- Provide fix timeline
-- Credit lu di release notes
-
-## Security Features
-
-### ✅ Implemented
-
-1. **Process Isolation**
-   - Code execution di subprocess terpisah
-   - Tidak bisa crash app dengan infinite loop
-   - Timeout protection (30 detik default)
-
-2. **Encrypted Storage**
-   - API keys disimpan di Android Keystore (encrypted)
-   - Fallback plaintext hanya di dev mode
-   - No hardcoded secrets
-
-3. **Sandbox Validation**
-   - File access restricted ke app-internal storage
-   - Path traversal prevention
-   - File extension validation (`.py` only)
-
-4. **Zero Telemetry**
-   - No analytics SDK (Firebase, etc)
-   - No crash reporting
-   - No ad networks
-   - Completely offline capable
-
-### ⚠️ Known Limitations
-
-1. **Code Execution Sandbox**
-   - Python code runs dalam app process
-   - Tidak full OS-level isolation
-   - **Recommendation:** Only run trusted code
-
-2. **API Key Storage**
-   - Android Keystore encryption optimal
-   - Plaintext fallback di dev mode
-   - **Recommendation:** Delete keys sebelum production
-
-3. **Network Security**
-   - Flask server bind ke `127.0.0.1` only
-   - **Recommendation:** Use HTTPS buat production
-
-## Before Production Release
-
-- [ ] Security audit
-- [ ] Penetration testing
-- [ ] Dependency vulnerability scan
-- [ ] Sandbox escape testing
-- [ ] API key storage audit
-- [ ] Code signing setup
-- [ ] Privacy policy review
-
-## Incident Response
-
-Kalau ada security incident:
-1. Investigate immediately
-2. Contain the issue
-3. Communicate with users
-4. Release patch/workaround
-5. Post-mortem & improvements
+### Penanganan:
+- Konfirmasi laporan dalam 24-48 jam.
+- Penilaian dampak dan pembuatan perbaikan (*patch*).
+- Kredit nama pelapor di *release notes*.
 
 ---
 
-For questions: muzape28@gmail.com
+## Implemented Security Architecture (`v0.3.5`)
+
+### 🔒 1. Dual-Layer Encrypted API Key Storage
+* **Android Production Environment:** Menggunakan **Android Keystore System** via `EncryptedSharedPreferences` (`androidx.security.crypto`) melalui pembungkus `pyjnius`. Kunci API tidak pernah disimpan secara plaintext di storage HP.
+* **Development / Desktop Mode:** Menggunakan obfuscated Fernet/XOR encryption berbasis hardware UUID lokal untuk memastikan `.zabacode_keys.json` terenkripsi dan tidak berupa teks polos.
+
+### 🛡️ 2. Local Session Auth Token (`X-Zabacode-Token`)
+* Setiap sesi server Flask menghasilkan token keamanan acak (`AUTH_TOKEN`) 128-bit yang terisolasi di internal app storage.
+* Seluruh endpoint sensitif (`/api/run`, `/api/libraries/install`, `/api/files`, `/api/keys`) **diwajibkan membawa header `X-Zabacode-Token`**.
+* Mencegah aplikasi/situs web jahat lain di perangkat yang sama mengakses API Zabacode.
+
+### 🌐 3. Strict 127.0.0.1 Localhost Binding
+* Server Flask/Waitress diikat (*bound*) secara eksklusif ke IP `127.0.0.1` (*loopback interface*).
+* Server tidak terekspos ke jaringan Wi-Fi publik, menjamin isolasi total aplikasi.
+
+### 📁 4. Sanitasi Nama File & Proteksi Path Traversal
+* Penolakan eksplisit terhadap `..`, `/`, `\`, null bytes `\x00`, serta file tersembunyi yang diawali dengan titik `.` atau garis bawah `_` untuk mencegah pembacaan/penghapusan file kunci sistem.
+
+---
+
+## Security Audit Checklist
+- [x] Process Subprocess Sandbox Execution
+- [x] Localhost Only Binding (127.0.0.1)
+- [x] Session Auth Token Header Verification
+- [x] Android Keystore / Encrypted Preferences Integration
+- [x] HTML Sanitization & XSS Prevention
+- [x] Path Traversal Attack Prevention

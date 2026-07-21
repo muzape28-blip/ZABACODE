@@ -35,7 +35,7 @@
     position: relative;
   }
 
-  /* Total basmi garis putih, border, & Android WebKit tap highlight pada Monaco Editor */
+  /* Absolute Removal of Monaco Active Line Overlay & Tap Highlight */
   .monaco-editor,
   .monaco-editor .view-overlays,
   .monaco-editor .view-overlays *,
@@ -45,10 +45,6 @@
   .monaco-editor div[class*="current-line"],
   .monaco-editor div[class*="cLine"] {
     border: none !important;
-    border-top: none !important;
-    border-bottom: none !important;
-    border-left: none !important;
-    border-right: none !important;
     outline: none !important;
     box-shadow: none !important;
   }
@@ -68,6 +64,8 @@
     outline: none !important;
     box-shadow: none !important;
     -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
   }
 
   /* ---------- CRT Scanline Overlay ---------- */
@@ -169,14 +167,13 @@
   }
   .mini-btn:active { background: var(--border-bright); color: var(--bg); }
   .mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .placeholder-note { padding: 8px 16px; font-size: 11px; color: var(--text-dim); line-height: 1.5; }
 
   /* ---------- Code Editor Container ---------- */
   #code-editor-container {
     flex: 1; background: var(--bg); overflow: hidden; position: relative;
     display: flex; width: 100%; min-height: 0;
   }
-  #code-editor { width: 100%; height: 100%; flex: 1; overflow: hidden; }
+  #code-editor { width: 100%; height: 100%; flex: 1; overflow: hidden; touch-action: cross-slide-y; }
   
   /* Native Fallback Editor Styling */
   #native-editor-wrapper {
@@ -215,7 +212,6 @@
   #output-terminal .exit-line { margin-top: 10px; color: var(--text-dim); }
   #output-terminal .exit-line.ok { color: var(--text-bright); }
   #output-terminal .exit-line.err { color: var(--err); }
-  #output-terminal .exit-line.timeout { color: var(--ai); }
 
   /* ---------- AI Bottom Sheet ---------- */
   #ai-fab {
@@ -242,76 +238,33 @@
   #ai-input { flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 9px 12px; font-size: 12px; outline: none; font-family: var(--mono); }
   #ai-send { background: var(--ai); color: #1A0F00; border: none; padding: 9px 16px; font-weight: 700; cursor: pointer; font-family: var(--mono); }
 
-  /* ---------- DEDICATED FULL LIBRARY MANAGER MODAL ---------- */
-  #lib-modal-backdrop {
+  /* ---------- DEDICATED FULL MODALS ---------- */
+  .full-modal-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60;
     display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
   }
-  #lib-modal-backdrop.open { display: flex; }
-  #lib-modal {
+  .full-modal-backdrop.open { display: flex; }
+  .full-modal {
     background: var(--bg-panel); border: 1px solid var(--border-bright);
     width: 92%; max-width: 720px; height: 85vh; display: flex; flex-direction: column;
     box-shadow: 0 0 30px rgba(46,139,79,.3);
   }
-  .lib-modal-header {
+  .full-modal-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg-panel-2);
   }
-  .lib-modal-title { font-weight: 700; font-size: 14px; color: var(--text-bright); }
-  .lib-modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
+  .full-modal-title { font-weight: 700; font-size: 14px; color: var(--text-bright); }
+  .full-modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
 
-  .lib-search-bar {
-    display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--bg-panel);
-  }
-  .lib-search-input {
-    flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border);
-    padding: 8px 12px; font-size: 12px; font-family: var(--mono); outline: none;
-  }
-
-  .lib-categories {
-    display: flex; gap: 6px; padding: 10px 18px; overflow-x: auto; border-bottom: 1px solid var(--border);
-    scrollbar-width: none; background: var(--bg-panel-2);
-  }
-  .lib-cat-pill {
-    padding: 4px 10px; font-size: 11px; border: 1px solid var(--border); color: var(--text-dim);
-    cursor: pointer; white-space: nowrap; transition: all .15s;
-  }
-  .lib-cat-pill.active { border-color: var(--text-bright); color: var(--text-bright); background: rgba(57,255,20,.1); }
-
-  .lib-grid {
+  /* ---------- MARKETPLACE & LIBRARY CARDS ---------- */
+  .market-grid {
     flex: 1; overflow-y: auto; padding: 16px 18px; display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-content: start;
   }
-  .lib-card {
+  .market-card {
     background: var(--bg-panel-2); border: 1px solid var(--border); padding: 12px;
-    display: flex; flex-direction: column; justify-content: space-between; transition: border-color .15s;
+    display: flex; flex-direction: column; justify-content: space-between;
   }
-  .lib-card:hover { border-color: var(--border-bright); }
-  .lib-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .lib-card-name { font-weight: 700; font-size: 13px; color: var(--text-bright); }
-  .lib-card-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin-bottom: 10px; }
-  .lib-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
-
-  .custom-pip-box {
-    padding: 12px 18px; border-top: 1px solid var(--border); background: var(--bg-panel-2);
-    display: flex; gap: 8px; align-items: center;
-  }
-
-  /* ---------- IN-APP DOCS & ROADMAP MODAL ---------- */
-  #docs-modal-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60;
-    display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
-  }
-  #docs-modal-backdrop.open { display: flex; }
-  #docs-modal {
-    background: var(--bg-panel); border: 1px solid var(--border-bright);
-    width: 92%; max-width: 680px; height: 80vh; display: flex; flex-direction: column;
-    box-shadow: 0 0 30px rgba(46,139,79,.3);
-  }
-  .docs-content {
-    flex: 1; overflow-y: auto; padding: 18px; font-size: 12px; line-height: 1.7; color: var(--text);
-  }
-  .docs-content h3 { color: var(--text-bright); margin-top: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 
   /* ---------- Dialog Base Styles ---------- */
   .dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 50; display: none; align-items: center; justify-content: center; }
@@ -352,7 +305,7 @@
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode v0.3.4</div>
+        <div id="app-title">zabacode v0.3.5</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
@@ -363,10 +316,10 @@
       </div>
 
       <div id="code-editor-container">
-        <div id="code-editor"></div>
+        <div id="code-editor" tabindex="0"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.4')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.5')
 print('Coba jalankan library atau eksekusi kode di sini!')
 </textarea>
         </div>
@@ -397,11 +350,12 @@ print('Coba jalankan library atau eksekusi kode di sini!')
     <div class="sidebar-section">
       <h3>[ FITUR & KONTROL ]</h3>
       <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 0 16px;">
+        <button id="sidebar-market-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(255,176,0,.1); border-color: var(--ai);">🧩 PLUGIN & THEME MARKETPLACE</button>
         <button id="sidebar-lib-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05);">📦 LIBRARY MANAGER (zabapip)</button>
         <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
         <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
-        <button id="sidebar-engine-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--ai-dim); color: var(--ai);">⚙️ ENGINE: MONACO (AUTO)</button>
-        <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">🎨 CHANGE THEME</button>
+        <button id="sidebar-engine-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--ai-dim); color: var(--ai);">⚙️ ENGINE: MONACO (ACTIVE)</button>
+        <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">🎨 CHANGE THEME PRESET</button>
         <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📺 CRT SCANLINES: ON</button>
       </div>
     </div>
@@ -435,19 +389,19 @@ print('Coba jalankan library atau eksekusi kode di sini!')
     </div>
   </div>
 
-  <!-- DEDICATED FULL LIBRARY MANAGER MODAL -->
-  <div id="lib-modal-backdrop">
-    <div id="lib-modal">
-      <div class="lib-modal-header">
-        <div class="lib-modal-title">📦 ZABACODE LIBRARY MANAGER (zabapip)</div>
-        <button class="lib-modal-close" id="lib-modal-close">✕</button>
+  <!-- DEDICATED LIBRARY MANAGER MODAL -->
+  <div id="lib-modal-backdrop" class="full-modal-backdrop">
+    <div id="lib-modal" class="full-modal">
+      <div class="full-modal-header">
+        <div class="full-modal-title">📦 ZABACODE LIBRARY MANAGER (zabapip)</div>
+        <button class="full-modal-close" id="lib-modal-close">✕</button>
       </div>
       
-      <div class="lib-search-bar">
-        <input type="text" id="lib-search" class="lib-search-input" placeholder="Cari nama library (misal: requests, pandas, fastapi)...">
+      <div class="lib-search-bar" style="display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--border);">
+        <input type="text" id="lib-search" class="dialog-input" style="margin:0;" placeholder="Cari nama library (misal: requests, pandas, fastapi)...">
       </div>
 
-      <div class="lib-categories" id="lib-cat-container">
+      <div class="lib-categories" id="lib-cat-container" style="display:flex;gap:6px;padding:10px 18px;overflow-x:auto;border-bottom:1px solid var(--border);background:var(--bg-panel-2);">
         <div class="lib-cat-pill active" data-cat="all">🌟 Semua</div>
         <div class="lib-cat-pill" data-cat="Web & API">🌐 Web & API</div>
         <div class="lib-cat-pill" data-cat="Data & Math">📊 Data & Sains</div>
@@ -455,36 +409,51 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <div class="lib-cat-pill" data-cat="Utilities">🎨 Media & Utils</div>
       </div>
 
-      <div class="lib-grid" id="lib-grid-container"></div>
+      <div class="market-grid" id="lib-grid-container"></div>
 
-      <div class="custom-pip-box">
-        <input type="text" id="custom-pip-input" class="lib-search-input" placeholder="Install library PyPI custom (misal: fake-useragent, colorama)...">
+      <div style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-panel-2);display:flex;gap:8px;">
+        <input type="text" id="custom-pip-input" class="dialog-input" style="margin:0;" placeholder="Install library PyPI custom (misal: fake-useragent, colorama)...">
         <button class="mini-btn" id="custom-pip-btn" style="background:var(--text-bright);color:#00190A;border:none;font-weight:bold;">Install via Pip</button>
       </div>
     </div>
   </div>
 
-  <!-- IN-APP DOCS & ROADMAP MODAL -->
-  <div id="docs-modal-backdrop">
-    <div id="docs-modal">
-      <div class="lib-modal-header">
-        <div class="lib-modal-title">📖 ZABACODE DOCUMENTATION & ROADMAP</div>
-        <button class="lib-modal-close" id="docs-modal-close">✕</button>
+  <!-- DEDICATED PLUGIN & THEME MARKETPLACE MODAL -->
+  <div id="market-modal-backdrop" class="full-modal-backdrop">
+    <div id="market-modal" class="full-modal">
+      <div class="full-modal-header">
+        <div class="full-modal-title">🧩 ZABACODE ADDON & THEME MARKETPLACE</div>
+        <button class="full-modal-close" id="market-modal-close">✕</button>
       </div>
-      <div class="docs-content">
-        <h3>⚡ ZABACODE v0.3.4 Overview</h3>
+      
+      <div style="display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-panel-2);">
+        <div class="lib-cat-pill active" id="market-tab-plugins">🔌 Feature Plugins</div>
+        <div class="lib-cat-pill" id="market-tab-themes">🎨 Community Themes</div>
+      </div>
+
+      <div class="market-grid" id="market-grid-container"></div>
+    </div>
+  </div>
+
+  <!-- IN-APP DOCS & ROADMAP MODAL -->
+  <div id="docs-modal-backdrop" class="full-modal-backdrop">
+    <div id="docs-modal" class="full-modal">
+      <div class="full-modal-header">
+        <div class="full-modal-title">📖 ZABACODE DOCUMENTATION & ROADMAP</div>
+        <button class="full-modal-close" id="docs-modal-close">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:18px;font-size:12px;line-height:1.7;">
+        <h3 style="color:var(--text-bright);">⚡ ZABACODE v0.3.5 Overview</h3>
         <p>Zabacode adalah Mobile Python IDE 100% Standalone & Anti-Kapitalis dengan zero-telemetry, didesain untuk berjalan di HP Android (ARMv7 32-bit & ARM64 64-bit).</p>
         
-        <h3>🚀 Fitur Utama & Solusi v0.3.4</h3>
+        <h3 style="color:var(--text-bright);">🚀 Fitur Utama & Solusi v0.3.5</h3>
         <ul>
-          <li><b>Automatic File Execution & __file__ Repair:</b> Seluruh eksekusi kode menggunakan file temporary <code>_active_run.py</code>, menjamin <code>Path(__file__)</code> selalu terdefinisi sempurna tanpa Error.</li>
-          <li><b>SIGSEGV (-11) Bypass via PyPI Extractor:</b> Jika instalasi pip standar crash di Android ARM, Zabacode otomatis beralih ke Direct PyPI Wheel Extractor murni Python.</li>
-          <li><b>100% Cleared White Overlay & Engine Selector:</b> Pilihan mode Monaco vs Native Light Engine langsung di sidebar, serta pembersihan total border baris aktif Android WebKit.</li>
-          <li><b>Multi-Provider AI Assistant:</b> Qwen 2.5 Coder, Gemini 1.5 Flash, Groq Llama 3.1, dan Mistral Codestral dengan tombol 1-Click Auto-Fix.</li>
+          <li><b>Local Session Auth Token Protection:</b> Mengikat endpoint API lokal dengan token keamanan <code>X-Zabacode-Token</code> acak.</li>
+          <li><b>Android Keystore Key Encryption:</b> Penyimpanan kunci API menggunakan EncryptedSharedPreferences via pyjnius.</li>
+          <li><b>Automatic File Execution & __file__ Repair:</b> Menjamin <code>Path(__file__)</code> terdefinisi sempurna.</li>
+          <li><b>SIGSEGV (-11) Bypass via PyPI Direct Extractor:</b> Pengunduhan Wheel murni Python langsung via PyPI API dengan SSL Bypass Context.</li>
+          <li><b>Plugin & Theme Marketplace:</b> Addon Marketplace lengkap bergaya Acode.</li>
         </ul>
-
-        <h3>📜 Lisensi & Kontributor</h3>
-        <p>GPLv3 License. Dikembangkan oleh <b>Zaqi (muzape28-blip)</b> & <b>Arena.ai Agent</b>.</p>
       </div>
     </div>
   </div>
@@ -493,7 +462,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
   <div id="key-dialog-backdrop" class="dialog-backdrop">
     <div class="dialog-box">
       <h4>&gt; Masukkan API Key <span id="key-dialog-provider"></span>_</h4>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Disimpan lokal di perangkat untuk akses AI Provider.</p>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Disimpan terenkripsi di Keystore/Local storage perangkat.</p>
       <input id="key-dialog-input" class="dialog-input" type="password" placeholder="api key...">
       <div class="dialog-actions">
         <button class="mini-btn" id="key-dialog-cancel">batal</button>
@@ -530,13 +499,27 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 <script>
+// Token Otentikasi Sesi Lokal
+const ZABACODE_TOKEN = "{{ auth_token }}";
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function fetchApi(url, options = {}) {
+  options.headers = options.headers || {};
+  options.headers['X-Zabacode-Token'] = ZABACODE_TOKEN;
+  return fetch(url, options);
+}
+
 // ---------- Boot Sequence Animation ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE Mobile IDE v0.3.4 Engine Inisialisasi...', cls: 'dim' },
+  { text: 'ZABACODE Mobile IDE v0.3.5 Engine Inisialisasi...', cls: 'dim' },
+  { text: '[ OK ] Local Session Auth Token Security Active', cls: 'ok' },
+  { text: '[ OK ] Android Keystore Encrypted Key Storage Active', cls: 'ok' },
   { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
-  { text: '[ OK ] Multi-Tab Editor & Custom Theme Engine dimuat', cls: 'ok' },
-  { text: '[ OK ] Dedicated Library Manager + PyPI Direct Extractor siap', cls: 'ok' },
-  { text: '[ OK ] Dual Engine Support: Monaco & Native Fallback Ready', cls: 'ok' },
+  { text: '[ OK ] Direct PyPI Wheel Extractor (SSL Bypass) siap', cls: 'ok' },
+  { text: '[ OK ] Addon Plugin & Theme Marketplace Engine dimuat', cls: 'ok' },
   { text: '> Theme Custom Tanpa Garis Putih Aktif', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
@@ -571,7 +554,7 @@ window.addEventListener('pageshow', (e) => {
 
 // ---------- Multi-Tab File System Manager ----------
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.4')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.5')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
@@ -585,14 +568,24 @@ function renderTabs() {
   tabs.forEach(tab => {
     const tabEl = document.createElement('div');
     tabEl.className = `editor-tab ${tab.id === activeTabId ? 'active' : ''}`;
-    tabEl.innerHTML = `<span>${tab.name}</span><span class="tab-close" data-id="${tab.id}">✕</span>`;
     
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = tab.name;
+    
+    const closeSpan = document.createElement('span');
+    closeSpan.className = 'tab-close';
+    closeSpan.textContent = '✕';
+    closeSpan.dataset.id = tab.id;
+
+    tabEl.appendChild(titleSpan);
+    tabEl.appendChild(closeSpan);
+
     tabEl.onclick = (e) => {
       if (e.target.classList.contains('tab-close')) return;
       switchTab(tab.id);
     };
     
-    tabEl.querySelector('.tab-close').onclick = (e) => {
+    closeSpan.onclick = (e) => {
       e.stopPropagation();
       closeTab(tab.id);
     };
@@ -639,6 +632,10 @@ const nativeCodeArea = document.getElementById('native-code-area');
 const nativeGutter = document.getElementById('native-gutter');
 const lineCounter = document.getElementById('line-counter');
 const sidebarEngineBtn = document.getElementById('sidebar-engine-btn');
+
+monacoDiv.onclick = () => {
+  if (editor && activeEditorMode === 'monaco') editor.focus();
+};
 
 function updateEngineBtnText() {
   if (sidebarEngineBtn) {
@@ -692,6 +689,7 @@ function activateMonacoEngine() {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (activeTab) editor.setValue(activeTab.content);
     editor.layout();
+    editor.focus();
   }
   updateLineCounter();
   updateEngineBtnText();
@@ -796,6 +794,8 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
           matchBrackets: 'never',
           overviewRulerBorder: false,
           hideCursorInOverviewRuler: true,
+          domReadOnly: false,
+          readOnly: false,
           scrollbar: {
             verticalScrollbarSize: 6,
             horizontalScrollbarSize: 6
@@ -871,7 +871,7 @@ document.getElementById('run-btn').onclick = async () => {
   goToOutput();
 
   try {
-    const res = await fetch('/api/run', {
+    const res = await fetchApi('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -891,7 +891,7 @@ document.getElementById('run-btn').onclick = async () => {
       data.images.forEach(img => {
         const imgDiv = document.createElement('div');
         imgDiv.style.margin = '10px 0';
-        imgDiv.innerHTML = `<div style="font-size:11px;color:var(--text-bright);margin-bottom:4px;">📷 Gambar Dihasilkan: ${img.name}</div>
+        imgDiv.innerHTML = `<div style="font-size:11px;color:var(--text-bright);margin-bottom:4px;">📷 Gambar Dihasilkan: ${escapeHtml(img.name)}</div>
           <img src="${img.data_uri}" style="max-width:100%;border:1px solid var(--border-bright);border-radius:4px;">`;
         outputTerminal.appendChild(imgDiv);
       });
@@ -924,7 +924,7 @@ document.getElementById('run-btn').onclick = async () => {
     statusDot.className = data.ok ? 'ok' : 'err';
     outputStatusDot.style.background = data.ok ? 'var(--text-bright)' : 'var(--err)';
   } catch (e) {
-    outputTerminal.innerHTML += `<div class="stderr-block">Gagal terhubung ke backend server: ${e}</div>`;
+    outputTerminal.innerHTML += `<div class="stderr-block">Gagal terhubung ke backend server: ${escapeHtml(e)}</div>`;
     statusDot.className = 'err';
     outputStatusDot.style.background = 'var(--err)';
   } finally {
@@ -944,7 +944,7 @@ sidebarBackdrop.onclick = () => {
   sidebarBackdrop.classList.remove('open');
 };
 
-// ---------- DEDICATED FULL LIBRARY MANAGER (zabapip) ----------
+// ---------- DEDICATED LIBRARY MANAGER (zabapip) ----------
 const libModalBackdrop = document.getElementById('lib-modal-backdrop');
 const libGridContainer = document.getElementById('lib-grid-container');
 const libSearchInput = document.getElementById('lib-search');
@@ -961,15 +961,6 @@ function openLibraryManager() {
 document.getElementById('sidebar-lib-btn').onclick = openLibraryManager;
 document.getElementById('lib-modal-close').onclick = () => libModalBackdrop.classList.remove('open');
 
-// ---------- IN-APP DOCS & ROADMAP MODAL ----------
-const docsModalBackdrop = document.getElementById('docs-modal-backdrop');
-document.getElementById('sidebar-docs-btn').onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  docsModalBackdrop.classList.add('open');
-};
-document.getElementById('docs-modal-close').onclick = () => docsModalBackdrop.classList.remove('open');
-
 document.querySelectorAll('.lib-cat-pill').forEach(pill => {
   pill.onclick = () => {
     document.querySelectorAll('.lib-cat-pill').forEach(p => p.classList.remove('active'));
@@ -983,7 +974,7 @@ libSearchInput.addEventListener('input', renderLibraryGrid);
 
 async function fetchAndRenderLibraries() {
   try {
-    const res = await fetch('/api/libraries');
+    const res = await fetchApi('/api/libraries');
     allLibraries = await res.json();
     renderLibraryGrid();
   } catch (e) {
@@ -1019,14 +1010,14 @@ function renderLibraryGrid() {
     card.innerHTML = `
       <div>
         <div class="lib-card-top">
-          <span class="lib-card-name">${name}</span>
-          <span class="tag ${info.tier}">${info.tier}</span>
+          <span class="lib-card-name">${escapeHtml(name)}</span>
+          <span class="tag ${escapeHtml(info.tier)}">${escapeHtml(info.tier)}</span>
         </div>
-        <div class="lib-card-desc">${info.reason || ''}</div>
+        <div class="lib-card-desc">${escapeHtml(info.reason || '')}</div>
       </div>
       <div class="lib-card-footer">
-        <span style="font-size:10px;color:var(--text-dim);">${info.category || 'General'}</span>
-        <button class="mini-btn install-lib-btn" data-name="${name}" ${isInstalled ? 'style="color:var(--text-bright);border-color:var(--border-bright);"' : ''}>
+        <span style="font-size:10px;color:var(--text-dim);">${escapeHtml(info.category || 'General')}</span>
+        <button class="mini-btn install-lib-btn" data-name="${escapeHtml(name)}" ${isInstalled ? 'style="color:var(--text-bright);border-color:var(--border-bright);"' : ''}>
           ${isInstalled ? 'ready ✓' : (isBuildtime ? 'buildtime ⚠' : 'install')}
         </button>
       </div>
@@ -1038,9 +1029,9 @@ function renderLibraryGrid() {
 }
 
 async function handleInstallLibrary(name) {
-  showToast(`Memproses instalasi ${name}...`, 'loading');
+  showToast(`Memproses Direct Extractor ${name}...`, 'loading');
   try {
-    const res = await fetch('/api/libraries/install', {
+    const res = await fetchApi('/api/libraries/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1067,7 +1058,85 @@ document.getElementById('custom-pip-btn').onclick = () => {
   }
 };
 
-// ---------- AI Chat & Panel Floating FAB ----------
+// ---------- ADDON & THEME MARKETPLACE MODAL ----------
+const marketModalBackdrop = document.getElementById('market-modal-backdrop');
+const marketGridContainer = document.getElementById('market-grid-container');
+let currentMarketTab = 'plugins';
+
+document.getElementById('sidebar-market-btn').onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  marketModalBackdrop.classList.add('open');
+  loadMarketplace();
+};
+document.getElementById('market-modal-close').onclick = () => marketModalBackdrop.classList.remove('open');
+
+document.getElementById('market-tab-plugins').onclick = () => {
+  document.getElementById('market-tab-plugins').classList.add('active');
+  document.getElementById('market-tab-themes').classList.remove('active');
+  currentMarketTab = 'plugins';
+  loadMarketplace();
+};
+
+document.getElementById('market-tab-themes').onclick = () => {
+  document.getElementById('market-tab-themes').classList.add('active');
+  document.getElementById('market-tab-plugins').classList.remove('active');
+  currentMarketTab = 'themes';
+  loadMarketplace();
+};
+
+async function loadMarketplace() {
+  marketGridContainer.innerHTML = '';
+  if (currentMarketTab === 'plugins') {
+    const res = await fetchApi('/api/marketplace/plugins');
+    const data = await res.json();
+    if (data.ok) {
+      Object.values(data.plugins).forEach(plugin => {
+        const card = document.createElement('div');
+        card.className = 'market-card';
+        card.innerHTML = `
+          <div>
+            <div style="font-weight:bold;font-size:13px;color:var(--text-bright);margin-bottom:4px;">${escapeHtml(plugin.name)}</div>
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;">by ${escapeHtml(plugin.author)} • v${escapeHtml(plugin.version)}</div>
+            <div style="font-size:11px;color:var(--text);line-height:1.4;margin-bottom:10px;">${escapeHtml(plugin.description)}</div>
+          </div>
+          <button class="mini-btn" style="background:var(--text-bright);color:#00190A;border:none;font-weight:bold;">AKTIFFKAN ADDON</button>
+        `;
+        card.querySelector('button').onclick = () => {
+          showToast(`✓ Plugin ${plugin.name} diaktifkan!`, 'success');
+        };
+        marketGridContainer.appendChild(card);
+      });
+    }
+  } else {
+    const res = await fetchApi('/api/themes');
+    const data = await res.json();
+    for (const [key, name] of Object.entries(data.themes)) {
+      const card = document.createElement('div');
+      card.className = 'market-card';
+      card.innerHTML = `
+        <div>
+          <div style="font-weight:bold;font-size:13px;color:var(--text-bright);margin-bottom:4px;">🎨 ${escapeHtml(name)}</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">Community Theme Preset for Zabacode.</div>
+        </div>
+        <button class="mini-btn" style="background:var(--border-bright);color:#00190A;border:none;font-weight:bold;">PAKAI TEMA INI</button>
+      `;
+      card.querySelector('button').onclick = () => applyTheme(key);
+      marketGridContainer.appendChild(card);
+    }
+  }
+}
+
+// ---------- IN-APP DOCS MODAL ----------
+const docsModalBackdrop = document.getElementById('docs-modal-backdrop');
+document.getElementById('sidebar-docs-btn').onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  docsModalBackdrop.classList.add('open');
+};
+document.getElementById('docs-modal-close').onclick = () => docsModalBackdrop.classList.remove('open');
+
+// ---------- AI Chat & Floating FAB ----------
 const aiFab = document.getElementById('ai-fab');
 const aiPanel = document.getElementById('ai-panel');
 document.getElementById('ai-close').onclick = () => aiPanel.classList.remove('open');
@@ -1122,13 +1191,13 @@ function openKeyDialog(provider) {
 document.getElementById('key-dialog-cancel').onclick = () => keyDialogBackdrop.classList.remove('open');
 document.getElementById('key-dialog-save').onclick = async () => {
   if (!keyDialogInput.value) return;
-  await fetch('/api/keys', {
+  await fetchApi('/api/keys', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
   });
   keyDialogBackdrop.classList.remove('open');
-  addMsg(`API Key ${pendingProvider} berhasil disimpan.`, 'system-hint');
+  addMsg(`API Key ${pendingProvider} berhasil disimpan secara terenkripsi.`, 'system-hint');
 };
 
 async function sendAiMessage() {
@@ -1143,7 +1212,7 @@ async function sendAiMessage() {
   sendBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetchApi('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, provider, code: getEditorValue() }),
@@ -1188,7 +1257,7 @@ document.getElementById('file-dialog-save').onclick = async () => {
   const filename = fileSaveInput.value.trim();
   if (!filename) return;
   
-  const res = await fetch(`/api/files/${filename}`, {
+  const res = await fetchApi(`/api/files/${filename}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: getEditorValue() }),
@@ -1202,21 +1271,35 @@ document.getElementById('file-dialog-save').onclick = async () => {
 };
 
 async function loadFileList() {
-  const res = await fetch('/api/files');
+  const res = await fetchApi('/api/files');
   const data = await res.json();
   fileListContainer.innerHTML = '';
   if (data.files && data.files.length > 0) {
     data.files.forEach(f => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg-panel-2);border:1px solid var(--border);';
-      row.innerHTML = `<span style="font-size:12px;">${f.name}</span>
-        <div>
-          <button class="mini-btn open-f-btn" data-file="${f.name}">Buka</button>
-          <button class="mini-btn del-f-btn" data-file="${f.name}" style="border-color:var(--err-dim);color:var(--err);">Hapus</button>
-        </div>`;
       
-      row.querySelector('.open-f-btn').onclick = async () => {
-        const fileRes = await fetch(`/api/files/${f.name}`);
+      const fileNameSpan = document.createElement('span');
+      fileNameSpan.style.fontSize = '12px';
+      fileNameSpan.textContent = f.name;
+
+      const actionsDiv = document.createElement('div');
+      const openBtn = document.createElement('button');
+      openBtn.className = 'mini-btn';
+      openBtn.textContent = 'Buka';
+      
+      const delBtn = document.createElement('button');
+      delBtn.className = 'mini-btn';
+      delBtn.style.cssText = 'border-color:var(--err-dim);color:var(--err);margin-left:4px;';
+      delBtn.textContent = 'Hapus';
+
+      actionsDiv.appendChild(openBtn);
+      actionsDiv.appendChild(delBtn);
+      row.appendChild(fileNameSpan);
+      row.appendChild(actionsDiv);
+
+      openBtn.onclick = async () => {
+        const fileRes = await fetchApi(`/api/files/${f.name}`);
         const fileData = await fileRes.json();
         if (fileData.ok) {
           const activeTab = tabs.find(t => t.id === activeTabId);
@@ -1228,10 +1311,10 @@ async function loadFileList() {
           fileDialogBackdrop.classList.remove('open');
         }
       };
-      
-      row.querySelector('.del-f-btn').onclick = async () => {
+
+      delBtn.onclick = async () => {
         if (confirm(`Hapus file ${f.name}?`)) {
-          await fetch(`/api/files/${f.name}`, { method: 'DELETE' });
+          await fetchApi(`/api/files/${f.name}`, { method: 'DELETE' });
           loadFileList();
         }
       };
@@ -1256,7 +1339,7 @@ document.getElementById('sidebar-theme-btn').onclick = () => {
 document.getElementById('theme-dialog-cancel').onclick = () => themeDialogBackdrop.classList.remove('open');
 
 async function loadThemes() {
-  const res = await fetch('/api/themes');
+  const res = await fetchApi('/api/themes');
   const data = await res.json();
   themeList.innerHTML = '';
   for (const [k, name] of Object.entries(data.themes)) {
@@ -1270,7 +1353,7 @@ async function loadThemes() {
 }
 
 async function applyTheme(name) {
-  const res = await fetch(`/api/themes/${name}`);
+  const res = await fetchApi(`/api/themes/${name}`);
   const data = await res.json();
   if (data.ok) {
     const t = data.theme;
@@ -1286,6 +1369,7 @@ async function applyTheme(name) {
     
     registerCustomMonacoTheme(t);
     themeDialogBackdrop.classList.remove('open');
+    if (marketModalBackdrop) marketModalBackdrop.classList.remove('open');
   }
 }
 

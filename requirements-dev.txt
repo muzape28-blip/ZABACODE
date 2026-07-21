@@ -1,26 +1,13 @@
 # Zabacode Development Requirements
 
-# Backend
+# Backend Server & Framework
 Flask==2.3.3
 Werkzeug==2.3.7
-
-# Code execution isolation
-subprocess32==3.5.4  # Better subprocess handling (Python 3)
-
-# Android/Encryption (optional in dev, needed on device)
-pyjnius==1.5.2
+waitress==2.1.2
 
 # Testing
 pytest==7.4.0
 pytest-cov==4.1.0
 
-# Linting
-black==23.7.0
-flake8==6.0.0
-isort==5.12.0
-
-# Type checking
-mypy==1.4.1
-
-# Documentation
-sphinx==7.1.2
+# Android / Pyjnius Integration (optional in dev, active on Android)
+pyjnius==1.5.2

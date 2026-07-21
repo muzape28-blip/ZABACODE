@@ -1,13 +1,18 @@
-# Zabacode Development Requirements
+# Zabacode Development Requirements (v1.0.0 — Kivy Native Edition)
 
-# Backend Server & Framework
-Flask==2.3.3
-Werkzeug==2.3.7
-waitress==2.1.2
+# Kivy Framework
+Kivy>=2.3.0
+Pygments>=2.16.0
+
+# Core Dependencies
+requests>=2.31.0
+tinydb>=4.8.0
+beautifulsoup4>=4.12.0
+python-dotenv>=1.0.0
 
 # Testing
-pytest==7.4.0
-pytest-cov==4.1.0
+pytest>=7.4.0
+pytest-cov>=4.1.0
 
 # Android / Pyjnius Integration (optional in dev, active on Android)
-pyjnius==1.5.2
+pyjnius>=1.5.2

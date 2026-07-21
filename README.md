@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — 100% Free, Open Source, & Zero Telemetry.</i>
+  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — now powered by <b>Kivy Native UI</b> — 100% Free, Open Source, & Zero Telemetry.</i>
 </p>
 
 <p align="center">
@@ -18,9 +18,10 @@
 
 <p align="center">
   <a href="https://github.com/muzape28-blip/ZABACODE/actions/workflows/build_apk.yml"><img src="https://github.com/muzape28-blip/ZABACODE/actions/workflows/build_apk.yml/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v0.3.5-39FF14.svg?style=flat&logo=android" alt="Version"></a>
+  <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-39FF14.svg?style=flat&logo=android" alt="Version"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3 License"></a>
   <img src="https://img.shields.io/badge/Architecture-ARMv7%20%7C%20ARM64-FFB000.svg" alt="Architecture">
+  <img src="https://img.shields.io/badge/UI-Kivy%20Native-9B59B6.svg" alt="Kivy Native">
   <img src="https://img.shields.io/badge/Telemetry-ZERO-brightgreen.svg" alt="Zero Telemetry">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20First-success.svg" alt="Offline First">
 </p>
@@ -29,15 +30,20 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ZABACODE — Mobile Engine Active                                            │
-│  [ OK ] Subprocess Sandbox Engine Ready                                     │
-│  [ OK ] Local Session Auth Token Security Active (X-Zabacode-Token)         │
-│  [ OK ] Android Keystore Encrypted Key Storage Active                       │
-│  [ OK ] Path Resolver Active (_active_run.py -> Path(__file__) OK)          │
-│  [ OK ] Direct PyPI Wheel Extractor Active (SSL & SIGSEGV -11 Bypass)       │
-│  [ OK ] Dual Engine Core: Monaco (Deterministic LineHeight) + Native Engine │
-│  [ OK ] Bilingual Support Engine Active (Indonesian & English i18n)         │
-│  > WORKSPACE READY. HAPPY CODING!_                                           │
+│  ZABACODE v1.0.0 — Kivy Native Edition                                     │
+│  [ OK ] Kivy SDL2 Native UI Engine Active                                  │
+│  [ OK ] Pygments Syntax Highlighting Active                                │
+│  [ OK ] Subprocess Sandbox Engine Ready                                    │
+│  [ OK ] Local Session Auth Token Security Active (X-Zabacode-Token)        │
+│  [ OK ] Android Keystore Encrypted Key Storage Active                      │
+│  [ OK ] Direct PyPI Wheel Extractor Active (SSL & SIGSEGV -11 Bypass)     │
+│  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq/    │
+│         Mistral/DeepSeek/Ollama)                                           │
+│  [ OK ] Multi-Language i18n Engine (6 Languages: ID/EN/JA/KO/AR/ES)       │
+│  [ OK ] Theme Engine Active (10 Themes incl. Tokyo Night/Catppuccin)      │
+│  [ OK ] Plugin Marketplace Active (12 Plugins, 8 Snippets)                │
+│  [ OK ] Library Manager (50+ Libraries with Offline/Online Mode Tags)     │
+│  > WORKSPACE READY. HAPPY CODING!_                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,63 +61,93 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 
 ---
 
-## ✨ Key Features & Improvements
+## 🆕 What's New in v1.0.0 (Kivy Native Edition)
+
+### 🔥 Major: WebView → Kivy Migration
+The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. This means:
+- **No local web server** — all operations are direct Python function calls
+- **Faster response** — no HTTP overhead between UI and backend
+- **Better security** — no exposed localhost server
+- **Native look & feel** — Kivy widgets render directly via GPU
 
 ### 🧠 1. Subprocess Isolation & Auto `__file__` Resolution
-* **Full Process Isolation:** Every Python script is executed inside an isolated subprocess with a 30-second execution timeout.
-* **Automatic `__file__` Resolution:** Scripts are executed via a temporary script file `_active_run.py`, guaranteeing that calls to `Path(__file__)` or `__file__` **succeed 100%** without throwing `NameError: name '__file__' is not defined`.
+* **Full Process Isolation:** Every Python script is executed in an isolated subprocess with a 30-second execution timeout.
+* **Automatic `__file__` Resolution:** Scripts are executed via `_active_run.py`, guaranteeing `Path(__file__)` **succeeds 100%**.
 
-### 📦 2. Library Manager (`zabapip`) & Direct PyPI Extractor
-* **SIGSEGV (-11) & SSL Bypass:** If standard `pip` crashes on Android, Zabacode seamlessly falls back to querying the PyPI JSON API with a bypass SSL context, fetching pure Python Wheel archives (`.whl`), and unzipping them directly into `user_packages`.
-* **Custom PyPI Installer:** Install any package from PyPI on the fly.
+### 📦 2. Enhanced Library Manager (`zabapip`) — 50+ Libraries with Offline/Online Tags
+* **Every library now has a `mode` tag:**
+  - 🟢 **offline** — Works completely without internet (pure Python)
+  - 🔵 **online** — Requires internet to function (API clients)
+  - 🟡 **hybrid** — Core features offline, some features need internet
+* **SSL Bypass:** If standard `pip` crashes on Android, Zabacode falls back to PyPI JSON API with bypass SSL context.
+* **Categories:** Web & API, Data & Math, Database, AI & Automation, Utilities, Security, Media, Testing, Data Format, Networking
 
-### ⚙️ 3. Monaco Cursor Alignment Fix & Bilingual i18n Engine
-* **Deterministic LineHeight:** Fixes visual caret cursor positioning in Monaco Editor on Android WebViews by configuring exact 22px line height metrics.
-* **Instant Language Toggle:** Easily switch the entire IDE UI between **Indonesian** and **English** with 1 click in the sidebar menu.
-* **Clean Header:** Topbar displays clean `ZABACODE` title.
+### 🤖 3. Multi-Provider AI — 6 Providers
+* **OpenRouter** (🌐 online) — Multi-model access
+* **Google Gemini** (🌐 online) — Gemini 1.5 Flash
+* **Groq** (🌐 online) — Ultra-fast Llama 3.1
+* **Mistral** (🌐 online) — Codestral
+* **DeepSeek** (🌐 online) — DeepSeek Coder *(NEW)*
+* **Ollama** (🖥️ **offline!**) — Local models, zero internet required *(NEW)*
 
-### 🧩 4. Functional Plugin & Theme Marketplace
-* **Addon Marketplace:** Features 1-click active plugins:
-  * ⚡ **Auto-Code Formatter (PEP-8)**
-  * 📜 **Pro Python Snippets Pack**
-  * 🔍 **Static Syntax Linter Guard**
-  * ⌨️ **Extended Mobile Symbol Bar** (Quick symbol toolbar above keyboard)
-  * 🎨 **Themes Pack:** Cyberpunk Neon, Nord Arctic, Monokai Pro, Dracula, Solarized Dark, Retro Green.
+### 🎨 4. Theme Engine — 10 Themes
+* **Retro Green**, **Solarized Dark**, **Dracula**, **Cyberpunk Neon**, **Nord Arctic**, **Monokai Pro** *(carried over)*
+* **Tokyo Night** *(NEW)*, **One Dark** *(NEW)*, **Gruvbox Dark** *(NEW)*, **Catppuccin Mocha** *(NEW)*
+
+### 🌐 5. Multi-Language i18n — 6 Languages
+* 🇮🇩 **Bahasa Indonesia** (default)
+* 🇬🇧 **English**
+* 🇯🇵 **日本語** *(NEW)*
+* 🇰🇷 **한국어** *(NEW)*
+* 🇸🇦 **العربية** *(NEW)*
+* 🇪🇸 **Español** *(NEW)*
+
+### 🧩 6. Plugin Marketplace — 12 Plugins + 8 Snippets
+* **Core Plugins:** Auto-Code Formatter, Snippets Pack, Syntax Linter, Symbol Bar
+* **New Plugins:** Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown Preview, Code Timer/Profiler, ASCII Art Generator, TODO Manager
+
+### ⚡ 7. Performance & Responsiveness
+* Direct Python function calls (no HTTP overhead)
+* Background threading for AI calls and library installations
+* Kivy GPU-accelerated rendering
+* Instant theme switching and language toggling
 
 ---
 
 ## 🏗️ Architecture & Data Flow
 
 ```
- ┌─────────────────────────────────────────────────────────┐
-│              Android Webview Front-End UI               │
-│    (Adaptive Monaco Editor / Native Engine + i18n UI)   │
-└────────────────────────────┬────────────────────────────┘
-                             │ HTTP REST API (127.0.0.1:5000 + Token)
-┌────────────────────────────▼────────────────────────────┐
-│              Flask + Waitress Backend Server            │
-│                     (main.py)                           │
-└─────┬──────────────────────┬──────────────────────┬─────┘
-      │                      │                      │
-┌─────▼───────────────┐ ┌────▼───────────────┐ ┌────▼───────────────┐
-│ Isolated Subprocess │ │ Direct PyPI Extractor│ │ Multi-Provider AI │
-│ Code Execution Engine│ │  (urllib + zipfile)│ │ (OpenRouter/Gemini│
-│ (_active_run.py)    │ │  (user_packages)   │ │  /Groq/Mistral)   │
-└─────────────────────┘ └────────────────────┘ └───────────────────┘
+ ┌──────────────────────────────────────────────────────────┐
+│              Kivy Native UI Front-End (SDL2)             │
+│    (CodeInput + Pygments + Line Numbers + Themes)       │
+└────────────────────────┬─────────────────────────────────┘
+                         │ Direct Python Function Calls
+┌────────────────────────▼─────────────────────────────────┐
+│              ZABACODE Core Engine (Python)                │
+│    (executor.py / security.py / checker.py / etc.)      │
+└─────┬──────────────────┬──────────────────┬─────────────┘
+      │                  │                  │
+┌─────▼──────────┐ ┌────▼──────────────┐ ┌─▼──────────────┐
+│ Subprocess     │ │ Direct PyPI       │ │ Multi-Provider  │
+│ Code Execution │ │ Wheel Extractor   │ │ AI Chat Engine  │
+│ (_active_run)  │ │ (zabapip)         │ │ (6 providers)   │
+└────────────────┘ └──────────────────┘ └─────────────────┘
 ```
 
 ---
 
 ## 📊 Comparison: ZABACODE vs Pydroid 3 vs Acode
 
-| Feature / Characteristic | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE v0.3.5 |
+| Feature / Characteristic | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE v1.0.0 |
 | :--- | :--- | :--- | :--- |
 | **License Model** | Freemium / Paywall | Paid Play Store | **100% Free & Open-Source (GPLv3)** |
 | **Ads & Telemetry** | Includes Ads & Trackers | Includes Analytics | **ZERO Telemetry & ZERO Ads** |
 | **Python Execution Engine**| ✅ Native | ❌ Requires Termux | ✅ **Isolated Subprocess Sandbox** |
-| **UI Editor Engine** | ⚠️ IDLE Style | ✅ Modern Ace/Monaco | ✅ **Adaptive Monaco + Native Light Engine** |
-| **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **Multi-Provider AI + 1-Click Auto-Fix** |
-| **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **`zabapip` + PyPI Direct Wheel Extractor** |
+| **UI Engine** | ⚠️ IDLE Style | ✅ Modern Ace/Monaco | ✅ **Kivy Native (GPU-Accelerated)** |
+| **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **6 Providers + 1 Offline (Ollama)** |
+| **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Offline/Online Tags** |
+| **Themes** | ⚠️ Limited | ✅ Multiple | 🚀 **10 Themes (Tokyo Night, Catppuccin, etc.)** |
+| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **6 Languages (ID/EN/JA/KO/AR/ES)** |
 | **Architecture Support** | 32-bit / 64-bit | - | ✅ **Universal Fat APK (ARMv7 + ARM64)** |
 
 ---
@@ -120,7 +156,7 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 
 ### Option 1: Download Pre-compiled APK (Recommended)
 1. Visit the [GitHub Releases](https://github.com/muzape28-blip/ZABACODE/releases) page or the **Actions** tab.
-2. Download `Zabacode-Universal-v0.3.5.apk`.
+2. Download `Zabacode-Kivy-v1.0.0.apk`.
 3. Install on your Android phone (Android 8.0 / API 26+).
 
 ### Option 2: Running Development Server Locally
@@ -133,10 +169,42 @@ cd ZABACODE
 # 2. Install dev dependencies
 pip install -r requirements-dev.txt
 
-# 3. Start Flask backend
+# 3. Run Kivy app
 python main.py
 
-# 4. Open browser at http://127.0.0.1:5000
+# 4. Run tests
+pytest test_main.py -v
+```
+
+---
+
+## 📁 Project Structure
+
+```
+ZABACODE/
+├── main.py                          # Entry point
+├── zabacode/
+│   ├── __init__.py                  # Version & metadata
+│   ├── core/
+│   │   ├── paths.py                 # Path resolution
+│   │   ├── security.py              # Auth, encryption, keystore
+│   │   ├── executor.py              # Subprocess code execution
+│   │   ├── checker.py               # Code syntax validation
+│   │   ├── file_manager.py          # Safe file CRUD
+│   │   └── ai_provider.py           # 6 AI provider handlers
+│   ├── ui/
+│   │   └── app.py                   # Main Kivy App & widgets
+│   ├── themes/
+│   │   └── definitions.py           # 10 theme color definitions
+│   ├── i18n/
+│   │   └── translations.py          # 6-language i18n engine
+│   ├── plugins/
+│   │   └── registry.py              # 12 plugins + 8 snippets
+│   └── lib_manager.py               # 50+ library definitions + installer
+├── assets/logo.png
+├── buildozer.spec
+├── test_main.py                     # 78 unit tests
+└── ...
 ```
 
 ---

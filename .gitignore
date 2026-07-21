@@ -70,3 +70,6 @@ user_packages/
 user_files/
 .zabacode_keys*.json
 .zabacode_auth_token
+
+# Old webview files (removed in v1.0.0)
+templates/

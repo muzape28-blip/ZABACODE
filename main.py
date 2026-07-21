@@ -14,6 +14,7 @@ import base64
 import contextlib
 import functools
 import glob
+import hmac
 import io
 import json
 import os
@@ -75,6 +76,20 @@ if str(USER_PACKAGES_DIR) not in sys.path:
     sys.path.insert(0, str(USER_PACKAGES_DIR))
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+
+MAX_CODE_BYTES = 512 * 1024
+MAX_FILE_BYTES = 512 * 1024
+MAX_OUTPUT_CHARS = 256 * 1024
+MAX_AI_FIELD_CHARS = 100_000
+ALLOWED_PROVIDERS = {"openrouter", "gemini", "groq", "mistral"}
+_PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+
+
+def _truncate(text: str) -> str:
+    if len(text) <= MAX_OUTPUT_CHARS:
+        return text
+    return text[:MAX_OUTPUT_CHARS] + "\n[Output truncated]"
 
 
 def require_auth(f):
@@ -82,8 +97,8 @@ def require_auth(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get("X-Zabacode-Token")
-        if not token or token != AUTH_TOKEN:
-            return jsonify({"ok": False, "message": "Akses Ditolak: Token Keuangan / Auth Invalid"}), 401
+        if not token or not hmac.compare_digest(token, AUTH_TOKEN):
+            return jsonify({"ok": False, "message": "Akses ditolak: token autentikasi tidak valid."}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -98,10 +113,12 @@ def index():
 # ---------------------------------------------------------------------------
 
 def execute_code_isolated(code, timeout=30):
-    """
-    Eksekusi kode Python secara terisolasi menggunakan file temporary '_active_run.py'.
-    __file__ terdefinisi sempurna untuk Path(__file__).
-    """
+    """Run user code in a separate process; this is not a security sandbox."""
+    if not isinstance(code, str) or len(code.encode("utf-8")) > MAX_CODE_BYTES:
+        return {"ok": False, "stdout": "", "stderr": "Source code terlalu besar.", "timeout": False, "images": []}
+
+    # This isolates process lifetime, not filesystem/network privileges.
+    # Treat code as trusted unless a platform-level sandbox is added.
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     temp_script = FILES_DIR / "_active_run.py"
     
@@ -118,17 +135,32 @@ def execute_code_isolated(code, timeout=30):
         
         existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
         
-        res = subprocess.run(
+        proc = subprocess.Popen(
             [sys.executable, "_active_run.py"],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             errors="replace",
-            timeout=timeout,
             cwd=str(FILES_DIR),
             env=env,
-            start_new_session=True if os.name != 'nt' else False
+            start_new_session=os.name != "nt",
         )
-        
+        try:
+            stdout_text, stderr_text = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if os.name != "nt":
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:
+                proc.kill()
+            stdout_text, stderr_text = proc.communicate()
+            return {
+                "ok": False,
+                "stdout": _truncate(stdout_text or ""),
+                "stderr": _truncate((stderr_text or "").replace("_active_run.py", "main.py") + f"\n[Process timed out after {timeout}s]"),
+                "timeout": True,
+                "images": [],
+            }
+
         new_images = (set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))) - existing_images
         image_data = []
         for img_path in sorted(new_images):
@@ -139,25 +171,14 @@ def execute_code_isolated(code, timeout=30):
             except Exception:
                 pass
 
-        stderr_cleaned = res.stderr.replace('_active_run.py', 'main.py') if res.stderr else ""
+        stderr_cleaned = stderr_text.replace('_active_run.py', 'main.py') if stderr_text else ""
 
         return {
-            "ok": res.returncode == 0,
-            "stdout": res.stdout,
-            "stderr": stderr_cleaned,
+            "ok": proc.returncode == 0,
+            "stdout": _truncate(stdout_text or ""),
+            "stderr": _truncate(stderr_cleaned),
             "timeout": False,
             "images": image_data
-        }
-    except subprocess.TimeoutExpired as e:
-        stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
-        stderr_text = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
-        stderr_cleaned = stderr_text.replace('_active_run.py', 'main.py')
-        return {
-            "ok": False,
-            "stdout": stdout_text,
-            "stderr": stderr_cleaned + f"\n[Process timed out after {timeout}s]",
-            "timeout": True,
-            "images": []
         }
     except Exception as e:
         return {
@@ -174,6 +195,8 @@ def execute_code_isolated(code, timeout=30):
 def run_code():
     payload = request.get_json(silent=True) or {}
     source = payload.get("code", "")
+    if not isinstance(source, str):
+        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
     result = execute_code_isolated(source, timeout=30)
     return jsonify(result)
 
@@ -253,19 +276,12 @@ def _is_package_installed(package_name):
 
 
 def _fallback_pypi_download(name: str) -> tuple[bool, str]:
-    """
-    Direct PyPI Wheel Extractor Murni Python.
-    Bypass total terhadap SSL Certificate Verify Error di Android & SIGSEGV (-11) pip!
-    """
+    """Install only a pure-Python wheel after TLS and archive-path validation."""
     try:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-
         pypi_url = f"https://pypi.org/pypi/{name}/json"
         req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/0.3.5"})
         
-        with urllib.request.urlopen(req, context=ssl_ctx, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
         
         urls = data.get("urls", [])
@@ -280,11 +296,16 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
             return False, f"'{name}' memerlukan ekstensi compiled C. Tambahkan ke buildozer.spec."
 
         wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/0.3.5"})
-        with urllib.request.urlopen(wheel_req, context=ssl_ctx, timeout=60) as resp:
+        with urllib.request.urlopen(wheel_req, timeout=60) as resp:
             wheel_bytes = resp.read()
 
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
-            z.extractall(USER_PACKAGES_DIR)
+            base = USER_PACKAGES_DIR.resolve()
+            for member in z.infolist():
+                target = (base / member.filename).resolve()
+                if target != base and base not in target.parents:
+                    raise ValueError("Wheel berisi path tidak aman.")
+            z.extractall(base)
 
         return True, f"'{name}' berhasil terinstall via Direct PyPI Extractor!"
     except Exception as e:
@@ -305,10 +326,10 @@ def list_libraries():
 @require_auth
 def install_library():
     payload = request.get_json(silent=True) or {}
-    name = payload.get("name", "").strip()
+    name = payload.get("name", "").strip().lower()
 
-    if not name:
-        return jsonify({"ok": False, "message": "Nama package tidak boleh kosong."}), 400
+    if not name or not _PACKAGE_NAME_RE.fullmatch(name):
+        return jsonify({"ok": False, "message": "Nama package tidak valid."}), 400
 
     info = KNOWN_LIBRARIES.get(name)
 
@@ -379,6 +400,7 @@ def secure_filename_py(filename):
 
 
 @app.route("/api/files", methods=["GET"])
+@require_auth
 def list_files():
     files = []
     for p in FILES_DIR.glob("*.py"):
@@ -388,6 +410,7 @@ def list_files():
 
 
 @app.route("/api/files/<path:filename>", methods=["GET"])
+@require_auth
 def read_file_api(filename):
     secured = secure_filename_py(filename)
     if not secured:
@@ -413,6 +436,8 @@ def save_file_api(filename):
 
     payload = request.get_json(silent=True) or {}
     content = payload.get("content", "")
+    if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "Isi file terlalu besar."}), 413
 
     file_path = FILES_DIR / secured
     try:
@@ -675,6 +700,7 @@ def save_key(provider: str, api_key: str) -> None:
 
 
 @app.route("/api/keys/status", methods=["GET"])
+@require_auth
 def keys_status():
     keys = load_keys()
     providers = ["openrouter", "gemini", "groq", "mistral"]
@@ -686,8 +712,8 @@ def keys_status():
 def set_key():
     payload = request.get_json(silent=True) or {}
     provider, api_key = payload.get("provider"), payload.get("api_key", "")
-    if not provider or not api_key:
-        return jsonify({"ok": False, "message": "provider & api_key wajib diisi"}), 400
+    if provider not in ALLOWED_PROVIDERS or not isinstance(api_key, str) or not api_key.strip():
+        return jsonify({"ok": False, "message": "Provider atau API key tidak valid."}), 400
     save_key(provider, api_key)
     return jsonify({"ok": True})
 
@@ -749,10 +775,7 @@ def _call_openrouter(api_key: str, message: str, code_context: str):
         },
     )
     try:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
@@ -778,10 +801,7 @@ def _call_gemini(api_key: str, message: str, code_context: str):
         headers={"Content-Type": "application/json"},
     )
     try:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         reply = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"ok": True, "reply": reply})
@@ -808,10 +828,7 @@ def _call_groq(api_key: str, message: str, code_context: str):
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:
@@ -837,10 +854,7 @@ def _call_mistral(api_key: str, message: str, code_context: str):
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         return jsonify({"ok": True, "reply": data["choices"][0]["message"]["content"]})
     except Exception as e:

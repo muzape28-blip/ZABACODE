@@ -69,3 +69,4 @@ bin/
 user_packages/
 user_files/
 .zabacode_keys*.json
+.zabacode_auth_token

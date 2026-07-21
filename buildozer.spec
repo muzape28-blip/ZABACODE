@@ -4,7 +4,7 @@ package.name = zabacode
 package.domain = com.zaba
 source.dir = .
 source.include_exts = py,png,jpg,html,js,css,json
-version = 0.3.4
+version = 0.3.5
 
 requirements = python3,pip,setuptools,flask,waitress,requests,tinydb,beautifulsoup4,python-dotenv
 

@@ -391,6 +391,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
       <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 0 16px;">
         <button id="sidebar-market-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(255,176,0,.1); border-color: var(--ai);">🧩 PLUGIN & THEME MARKETPLACE</button>
         <button id="sidebar-lib-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05);">📦 LIBRARY MANAGER (zabapip)</button>
+        <button id="sidebar-starter-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--border-bright);">🚀 OFFLINE STARTER KITS</button>
         <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
         <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
         <button id="sidebar-engine-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--ai-dim); color: var(--ai);">⚙️ ENGINE: MONACO (ACTIVE)</button>
@@ -521,6 +522,16 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button class="mini-btn" id="file-dialog-cancel">tutup</button>
         <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan file</button>
       </div>
+    </div>
+  </div>
+
+  <!-- OFFLINE STARTER KITS DIALOG -->
+  <div id="starter-dialog-backdrop" class="dialog-backdrop">
+    <div class="dialog-box" style="max-width:520px;">
+      <h4>🚀 Offline starter kits</h4>
+      <p style="color:var(--text-dim);font-size:11px;line-height:1.5;margin:0 0 12px;">Pilih template untuk membuka tab baru. Semua template ini berjalan lokal dan tidak membutuhkan akun, API key, atau koneksi internet.</p>
+      <div id="starter-kit-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div class="dialog-actions"><button id="starter-dialog-cancel" class="mini-btn">tutup</button></div>
     </div>
   </div>
 
@@ -663,7 +674,8 @@ let tabs = [
 ];
 let activeTabId = 'tab-1';
 let editor = null;
-let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'native' ? 'native' : 'loading';
+// Native editor is the default so the core IDE works on first launch without connectivity.
+let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'monaco' ? 'loading' : 'native';
 
 const tabBarEl = document.getElementById('tab-bar');
 const addTabBtn = document.getElementById('add-tab-btn');
@@ -730,6 +742,36 @@ addTabBtn.onclick = () => {
   switchTab(newId);
 };
 
+// ---------- Offline Starter Kits ----------
+const STARTER_KITS = [
+  { name: 'CLI To-do', file: 'todo.py', description: 'To-do list terminal dengan penyimpanan JSON lokal.', code: `import json\nfrom pathlib import Path\n\nDB = Path("todos.json")\ntodos = json.loads(DB.read_text()) if DB.exists() else []\n\nwhile True:\n    print("\\nTODO:", *[f"{i + 1}. {task}" for i, task in enumerate(todos)], sep="\\n")\n    task = input("Task baru (Enter untuk selesai): ").strip()\n    if not task:\n        break\n    todos.append(task)\n    DB.write_text(json.dumps(todos, indent=2))\n` },
+  { name: 'Kalkulator aman', file: 'calculator.py', description: 'Kalkulator empat operasi tanpa eval().', code: `def calculate(a, operator, b):\n    operations = {"+": lambda: a + b, "-": lambda: a - b, "*": lambda: a * b, "/": lambda: a / b}\n    if operator not in operations:\n        raise ValueError("Operator hanya +, -, *, /")\n    return operations[operator]()\n\na = float(input("Angka pertama: "))\nop = input("Operator: ").strip()\nb = float(input("Angka kedua: "))\nprint("Hasil:", calculate(a, op, b))\n` },
+  { name: 'HTTP request (needs online)', file: 'http_request.py', description: 'Contoh request HTTP; library requests dan koneksi internet diperlukan.', code: `# Needs online + package requests\nimport requests\n\nurl = input("URL JSON: ").strip()\nresponse = requests.get(url, timeout=15)\nresponse.raise_for_status()\nprint(response.json())\n` }
+];
+
+function openStarterKits() {
+  const list = document.getElementById('starter-kit-list');
+  list.replaceChildren();
+  STARTER_KITS.forEach((kit) => {
+    const button = document.createElement('button');
+    button.className = 'mini-btn';
+    button.style.cssText = 'text-align:left;padding:10px 12px;';
+    button.innerHTML = `<strong>${escapeHtml(kit.name)}</strong><br><span style="font-size:10px;color:var(--text-dim);">${escapeHtml(kit.description)}</span>`;
+    button.onclick = () => {
+      const id = 'tab-' + Date.now();
+      tabs.push({ id, name: kit.file, content: kit.code });
+      switchTab(id);
+      document.getElementById('starter-dialog-backdrop').classList.remove('open');
+      document.getElementById('sidebar').classList.remove('open');
+    };
+    list.appendChild(button);
+  });
+  document.getElementById('starter-dialog-backdrop').classList.add('open');
+}
+
+document.getElementById('sidebar-starter-btn').onclick = openStarterKits;
+document.getElementById('starter-dialog-cancel').onclick = () => document.getElementById('starter-dialog-backdrop').classList.remove('open');
+
 // ---------- Adaptive Monaco / Native Fallback Editor ----------
 const monacoDiv = document.getElementById('code-editor');
 const nativeWrapper = document.getElementById('native-editor-wrapper');
@@ -744,7 +786,7 @@ monacoDiv.onclick = () => {
 
 function updateEngineBtnText() {
   if (sidebarEngineBtn) {
-    sidebarEngineBtn.textContent = activeEditorMode === 'monaco' ? '⚙️ ENGINE: MONACO (ACTIVE)' : '⚙️ ENGINE: NATIVE TEXTAREA (ACTIVE)';
+    sidebarEngineBtn.textContent = activeEditorMode === 'monaco' ? '⚙️ ENGINE: MONACO (NEEDS ONLINE)' : '⚙️ ENGINE: NATIVE (OFFLINE CORE)';
   }
 }
 

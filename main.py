@@ -1,16 +1,25 @@
-"""
-ZABACODE v1.0.0 — Entry Point (Kivy Native Edition)
-Copyright (C) 2026 Zaqi (muzape28-blip) and ZABACODE Contributors
+"""ZABACODE v1.0.0 — Native Kivy entry point."""
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+import os
+import sys
+import traceback
+from pathlib import Path
 
-See LICENSE file for full legal terms.
-"""
 
-from zabacode.ui.app import ZabacodeApp
+def _write_crash_log() -> None:
+    """Persist startup tracebacks where an Android user can retrieve them."""
+    app_dir = Path(os.environ.get("ANDROID_PRIVATE", Path(__file__).parent))
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+        (app_dir / "zabacode_crash.log").write_text(traceback.format_exc(), encoding="utf-8")
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
-    ZabacodeApp().run()
+    try:
+        from zabacode.ui.app import ZabacodeApp
+        ZabacodeApp().run()
+    except Exception:
+        _write_crash_log()
+        raise

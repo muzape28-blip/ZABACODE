@@ -22,7 +22,7 @@ android.api = 34
 android.minapi = 26
 android.ndk_api = 26
 android.permissions = INTERNET
-android.allow_backup = True
+android.allow_backup = False
 
 # Kivy orientation
 android.orientation = portrait

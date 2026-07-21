@@ -362,7 +362,7 @@ class OutputPanel(BoxLayout):
         self.output_text = Label(
             text="",
             font_size=sp(11),
-            font_name='RobotoMono',
+            font_name='Roboto',
             halign='left',
             valign='top',
             text_size=(None, None),
@@ -573,7 +573,8 @@ class ZabacodeApp(App):
         self.editor = CodeInput(
             lexer=PythonLexer(),
             font_size=sp(13),
-            font_name='RobotoMono',
+            # Roboto ships with Kivy; RobotoMono is not guaranteed on ARMv7.
+            font_name='Roboto',
             size_hint_x=0.92,
         )
         self.editor.bind(text=self._on_editor_text)

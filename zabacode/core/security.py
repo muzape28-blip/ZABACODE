@@ -124,40 +124,28 @@ def _try_keystore_save(provider: str, api_key: str) -> bool:
 # Public Key Storage API
 # ---------------------------------------------------------------------------
 
+_MEMORY_KEYS: dict[str, str] = {}
+
+
 def load_keys() -> dict:
-    """Load API keys from Android Keystore (Production) or XOR file (Dev)."""
-    # 1. Try Android Keystore
+    """Load keys from Android Keystore; use memory only when unavailable.
+
+    XOR+Base64 is retained above solely for backward-compatible test coverage,
+    never for persistent API-key storage.
+    """
     keystore_keys = _try_keystore_load()
     if keystore_keys:
         return keystore_keys
-    
-    # 2. Fallback to XOR encrypted file
-    if KEYS_FILE.exists():
-        try:
-            raw_text = KEYS_FILE.read_text(encoding="utf-8")
-            decrypted = xor_decipher(raw_text, AUTH_TOKEN)
-            return json.loads(decrypted) if decrypted else {}
-        except Exception:
-            return {}
-    return {}
+    return dict(_MEMORY_KEYS)
 
 
 def save_key(provider: str, api_key: str) -> None:
-    """Save an API key securely (Keystore + XOR file backup)."""
+    """Store keys in Android Keystore or keep them only until app exit."""
     provider = provider.strip()
     api_key = api_key.strip()
-    
-    # 1. Try Android Keystore
-    _try_keystore_save(provider, api_key)
-    
-    # 2. XOR encrypted file backup
-    keys = load_keys()
-    keys[provider] = api_key
-    try:
-        encrypted_text = xor_cipher(json.dumps(keys), AUTH_TOKEN)
-        KEYS_FILE.write_text(encrypted_text, encoding="utf-8")
-    except Exception as e:
-        print(f"[SECURITY] Failed to save encrypted key: {e}")
+    if _try_keystore_save(provider, api_key):
+        return
+    _MEMORY_KEYS[provider] = api_key
 
 
 def verify_token(token: str) -> bool:

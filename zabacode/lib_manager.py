@@ -13,7 +13,6 @@ import io
 import json
 import os
 import re
-import ssl
 import subprocess
 import sys
 import urllib.request
@@ -392,23 +391,17 @@ def is_package_installed(package_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _fallback_pypi_download(name: str) -> tuple[bool, str]:
-    """
-    Install only a pure-Python wheel after TLS and archive-path validation.
-    Bypasses SIGSEGV (-11) and SSL errors on Android.
+    """Install a pure-Python wheel after TLS and archive-path validation.
+
+    TLS verification is never disabled: a certificate problem must be fixed on
+    the device, not bypassed while downloading executable package content.
     """
     try:
         pypi_url = f"https://pypi.org/pypi/{name}/json"
         req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/1.0.0"})
         
-        # SSL bypass context for Android compatibility
-        ctx = ssl.create_default_context()
-        try:
-            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-        except (ssl.SSLError, urllib.error.URLError):
-            ctx = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
         
         urls = data.get("urls", [])
         target_wheel_url = None
@@ -422,13 +415,8 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
             return False, f"'{name}' memerlukan compiled C-extension. Tambahkan ke buildozer.spec."
 
         wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/1.0.0"})
-        try:
-            with urllib.request.urlopen(wheel_req, timeout=60, context=ctx) as resp:
-                wheel_bytes = resp.read()
-        except (ssl.SSLError, urllib.error.URLError):
-            ctx2 = ssl._create_unverified_context()
-            with urllib.request.urlopen(wheel_req, timeout=60, context=ctx2) as resp:
-                wheel_bytes = resp.read()
+        with urllib.request.urlopen(wheel_req, timeout=60) as resp:
+            wheel_bytes = resp.read()
 
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
             base = USER_PACKAGES_DIR.resolve()

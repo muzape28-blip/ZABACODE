@@ -158,7 +158,7 @@ def run_code():
 def health_check():
     return jsonify({
         "ok": True,
-        "version": "0.3.3",
+        "version": "0.3.4",
         "providers": ["openrouter", "gemini", "groq", "mistral"]
     })
 

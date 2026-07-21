@@ -35,10 +35,39 @@
     position: relative;
   }
 
-  /* Hilangkan total garis putih/border baris aktif Monaco default */
-  .monaco-editor .current-line {
+  /* Total basmi garis putih, border, & Android WebKit tap highlight pada Monaco Editor */
+  .monaco-editor,
+  .monaco-editor .view-overlays,
+  .monaco-editor .view-overlays *,
+  .monaco-editor .current-line,
+  .monaco-editor .current-line-both,
+  .monaco-editor .margin-view-overlays .current-line,
+  .monaco-editor div[class*="current-line"],
+  .monaco-editor div[class*="cLine"] {
     border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  .monaco-editor .view-overlays .current-line,
+  .monaco-editor .view-overlays .current-line-both,
+  .monaco-editor div[class*="current-line"] {
+    background: transparent !important;
     background-color: transparent !important;
+    border: 0px transparent !important;
+  }
+
+  .monaco-editor textarea.inputarea {
+    background: transparent !important;
+    color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
   }
 
   /* ---------- CRT Scanline Overlay ---------- */
@@ -323,7 +352,7 @@
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode v0.3.3</div>
+        <div id="app-title">zabacode v0.3.4</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
@@ -337,7 +366,7 @@
         <div id="code-editor"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.3')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.4')
 print('Coba jalankan library atau eksekusi kode di sini!')
 </textarea>
         </div>
@@ -371,6 +400,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button id="sidebar-lib-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05);">📦 LIBRARY MANAGER (zabapip)</button>
         <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
         <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
+        <button id="sidebar-engine-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--ai-dim); color: var(--ai);">⚙️ ENGINE: MONACO (AUTO)</button>
         <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">🎨 CHANGE THEME</button>
         <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📺 CRT SCANLINES: ON</button>
       </div>
@@ -442,14 +472,14 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button class="lib-modal-close" id="docs-modal-close">✕</button>
       </div>
       <div class="docs-content">
-        <h3>⚡ ZABACODE v0.3.3 Overview</h3>
+        <h3>⚡ ZABACODE v0.3.4 Overview</h3>
         <p>Zabacode adalah Mobile Python IDE 100% Standalone & Anti-Kapitalis dengan zero-telemetry, didesain untuk berjalan di HP Android (ARMv7 32-bit & ARM64 64-bit).</p>
         
-        <h3>🚀 Fitur Utama & Solusi v0.3.3</h3>
+        <h3>🚀 Fitur Utama & Solusi v0.3.4</h3>
         <ul>
           <li><b>Automatic File Execution & __file__ Repair:</b> Seluruh eksekusi kode menggunakan file temporary <code>_active_run.py</code>, menjamin <code>Path(__file__)</code> selalu terdefinisi sempurna tanpa Error.</li>
           <li><b>SIGSEGV (-11) Bypass via PyPI Extractor:</b> Jika instalasi pip standar crash di Android ARM, Zabacode otomatis beralih ke Direct PyPI Wheel Extractor murni Python.</li>
-          <li><b>In-App Modal Navigation:</b> Seluruh dokumen & Library Manager terbuka secara internal tanpa mengalihkan browser WebView, menjaga tema & state editor tetap utuh.</li>
+          <li><b>100% Cleared White Overlay & Engine Selector:</b> Pilihan mode Monaco vs Native Light Engine langsung di sidebar, serta pembersihan total border baris aktif Android WebKit.</li>
           <li><b>Multi-Provider AI Assistant:</b> Qwen 2.5 Coder, Gemini 1.5 Flash, Groq Llama 3.1, dan Mistral Codestral dengan tombol 1-Click Auto-Fix.</li>
         </ul>
 
@@ -502,11 +532,11 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 <script>
 // ---------- Boot Sequence Animation ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE Mobile IDE v0.3.3 Engine Inisialisasi...', cls: 'dim' },
+  { text: 'ZABACODE Mobile IDE v0.3.4 Engine Inisialisasi...', cls: 'dim' },
   { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
   { text: '[ OK ] Multi-Tab Editor & Custom Theme Engine dimuat', cls: 'ok' },
   { text: '[ OK ] Dedicated Library Manager + PyPI Direct Extractor siap', cls: 'ok' },
-  { text: '[ OK ] In-App Docs & Roadmap Modal aktif', cls: 'ok' },
+  { text: '[ OK ] Dual Engine Support: Monaco & Native Fallback Ready', cls: 'ok' },
   { text: '> Theme Custom Tanpa Garis Putih Aktif', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
@@ -532,9 +562,8 @@ function playBoot() {
 }
 window.addEventListener('DOMContentLoaded', playBoot);
 
-// Event listener pemulihan dari back/forward cache WebView
 window.addEventListener('pageshow', (e) => {
-  if (editor) {
+  if (editor && activeEditorMode === 'monaco') {
     monaco.editor.setTheme('zabacode-custom-theme');
     editor.layout();
   }
@@ -542,11 +571,11 @@ window.addEventListener('pageshow', (e) => {
 
 // ---------- Multi-Tab File System Manager ----------
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.3')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.4')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
-let activeEditorMode = 'loading';
+let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'native' ? 'native' : 'loading';
 
 const tabBarEl = document.getElementById('tab-bar');
 const addTabBtn = document.getElementById('add-tab-btn');
@@ -609,6 +638,13 @@ const nativeWrapper = document.getElementById('native-editor-wrapper');
 const nativeCodeArea = document.getElementById('native-code-area');
 const nativeGutter = document.getElementById('native-gutter');
 const lineCounter = document.getElementById('line-counter');
+const sidebarEngineBtn = document.getElementById('sidebar-engine-btn');
+
+function updateEngineBtnText() {
+  if (sidebarEngineBtn) {
+    sidebarEngineBtn.textContent = activeEditorMode === 'monaco' ? '⚙️ ENGINE: MONACO (ACTIVE)' : '⚙️ ENGINE: NATIVE TEXTAREA (ACTIVE)';
+  }
+}
 
 function updateLineCounter() {
   if (activeEditorMode === 'monaco' && editor) {
@@ -637,13 +673,39 @@ nativeCodeArea.addEventListener('click', updateLineCounter);
 
 function activateNativeFallback(reason) {
   activeEditorMode = 'native';
+  localStorage.setItem('zabacode-preferred-engine', 'native');
   monacoDiv.style.display = 'none';
   nativeWrapper.classList.add('active');
   const activeTab = tabs.find(t => t.id === activeTabId);
   if (activeTab) nativeCodeArea.value = activeTab.content;
   updateNativeGutter();
   updateLineCounter();
+  updateEngineBtnText();
 }
+
+function activateMonacoEngine() {
+  activeEditorMode = 'monaco';
+  localStorage.setItem('zabacode-preferred-engine', 'monaco');
+  nativeWrapper.classList.remove('active');
+  monacoDiv.style.display = 'block';
+  if (editor) {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) editor.setValue(activeTab.content);
+    editor.layout();
+  }
+  updateLineCounter();
+  updateEngineBtnText();
+}
+
+sidebarEngineBtn.onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  if (activeEditorMode === 'monaco') {
+    activateNativeFallback('User toggled engine');
+  } else {
+    activateMonacoEngine();
+  }
+};
 
 function getEditorValue() {
   return activeEditorMode === 'monaco' && editor ? editor.getValue() : nativeCodeArea.value;
@@ -675,77 +737,88 @@ function registerCustomMonacoTheme(themeData) {
     colors: {
       'editor.background': themeData ? themeData.bg : '#050806',
       'editor.foreground': themeData ? themeData.text : '#B9F5C4',
-      'editor.lineHighlightBackground': themeData ? themeData.bg_panel : '#0A100D',
+      'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#00000000',
       'editorGutter.background': themeData ? themeData.bg : '#050806',
       'editorLineNumber.foreground': themeData ? themeData.text_dim : '#4D7A5A',
       'editorLineNumber.activeForeground': themeData ? themeData.text_bright : '#39FF14',
       'editorCursor.foreground': themeData ? themeData.text_bright : '#39FF14',
-      'editor.selectionBackground': (themeData ? themeData.border_bright : '#2E8B4F') + '55',
+      'editor.selectionBackground': (themeData ? themeData.border_bright : '#2E8B4F') + '33',
+      'editor.selectionHighlightBackground': '#00000000',
+      'editor.wordHighlightBackground': '#00000000',
+      'editor.wordHighlightStrongBackground': '#00000000',
       'editorScrollbar.shadow': '#00000000'
     }
   });
   monaco.editor.setTheme('zabacode-custom-theme');
 }
 
-const monacoLoadTimeout = setTimeout(() => {
-  if (activeEditorMode === 'loading') activateNativeFallback('Timeout koneksi CDN Monaco');
-}, 2000);
+if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
+  activateNativeFallback('Saved user preference');
+} else {
+  const monacoLoadTimeout = setTimeout(() => {
+    if (activeEditorMode === 'loading') activateNativeFallback('Timeout koneksi CDN Monaco');
+  }, 2000);
 
-try {
-  window.MonacoEnvironment = {
-    getWorkerUrl: function() {
-      return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
-    }
-  };
-  require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
-  require(['vs/editor/editor.main'], function() {
-    clearTimeout(monacoLoadTimeout);
-    if (activeEditorMode === 'native') return;
-    try {
-      registerCustomMonacoTheme(null);
+  try {
+    window.MonacoEnvironment = {
+      getWorkerUrl: function() {
+        return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
+      }
+    };
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+    require(['vs/editor/editor.main'], function() {
+      clearTimeout(monacoLoadTimeout);
+      if (activeEditorMode === 'native') return;
+      try {
+        registerCustomMonacoTheme(null);
 
-      editor = monaco.editor.create(monacoDiv, {
-        value: tabs[0].content,
-        language: 'python',
-        theme: 'zabacode-custom-theme',
-        fontSize: 14,
-        fontFamily: "'JetBrains Mono', monospace",
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        wordWrap: 'on',
-        wrappingIndent: 'indent',
-        glyphMargin: false,
-        folding: false,
-        lineDecorationsWidth: 0,
-        lineNumbersMinChars: 3,
-        padding: { top: 8, bottom: 8 },
-        renderLineHighlight: 'none', // MATIKAN HIGHLIGHT LINE TOTAL UNTUK MEMBASMI GARIS PUTIH
-        renderLineHighlightOnlyWhenFocus: false,
-        overviewRulerBorder: false,
-        hideCursorInOverviewRuler: true,
-        scrollbar: {
-          verticalScrollbarSize: 6,
-          horizontalScrollbarSize: 6
-        }
-      });
-      activeEditorMode = 'monaco';
-      updateLineCounter();
-      editor.onDidChangeCursorPosition(updateLineCounter);
-      
-      window.addEventListener('resize', () => { if (editor) editor.layout(); });
-      setTimeout(() => { if (editor) editor.layout(); }, 100);
-    } catch (err) {
-      activateNativeFallback('Gagal inisialisasi Monaco');
-    }
-  }, function() {
+        editor = monaco.editor.create(monacoDiv, {
+          value: tabs[0].content,
+          language: 'python',
+          theme: 'zabacode-custom-theme',
+          fontSize: 14,
+          fontFamily: "'JetBrains Mono', monospace",
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          wordWrap: 'on',
+          wrappingIndent: 'indent',
+          glyphMargin: false,
+          folding: false,
+          lineDecorationsWidth: 0,
+          lineNumbersMinChars: 3,
+          padding: { top: 8, bottom: 8 },
+          renderLineHighlight: 'none',
+          renderLineHighlightOnlyWhenFocus: false,
+          selectionHighlight: false,
+          occurrencesHighlight: 'off',
+          matchBrackets: 'never',
+          overviewRulerBorder: false,
+          hideCursorInOverviewRuler: true,
+          scrollbar: {
+            verticalScrollbarSize: 6,
+            horizontalScrollbarSize: 6
+          }
+        });
+        activeEditorMode = 'monaco';
+        updateLineCounter();
+        updateEngineBtnText();
+        editor.onDidChangeCursorPosition(updateLineCounter);
+        
+        window.addEventListener('resize', () => { if (editor) editor.layout(); });
+        setTimeout(() => { if (editor) editor.layout(); }, 100);
+      } catch (err) {
+        activateNativeFallback('Gagal inisialisasi Monaco');
+      }
+    }, function() {
+      clearTimeout(monacoLoadTimeout);
+      activateNativeFallback('Error CDN Monaco');
+    });
+  } catch (e) {
     clearTimeout(monacoLoadTimeout);
-    activateNativeFallback('Error CDN Monaco');
-  });
-} catch (e) {
-  clearTimeout(monacoLoadTimeout);
-  activateNativeFallback('Exception Monaco: ' + e.message);
+    activateNativeFallback('Exception Monaco: ' + e.message);
+  }
 }
 
 // ---------- View Swap Logic ----------
@@ -762,7 +835,7 @@ function goToOutput() {
 function goToEditor() {
   viewOutput.classList.remove('active');
   viewEditor.classList.remove('behind');
-  if (editor) setTimeout(() => editor.layout(), 150);
+  if (editor && activeEditorMode === 'monaco') setTimeout(() => editor.layout(), 150);
 }
 document.getElementById('back-to-editor').onclick = goToEditor;
 

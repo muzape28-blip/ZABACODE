@@ -7,17 +7,22 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  ZABACODE v0.3.3                                         │
+│  ZABACODE v0.3.4                                         │
 │  [ OK ] Subprocess sandbox Python engine ready           │
 │  [ OK ] __file__ Path Resolver active (_active_run.py)   │
 │  [ OK ] PyPI Direct Extractor active (SIGSEGV bypass)    │
-│  [ OK ] Multi-tab adaptive editor & In-App Docs ready    │
+│  [ OK ] Dual Engine Support: Monaco & Native Engine      │
+│  [ OK ] Total Cleared Active Line Highlight              │
 │  [ OK ] Multi-provider AI (Qwen 2.5, Gemini, Groq) ready │
 │  > workspace ready_                                      │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Features & Critical Fixes in v0.3.3
+## What's New in v0.3.4
+
+🚫 **100% Cleared Active Line White Highlight (Garis Putih Total Hilang)**
+- Menghapus border, outline, dan highlight aktif bawaan Android WebKit & Monaco Editor yang menutupi baris kode pertama.
+- Menambahkan **`⚙️ Engine Switcher Button`** di sidebar menu untuk berpindah antara **Monaco Engine** dan **Native Light Engine** kapan saja secara fleksibel.
 
 🛠️ **Automatic Script File Execution (`__file__` Fixed)**
 - Mengganti eksekusi `-c` mentah dengan file temporary `_active_run.py`.
@@ -26,13 +31,8 @@
 📦 **Direct PyPI Wheel Extractor (Bypass `pip error (-11)`)**
 - Dilengkapi dengan *Automatic Pure Python Extractor* via PyPI JSON API. Jika eksekusi `pip` subprocess bawaan mengalami `SIGSEGV (-11)` akibat pembatasan kernel Android, Zabacode secara otomatis mengunduh `.whl` murni Python dan mengekstraknya via `zipfile` internal tanpa bergantung pada compiler C.
 
-📖 **In-App Navigation & Theme Lock (No White Line Glitch)**
-- Dokumentasi & Roadmap dibuka dalam **Modal Internal** tanpa mengalihkan browser WebView ke luar, mencegah hilangnya state / tema editor.
-- **Aktifkan `pageshow` listener & matikan `lineHighlight` Monaco** untuk membasmi garis putih horisontal secara permanen.
-
-🤖 **Multi-Provider AI Assistant & Auto-Fix**
-- OpenRouter (`qwen/qwen-2.5-coder-32b-instruct:free`), Google Gemini (`gemini-1.5-flash`), Groq (`llama-3.1-8b-instant`), dan Mistral (`codestral-latest`).
-- **`⚡ ZABA AI: BENERIN ERROR INI!`**: Tombol auto-fix otomatis di terminal saat Traceback terjadi.
+📖 **In-App Modal Navigation**
+- Dokumentasi & Roadmap dibuka dalam Modal Internal tanpa mengalihkan browser WebView ke luar, menjaga tema & state editor tetap utuh.
 
 ## Quick Start
 

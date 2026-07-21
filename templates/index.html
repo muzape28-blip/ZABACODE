@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Zabacode IDE</title>
+<title>ZABACODE</title>
 
 <!-- Monaco Editor CDN -->
 <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.css">
@@ -68,6 +68,25 @@
     user-select: text !important;
   }
 
+  /* Fixed Cursors Layer for WebView Caret Placement */
+  .monaco-editor .cursors-layer .cursor {
+    background-color: var(--text-bright) !important;
+    border-color: var(--text-bright) !important;
+  }
+
+  /* Mobile Symbol Quick Bar */
+  #mobile-symbol-bar {
+    display: none; background: var(--bg-panel-2); border-top: 1px solid var(--border);
+    padding: 4px 8px; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto;
+  }
+  #mobile-symbol-bar.active { display: flex; }
+  #mobile-symbol-bar::-webkit-scrollbar { display: none; }
+  .symbol-btn {
+    background: var(--bg-panel); color: var(--text-bright); border: 1px solid var(--border);
+    padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; font-family: var(--mono);
+  }
+  .symbol-btn:active { background: var(--border-bright); color: var(--bg); }
+
   /* ---------- CRT Scanline Overlay ---------- */
   #scanlines {
     position: fixed; inset: 0; z-index: 999; pointer-events: none;
@@ -122,7 +141,7 @@
     width: 100%;
   }
   .icon-btn { background: none; border: none; color: var(--text-bright); font-size: 18px; cursor: pointer; padding: 6px; font-family: var(--mono); }
-  #app-title { font-weight: 700; letter-spacing: .04em; font-size: 13px; color: var(--text-bright); text-shadow: 0 0 8px rgba(57,255,20,.4); }
+  #app-title { font-weight: 700; letter-spacing: .04em; font-size: 14px; color: var(--text-bright); text-shadow: 0 0 8px rgba(57,255,20,.4); }
   #app-title::before { content: '> '; }
   #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
   #status-dot.running { background: var(--ai); animation: blink .6s infinite; }
@@ -305,7 +324,7 @@
     <div id="view-editor" class="view active">
       <div class="topbar">
         <button id="hamburger" class="icon-btn" aria-label="Menu">☰</button>
-        <div id="app-title">zabacode v0.3.5</div>
+        <div id="app-title">ZABACODE</div>
         <div id="status-dot"></div>
         <div id="line-counter">Ln 1, Col 1</div>
       </div>
@@ -319,11 +338,31 @@
         <div id="code-editor" tabindex="0"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE v0.3.5')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE')
 print('Coba jalankan library atau eksekusi kode di sini!')
 </textarea>
         </div>
       </div>
+
+      <!-- Mobile Symbol Quick Bar -->
+      <div id="mobile-symbol-bar">
+        <button class="symbol-btn" data-sym="    ">TAB</button>
+        <button class="symbol-btn" data-sym=":">:</button>
+        <button class="symbol-btn" data-sym="(">(</button>
+        <button class="symbol-btn" data-sym=")">)</button>
+        <button class="symbol-btn" data-sym="[">[</button>
+        <button class="symbol-btn" data-sym="]">]</button>
+        <button class="symbol-btn" data-sym="{">{</button>
+        <button class="symbol-btn" data-sym="}">}</button>
+        <button class="symbol-btn" data-sym='"'>"</button>
+        <button class="symbol-btn" data-sym="'">'</button>
+        <button class="symbol-btn" data-sym="=">=</button>
+        <button class="symbol-btn" data-sym="_">_</button>
+        <button class="symbol-btn" data-sym="def ">def</button>
+        <button class="symbol-btn" data-sym="return ">return</button>
+        <button class="symbol-btn" data-sym="import ">import</button>
+      </div>
+
       <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXECUTE</button>
         <button id="clear-btn" class="action" title="Bersihkan Editor / Terminal">CLEAR</button>
@@ -334,7 +373,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
     <div id="view-output" class="view">
       <div class="topbar">
         <button id="back-to-editor" class="icon-btn" aria-label="Kembali">◂ EDIT</button>
-        <div id="app-title">output terminal</div>
+        <div id="app-title-output" style="font-weight:bold;color:var(--text-bright);">output terminal</div>
         <button id="clear-output-btn" class="mini-btn" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);">CLEAR</button>
         <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
       </div>
@@ -346,21 +385,22 @@ print('Coba jalankan library atau eksekusi kode di sini!')
   <!-- SIDEBAR MENU -->
   <div id="sidebar-backdrop"></div>
   <div id="sidebar">
-    <div class="sidebar-header">zabacode</div>
+    <div class="sidebar-header">ZABACODE</div>
     <div class="sidebar-section">
-      <h3>[ FITUR & KONTROL ]</h3>
+      <h3 id="lbl-sidebar-control">[ FITUR & KONTROL ]</h3>
       <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 0 16px;">
         <button id="sidebar-market-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(255,176,0,.1); border-color: var(--ai);">🧩 PLUGIN & THEME MARKETPLACE</button>
         <button id="sidebar-lib-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05);">📦 LIBRARY MANAGER (zabapip)</button>
         <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
         <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
         <button id="sidebar-engine-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--ai-dim); color: var(--ai);">⚙️ ENGINE: MONACO (ACTIVE)</button>
+        <button id="sidebar-lang-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; border-color: var(--border-bright);">🌐 BAHASA: INDONESIA (SWITCH)</button>
         <button id="sidebar-theme-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">🎨 CHANGE THEME PRESET</button>
         <button id="sidebar-crt-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📺 CRT SCANLINES: ON</button>
       </div>
     </div>
     <div class="sidebar-section">
-      <h3>[ DOCS & ROADMAP ]</h3>
+      <h3 id="lbl-sidebar-docs">[ DOCS & ROADMAP ]</h3>
       <div style="padding: 0 16px; margin-top: 8px;">
         <button id="sidebar-docs-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; width: 100%;">📖 DOCS & ROADMAP</button>
       </div>
@@ -381,7 +421,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
       <button id="ai-close">✕</button>
     </div>
     <div id="ai-messages">
-      <div class="msg system-hint">AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.</div>
+      <div class="msg system-hint" id="lbl-ai-hint">AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.</div>
     </div>
     <div id="ai-input-row">
       <input id="ai-input" type="text" placeholder="tanya atau minta solusi AI...">
@@ -422,7 +462,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
   <div id="market-modal-backdrop" class="full-modal-backdrop">
     <div id="market-modal" class="full-modal">
       <div class="full-modal-header">
-        <div class="full-modal-title">🧩 ZABACODE ADDON & THEME MARKETPLACE</div>
+        <div class="full-modal-title" id="lbl-market-title">🧩 ZABACODE ADDON & THEME MARKETPLACE</div>
         <button class="full-modal-close" id="market-modal-close">✕</button>
       </div>
       
@@ -442,17 +482,17 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <div class="full-modal-title">📖 ZABACODE DOCUMENTATION & ROADMAP</div>
         <button class="full-modal-close" id="docs-modal-close">✕</button>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:18px;font-size:12px;line-height:1.7;">
-        <h3 style="color:var(--text-bright);">⚡ ZABACODE v0.3.5 Overview</h3>
+      <div style="flex:1;overflow-y:auto;padding:18px;font-size:12px;line-height:1.7;" id="docs-modal-body">
+        <h3 style="color:var(--text-bright);">⚡ ZABACODE Overview</h3>
         <p>Zabacode adalah Mobile Python IDE 100% Standalone & Anti-Kapitalis dengan zero-telemetry, didesain untuk berjalan di HP Android (ARMv7 32-bit & ARM64 64-bit).</p>
         
-        <h3 style="color:var(--text-bright);">🚀 Fitur Utama & Solusi v0.3.5</h3>
+        <h3 style="color:var(--text-bright);">🚀 Fitur Utama & Solusi</h3>
         <ul>
+          <li><b>Deterministic Monaco Cursor Alignment:</b> Kursor menyala bergerak presisi mengikuti baris di Android WebView.</li>
+          <li><b>Bilingual i18n Engine:</b> Dukungan penuh Bahasa Indonesia dan Bahasa Inggris yang bisa dipindah dalam 1 klik.</li>
+          <li><b>Functional Plugin Addon System:</b> Auto-Formatter, Snippets, Linter, dan Extended Mobile Symbol Bar.</li>
           <li><b>Local Session Auth Token Protection:</b> Mengikat endpoint API lokal dengan token keamanan <code>X-Zabacode-Token</code> acak.</li>
-          <li><b>Android Keystore Key Encryption:</b> Penyimpanan kunci API menggunakan EncryptedSharedPreferences via pyjnius.</li>
-          <li><b>Automatic File Execution & __file__ Repair:</b> Menjamin <code>Path(__file__)</code> terdefinisi sempurna.</li>
-          <li><b>SIGSEGV (-11) Bypass via PyPI Direct Extractor:</b> Pengunduhan Wheel murni Python langsung via PyPI API dengan SSL Bypass Context.</li>
-          <li><b>Plugin & Theme Marketplace:</b> Addon Marketplace lengkap bergaya Acode.</li>
+          <li><b>Android Keystore Key Encryption:</b> Penyimpanan kunci API terenkripsi aman.</li>
         </ul>
       </div>
     </div>
@@ -499,8 +539,8 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 <script>
-// Token Otentikasi Sesi Lokal
 const ZABACODE_TOKEN = "{{ auth_token }}";
+let currentLang = localStorage.getItem('zabacode-lang') || 'id';
 
 function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -512,15 +552,79 @@ function fetchApi(url, options = {}) {
   return fetch(url, options);
 }
 
+// Full i18n Translation Dictionary (ID / EN)
+const TRANSLATIONS = {
+  id: {
+    sidebar_control: "[ FITUR & KONTROL ]",
+    sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
+    sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
+    sidebar_open: "📂 OPEN / MANAGE FILES",
+    sidebar_save: "💾 SAVE AS FILE (.py)",
+    sidebar_lang: "🌐 BAHASA: INDONESIA (SWITCH)",
+    sidebar_theme: "🎨 CHANGE THEME PRESET",
+    sidebar_crt: "📺 CRT SCANLINES: ON",
+    sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
+    sidebar_docs_btn: "📖 DOCS & ROADMAP",
+    ai_hint: "AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.",
+    exec_btn: "▶ EXECUTE",
+    clear_btn: "CLEAR",
+    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE"
+  },
+  en: {
+    sidebar_control: "[ FEATURES & CONTROLS ]",
+    sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
+    sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
+    sidebar_open: "📂 OPEN / MANAGE FILES",
+    sidebar_save: "💾 SAVE AS FILE (.py)",
+    sidebar_lang: "🌐 LANGUAGE: ENGLISH (SWITCH)",
+    sidebar_theme: "🎨 CHANGE THEME PRESET",
+    sidebar_crt: "📺 CRT SCANLINES: ON",
+    sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
+    sidebar_docs_btn: "📖 DOCS & ROADMAP",
+    ai_hint: "AI automatically reads code in the active editor — ask anything about the code.",
+    exec_btn: "▶ EXECUTE",
+    clear_btn: "CLEAR",
+    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE"
+  }
+};
+
+function applyLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('zabacode-lang', lang);
+  const t = TRANSLATIONS[lang] || TRANSLATIONS['id'];
+
+  document.getElementById('lbl-sidebar-control').textContent = t.sidebar_control;
+  document.getElementById('sidebar-market-btn').textContent = t.sidebar_market;
+  document.getElementById('sidebar-lib-btn').textContent = t.sidebar_lib;
+  document.getElementById('sidebar-open-btn').textContent = t.sidebar_open;
+  document.getElementById('sidebar-save-btn').textContent = t.sidebar_save;
+  document.getElementById('sidebar-lang-btn').textContent = t.sidebar_lang;
+  document.getElementById('sidebar-theme-btn').textContent = t.sidebar_theme;
+  document.getElementById('lbl-sidebar-docs').textContent = t.sidebar_docs_lbl;
+  document.getElementById('sidebar-docs-btn').textContent = t.sidebar_docs_btn;
+  document.getElementById('lbl-ai-hint').textContent = t.ai_hint;
+  document.getElementById('run-btn').textContent = t.exec_btn;
+  document.getElementById('clear-btn').textContent = t.clear_btn;
+  document.getElementById('lbl-market-title').textContent = t.market_title;
+}
+
+document.getElementById('sidebar-lang-btn').onclick = () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+  const nextLang = currentLang === 'id' ? 'en' : 'id';
+  applyLanguage(nextLang);
+  showToast(nextLang === 'en' ? '✓ Switched to English' : '✓ Berubah ke Bahasa Indonesia', 'success');
+};
+
 // ---------- Boot Sequence Animation ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE Mobile IDE v0.3.5 Engine Inisialisasi...', cls: 'dim' },
+  { text: 'ZABACODE Mobile IDE Engine Inisialisasi...', cls: 'dim' },
   { text: '[ OK ] Local Session Auth Token Security Active', cls: 'ok' },
   { text: '[ OK ] Android Keystore Encrypted Key Storage Active', cls: 'ok' },
   { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
   { text: '[ OK ] Direct PyPI Wheel Extractor (SSL Bypass) siap', cls: 'ok' },
-  { text: '[ OK ] Addon Plugin & Theme Marketplace Engine dimuat', cls: 'ok' },
-  { text: '> Theme Custom Tanpa Garis Putih Aktif', cls: 'ok' },
+  { text: '[ OK ] Dual Language Engine: Indonesian & English Ready', cls: 'ok' },
+  { text: '> Theme Custom Tanpa Garis Putih & Fix Caret Alignment Aktif', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
 
@@ -533,14 +637,15 @@ function playBoot() {
     line.className = `line ${msg.cls}`;
     line.textContent = msg.text;
     bootLines.appendChild(line);
-    setTimeout(playBoot, 100);
+    setTimeout(playBoot, 80);
   } else {
     setTimeout(() => {
       document.getElementById('boot-screen').style.display = 'none';
       const app = document.getElementById('app');
       app.classList.add('ready');
+      applyLanguage(currentLang);
       if (editor) editor.layout();
-    }, 200);
+    }, 150);
   }
 }
 window.addEventListener('DOMContentLoaded', playBoot);
@@ -554,7 +659,7 @@ window.addEventListener('pageshow', (e) => {
 
 // ---------- Multi-Tab File System Manager ----------
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE v0.3.5')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
@@ -719,7 +824,7 @@ function setEditorValue(val) {
   updateLineCounter();
 }
 
-// Custom Monaco Theme tanpa border atau highlight putih
+// Custom Monaco Theme dengan LineHeight Presisi
 function registerCustomMonacoTheme(themeData) {
   if (!window.monaco) return;
   monaco.editor.defineTheme('zabacode-custom-theme', {
@@ -776,6 +881,7 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
           language: 'python',
           theme: 'zabacode-custom-theme',
           fontSize: 14,
+          lineHeight: 22,               // EXPLICIT FIXED LINEHEIGHT METRIC FIX
           fontFamily: "'JetBrains Mono', monospace",
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
@@ -789,6 +895,10 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
           padding: { top: 8, bottom: 8 },
           renderLineHighlight: 'none',
           renderLineHighlightOnlyWhenFocus: false,
+          cursorBlinking: 'smooth',
+          cursorSmoothCaretAnimation: 'on',
+          cursorStyle: 'line',
+          cursorWidth: 2,
           selectionHighlight: false,
           occurrencesHighlight: 'off',
           matchBrackets: 'never',
@@ -819,6 +929,33 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
     clearTimeout(monacoLoadTimeout);
     activateNativeFallback('Exception Monaco: ' + e.message);
   }
+}
+
+// ---------- Mobile Symbol Toolbar Handlers ----------
+const symbolBar = document.getElementById('mobile-symbol-bar');
+document.querySelectorAll('.symbol-btn').forEach(btn => {
+  btn.onclick = () => {
+    const sym = btn.dataset.sym;
+    if (activeEditorMode === 'monaco' && editor) {
+      editor.trigger('keyboard', 'type', { text: sym });
+      editor.focus();
+    } else {
+      const start = nativeCodeArea.selectionStart;
+      const end = nativeCodeArea.selectionEnd;
+      const val = nativeCodeArea.value;
+      nativeCodeArea.value = val.substring(0, start) + sym + val.substring(end);
+      nativeCodeArea.selectionStart = nativeCodeArea.selectionEnd = start + sym.length;
+      nativeCodeArea.focus();
+      updateNativeGutter();
+    }
+    updateLineCounter();
+  };
+});
+
+// Active Plugins State Management
+let installedPlugins = JSON.parse(localStorage.getItem('zabacode-active-plugins') || '{}');
+if (installedPlugins['symbol_bar']) {
+  symbolBar.classList.add('active');
 }
 
 // ---------- View Swap Logic ----------
@@ -862,7 +999,23 @@ document.getElementById('sidebar-crt-btn').onclick = toggleCrt;
 
 // ---------- Run Code Subprocess ----------
 document.getElementById('run-btn').onclick = async () => {
-  const code = getEditorValue();
+  let code = getEditorValue();
+
+  // Plugin: Syntax Linter Guard
+  if (installedPlugins['syntax_linter']) {
+    const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
+    if (unclosedParen) {
+      alert('🔍 Syntax Guard: Jumlah tanda kurung ( ) tidak seimbang!');
+      return;
+    }
+  }
+
+  // Plugin: Auto-Formatter
+  if (installedPlugins['auto_formatter']) {
+    code = code.split('\n').map(line => line.trimEnd()).join('\n');
+    setEditorValue(code);
+  }
+
   const runBtn = document.getElementById('run-btn');
   runBtn.disabled = true;
   statusDot.className = 'running';
@@ -1094,17 +1247,35 @@ async function loadMarketplace() {
       Object.values(data.plugins).forEach(plugin => {
         const card = document.createElement('div');
         card.className = 'market-card';
+        const isActive = Boolean(installedPlugins[plugin.id]);
+        
         card.innerHTML = `
           <div>
             <div style="font-weight:bold;font-size:13px;color:var(--text-bright);margin-bottom:4px;">${escapeHtml(plugin.name)}</div>
             <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;">by ${escapeHtml(plugin.author)} • v${escapeHtml(plugin.version)}</div>
             <div style="font-size:11px;color:var(--text);line-height:1.4;margin-bottom:10px;">${escapeHtml(plugin.description)}</div>
           </div>
-          <button class="mini-btn" style="background:var(--text-bright);color:#00190A;border:none;font-weight:bold;">AKTIFFKAN ADDON</button>
+          <button class="mini-btn toggle-plugin-btn" style="${isActive ? 'background:var(--border-bright);color:#00190A;border:none;' : 'background:var(--text-bright);color:#00190A;border:none;'}font-weight:bold;">
+            ${isActive ? 'NONAKTIFKAN ✕' : 'AKTIFFKAN ADDON ✓'}
+          </button>
         `;
-        card.querySelector('button').onclick = () => {
-          showToast(`✓ Plugin ${plugin.name} diaktifkan!`, 'success');
+
+        card.querySelector('.toggle-plugin-btn').onclick = () => {
+          if (installedPlugins[plugin.id]) {
+            delete installedPlugins[plugin.id];
+            showToast(`Plugin ${plugin.name} dinonaktifkan.`, 'error');
+          } else {
+            installedPlugins[plugin.id] = true;
+            showToast(`✓ Plugin ${plugin.name} berhasil diaktifkan!`, 'success');
+          }
+          localStorage.setItem('zabacode-active-plugins', JSON.stringify(installedPlugins));
+          
+          if (plugin.id === 'symbol_bar') {
+            symbolBar.classList.toggle('active', Boolean(installedPlugins['symbol_bar']));
+          }
+          loadMarketplace();
         };
+
         marketGridContainer.appendChild(card);
       });
     }

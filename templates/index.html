@@ -125,13 +125,13 @@
   /* ---------- View Swap Layout ---------- */
   .view {
     position: absolute; inset: 0; display: flex; flex-direction: column;
-    transform: translateX(0); transition: transform .25s ease; background: var(--bg);
+    background: var(--bg);
     width: 100%; max-width: 100vw; overflow-x: hidden;
   }
   #view-editor { z-index: 2; }
-  #view-output { z-index: 3; transform: translateX(100%); }
-  #view-output.active { transform: translateX(0); }
-  #view-editor.behind { transform: translateX(-15%); }
+  #view-output { z-index: 3; display: none; }
+  #view-output.active { display: flex; }
+  #view-editor.behind { display: none; }
   #view-root { position: relative; flex: 1; min-height: 0; width: 100%; overflow-x: hidden; }
 
   /* ---------- Top Bar ---------- */
@@ -235,6 +235,7 @@
   /* ---------- AI Bottom Sheet ---------- */
   #ai-fab {
     position: fixed; width: 48px; height: 48px; border-radius: 50%;
+    bottom: 90px; right: 20px;
     background: var(--ai); color: #1A0F00; border: none; font-size: 16px; cursor: grab;
     box-shadow: 0 0 16px rgba(255,176,0,.5); z-index: 25; font-family: var(--mono); font-weight: 700;
     touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center;
@@ -671,6 +672,40 @@ window.addEventListener('pageshow', (e) => {
   }
 });
 
+// Load and apply saved theme on startup
+(async function initTheme() {
+  const savedTheme = localStorage.getItem('zabacode-active-theme') || 'retro';
+  try {
+    const res = await fetchApi(`/api/themes/${savedTheme}`);
+    const data = await res.json();
+    if (data.ok) {
+      const t = data.theme;
+      currentThemeData = t;
+      document.documentElement.style.setProperty('--bg', rgbaToCss(t.bg));
+      document.documentElement.style.setProperty('--bg-panel', rgbaToCss(t.bg_panel));
+      document.documentElement.style.setProperty('--bg-panel-2', rgbaToCss(t.bg_panel_2));
+      document.documentElement.style.setProperty('--border', rgbaToCss(t.border));
+      document.documentElement.style.setProperty('--border-bright', rgbaToCss(t.border_bright));
+      document.documentElement.style.setProperty('--text', rgbaToCss(t.text));
+      document.documentElement.style.setProperty('--text-bright', rgbaToCss(t.text_bright));
+      document.documentElement.style.setProperty('--text-dim', rgbaToCss(t.text_dim));
+      document.documentElement.style.setProperty('--err', rgbaToCss(t.err));
+      document.documentElement.style.setProperty('--ai', rgbaToCss(t.ai));
+
+      if (t.err) {
+        const errDim = [t.err[0] * 0.48, t.err[1] * 0.14, t.err[2] * 0.14, t.err[3]];
+        document.documentElement.style.setProperty('--err-dim', rgbaToCss(errDim));
+      }
+      if (t.ai) {
+        const aiDim = [t.ai[0] * 0.48, t.ai[1] * 0.35, t.ai[2], t.ai[3]];
+        document.documentElement.style.setProperty('--ai-dim', rgbaToCss(aiDim));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to initialize theme on startup:', e);
+  }
+})();
+
 // ---------- Multi-Tab File System Manager ----------
 let tabs = [
   { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
@@ -775,6 +810,26 @@ function openStarterKits() {
 document.getElementById('sidebar-starter-btn').onclick = openStarterKits;
 document.getElementById('starter-dialog-cancel').onclick = () => document.getElementById('starter-dialog-backdrop').classList.remove('open');
 
+// ---------- Color Conversion Helpers ----------
+let currentThemeData = null;
+
+function rgbaToCss(rgba) {
+  if (!rgba || !Array.isArray(rgba)) return '';
+  const r = Math.round(rgba[0] * 255);
+  const g = Math.round(rgba[1] * 255);
+  const b = Math.round(rgba[2] * 255);
+  const a = rgba[3] !== undefined ? rgba[3] : 1;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function rgbaToHex(rgba) {
+  if (!rgba || !Array.isArray(rgba)) return '';
+  const r = Math.round(rgba[0] * 255).toString(16).padStart(2, '0');
+  const g = Math.round(rgba[1] * 255).toString(16).padStart(2, '0');
+  const b = Math.round(rgba[2] * 255).toString(16).padStart(2, '0');
+  return `#${r}${g}${b}`;
+}
+
 // ---------- Adaptive Monaco / Native Fallback Editor ----------
 const monacoDiv = document.getElementById('code-editor');
 const nativeWrapper = document.getElementById('native-editor-wrapper');
@@ -872,26 +927,32 @@ function setEditorValue(val) {
 // Custom Monaco Theme dengan LineHeight Presisi
 function registerCustomMonacoTheme(themeData) {
   if (!window.monaco) return;
+  const textHex = themeData ? rgbaToHex(themeData.text) : '#B9F5C4';
+  const textDimHex = themeData ? rgbaToHex(themeData.text_dim) : '#4D7A5A';
+  const textBrightHex = themeData ? rgbaToHex(themeData.text_bright) : '#39FF14';
+  const borderBrightHex = themeData ? rgbaToHex(themeData.border_bright) : '#2E8B4F';
+  const bgHex = themeData ? rgbaToHex(themeData.bg) : '#050806';
+
   monaco.editor.defineTheme('zabacode-custom-theme', {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: '', foreground: (themeData ? themeData.text : '#B9F5C4').replace('#', '') },
+      { token: '', foreground: textHex.replace('#', '') },
       { token: 'keyword', foreground: '39FF14', fontStyle: 'bold' },
       { token: 'string', foreground: 'FFB000' },
       { token: 'number', foreground: '50FA7B' },
-      { token: 'comment', foreground: (themeData ? themeData.text_dim : '#4D7A5A').replace('#', '') }
+      { token: 'comment', foreground: textDimHex.replace('#', '') }
     ],
     colors: {
-      'editor.background': themeData ? themeData.bg : '#050806',
-      'editor.foreground': themeData ? themeData.text : '#B9F5C4',
+      'editor.background': bgHex,
+      'editor.foreground': textHex,
       'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#00000000',
-      'editorGutter.background': themeData ? themeData.bg : '#050806',
-      'editorLineNumber.foreground': themeData ? themeData.text_dim : '#4D7A5A',
-      'editorLineNumber.activeForeground': themeData ? themeData.text_bright : '#39FF14',
-      'editorCursor.foreground': themeData ? themeData.text_bright : '#39FF14',
-      'editor.selectionBackground': (themeData ? themeData.border_bright : '#2E8B4F') + '33',
+      'editorGutter.background': bgHex,
+      'editorLineNumber.foreground': textDimHex,
+      'editorLineNumber.activeForeground': textBrightHex,
+      'editorCursor.foreground': textBrightHex,
+      'editor.selectionBackground': borderBrightHex + '33',
       'editor.selectionHighlightBackground': '#00000000',
       'editor.wordHighlightBackground': '#00000000',
       'editor.wordHighlightStrongBackground': '#00000000',
@@ -919,7 +980,7 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
       clearTimeout(monacoLoadTimeout);
       if (activeEditorMode === 'native') return;
       try {
-        registerCustomMonacoTheme(null);
+        registerCustomMonacoTheme(currentThemeData);
 
         editor = monaco.editor.create(monacoDiv, {
           value: tabs[0].content,
@@ -1576,15 +1637,29 @@ async function applyTheme(name) {
   const data = await res.json();
   if (data.ok) {
     const t = data.theme;
-    document.documentElement.style.setProperty('--bg', t.bg);
-    document.documentElement.style.setProperty('--bg-panel', t.bg_panel);
-    document.documentElement.style.setProperty('--border', t.border);
-    document.documentElement.style.setProperty('--border-bright', t.border_bright);
-    document.documentElement.style.setProperty('--text', t.text);
-    document.documentElement.style.setProperty('--text-bright', t.text_bright);
-    document.documentElement.style.setProperty('--text-dim', t.text_dim);
-    document.documentElement.style.setProperty('--err', t.err);
-    document.documentElement.style.setProperty('--ai', t.ai);
+    currentThemeData = t;
+    localStorage.setItem('zabacode-active-theme', name);
+
+    document.documentElement.style.setProperty('--bg', rgbaToCss(t.bg));
+    document.documentElement.style.setProperty('--bg-panel', rgbaToCss(t.bg_panel));
+    document.documentElement.style.setProperty('--bg-panel-2', rgbaToCss(t.bg_panel_2));
+    document.documentElement.style.setProperty('--border', rgbaToCss(t.border));
+    document.documentElement.style.setProperty('--border-bright', rgbaToCss(t.border_bright));
+    document.documentElement.style.setProperty('--text', rgbaToCss(t.text));
+    document.documentElement.style.setProperty('--text-bright', rgbaToCss(t.text_bright));
+    document.documentElement.style.setProperty('--text-dim', rgbaToCss(t.text_dim));
+    document.documentElement.style.setProperty('--err', rgbaToCss(t.err));
+    document.documentElement.style.setProperty('--ai', rgbaToCss(t.ai));
+
+    // Calculate/derive dim properties for error and ai highlights
+    if (t.err) {
+      const errDim = [t.err[0] * 0.48, t.err[1] * 0.14, t.err[2] * 0.14, t.err[3]];
+      document.documentElement.style.setProperty('--err-dim', rgbaToCss(errDim));
+    }
+    if (t.ai) {
+      const aiDim = [t.ai[0] * 0.48, t.ai[1] * 0.35, t.ai[2], t.ai[3]];
+      document.documentElement.style.setProperty('--ai-dim', rgbaToCss(aiDim));
+    }
     
     registerCustomMonacoTheme(t);
     themeDialogBackdrop.classList.remove('open');

@@ -224,6 +224,12 @@
 
   /* ---------- Output View Terminal ---------- */
   #output-terminal { flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  #terminal-stdin-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg-panel); }
+  #terminal-stdin-label { color: var(--text-bright); font-size: 12px; white-space: nowrap; }
+  #stdin-input { flex: 1; min-width: 0; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; font-size: 12px; font-family: var(--mono); outline: none; }
+  #stdin-input:disabled { cursor: not-allowed; opacity: .6; }
+  #stdin-send-btn { background: transparent; color: var(--text-bright); border: 1px solid var(--border-bright); padding: 8px 10px; font: 700 12px var(--mono); cursor: pointer; }
+  #stdin-send-btn:disabled { cursor: not-allowed; opacity: .6; }
   .prompt-line { color: var(--text-bright); margin-bottom: 8px; }
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
@@ -364,10 +370,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button class="symbol-btn" data-sym="import ">import</button>
       </div>
 
-      <div style="flex: 0 0 auto; padding: 8px 12px 0 12px; background: var(--bg-panel); border-top: 1px solid var(--border); width: 100%;">
-        <input type="text" id="stdin-input" placeholder="Input interaktif (STDIN) — jalankan program dulu" style="width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; font-size: 12px; font-family: var(--mono); outline: none;">
-      </div>
-      <div id="editor-controls" style="border-top: none;">
+      <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXECUTE</button>
         <button id="clear-btn" class="action" title="Bersihkan Editor / Terminal">CLEAR</button>
       </div>
@@ -381,7 +384,12 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button id="clear-output-btn" class="mini-btn" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);">CLEAR</button>
         <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
       </div>
-      <div id="output-terminal"></div>
+      <div id="output-terminal" aria-live="polite"></div>
+      <div id="terminal-stdin-row">
+        <label id="terminal-stdin-label" for="stdin-input">stdin &gt;</label>
+        <input type="text" id="stdin-input" placeholder="Jalankan program untuk mengaktifkan input" disabled autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Input untuk program yang sedang berjalan">
+        <button id="stdin-send-btn" type="button" disabled>KIRIM</button>
+      </div>
     </div>
 
   </div>
@@ -581,9 +589,15 @@ const TRANSLATIONS = {
     sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
     sidebar_docs_btn: "📖 DOCS & ROADMAP",
     ai_hint: "AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.",
-    exec_btn: "▶ EXECUTE",
-    clear_btn: "CLEAR",
-    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE"
+    exec_btn: "▶ JALANKAN",
+    stop_btn: "⏹ BERHENTI",
+    clear_btn: "BERSIHKAN",
+    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "Jalankan program untuk mengaktifkan input",
+    stdin_placeholder_active: "Ketik input lalu tekan Enter/KIRIM untuk mengirim ke program...",
+    stdin_send: "KIRIM",
+    toast_lang: "✓ Berubah ke Bahasa Indonesia"
   },
   en: {
     sidebar_control: "[ FEATURES & CONTROLS ]",
@@ -597,11 +611,107 @@ const TRANSLATIONS = {
     sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
     sidebar_docs_btn: "📖 DOCS & ROADMAP",
     ai_hint: "AI automatically reads code in the active editor — ask anything about the code.",
-    exec_btn: "▶ EXECUTE",
+    exec_btn: "▶ RUN",
+    stop_btn: "⏹ STOP",
     clear_btn: "CLEAR",
-    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE"
+    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "Run the program to enable input",
+    stdin_placeholder_active: "Type input then press Enter/SEND to send to program...",
+    stdin_send: "SEND",
+    toast_lang: "✓ Switched to English"
+  },
+  ja: {
+    sidebar_control: "[ 機能とコントロール ]",
+    sidebar_market: "🧩 プラグインとテーマのマーケットプレイス",
+    sidebar_lib: "📦 ライブラリマネージャー (zabapip)",
+    sidebar_open: "📂 ファイルを開く/管理する",
+    sidebar_save: "💾 ファイルとして保存 (.py)",
+    sidebar_lang: "🌐 言語: 日本語 (SWITCH)",
+    sidebar_theme: "🎨 テーマプリセットの変更",
+    sidebar_crt: "📺 CRTスキャンライン: オン",
+    sidebar_docs_lbl: "[ ドキュメントとロードマップ ]",
+    sidebar_docs_btn: "📖 ドキュメントとロードマップ",
+    ai_hint: "AIはアクティブなエディターのコードを自動的に読み取ります。コードについて質問してください。",
+    exec_btn: "▶ 実行",
+    stop_btn: "⏹ 停止",
+    clear_btn: "クリア",
+    market_title: "🧩 ZABACODE アドオン＆テーママーケットプレイス",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "プログラムを実行して入力を有効にします",
+    stdin_placeholder_active: "入力を入力し、Enterまたは「送信」を押してプログラムに送信します...",
+    stdin_send: "送信",
+    toast_lang: "✓ 日本語に切り替えました"
+  },
+  ko: {
+    sidebar_control: "[ 기능 및 컨트롤 ]",
+    sidebar_market: "🧩 플러그인 및 테마 마켓플레이스",
+    sidebar_lib: "📦 라이브러리 관리자 (zabapip)",
+    sidebar_open: "📂 파일 열기/관리",
+    sidebar_save: "💾 파일로 저장 (.py)",
+    sidebar_lang: "🌐 언어: 한국어 (SWITCH)",
+    sidebar_theme: "🎨 테마 프리셋 변경",
+    sidebar_crt: "📺 CRT 스캔라인: 켜짐",
+    sidebar_docs_lbl: "[ 문서 및 로드맵 ]",
+    sidebar_docs_btn: "📖 문서 및 로드맵",
+    ai_hint: "AI가 활성 에디터의 코드를 자동으로 읽습니다. 코드에 대해 무엇이든 물어보세요.",
+    exec_btn: "▶ 실행",
+    stop_btn: "⏹ 중지",
+    clear_btn: "지우기",
+    market_title: "🧩 ZABACODE 애드온 및 테마 마켓플레이스",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "입력을 활성화하려면 프로그램을 실행하세요",
+    stdin_placeholder_active: "입력값을 입력한 후 Enter/전송을 눌러 프로그램으로 전송하세요...",
+    stdin_send: "전송",
+    toast_lang: "✓ 한국어로 변경되었습니다"
+  },
+  ar: {
+    sidebar_control: "[ الميزات وعناصر التحكم ]",
+    sidebar_market: "🧩 متجر الإضافات والسمات",
+    sidebar_lib: "📦 مدير المكتبات (zabapip)",
+    sidebar_open: "📂 فتح / إدارة الملفات",
+    sidebar_save: "💾 حفظ كملف (.py)",
+    sidebar_lang: "🌐 اللغة: العربية (SWITCH)",
+    sidebar_theme: "🎨 تغيير سمة المظهر",
+    sidebar_crt: "📺 خطوط مسح CRT: تشغيل",
+    sidebar_docs_lbl: "[ المستندات وخارطة الطريق ]",
+    sidebar_docs_btn: "📖 المستندات وخارطة الطريق",
+    ai_hint: "يقرأ الذكاء الاصطناعي الكود تلقائيًا في المحرر النشط — اسأل أي شيء عن الكود.",
+    exec_btn: "▶ تشغيل",
+    stop_btn: "⏹ إيقاف",
+    clear_btn: "مسح",
+    market_title: "🧩 متجر إضافات وسمات ZABACODE",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "قم بتشغيل البرنامج لتمكين الإدخال",
+    stdin_placeholder_active: "اكتب المدخلات ثم اضغط Enter/إرسال للإرسال إلى البرنامج...",
+    stdin_send: "إرسال",
+    toast_lang: "✓ تم التغيير إلى اللغة العربية"
+  },
+  es: {
+    sidebar_control: "[ CARACTERÍSTICAS Y CONTROLES ]",
+    sidebar_market: "🧩 MERCADO DE COMPLEMENTOS Y TEMAS",
+    sidebar_lib: "📦 GESTOR DE BIBLIOTECAS (zabapip)",
+    sidebar_open: "📂 ABRIR / GESTIONAR ARCHIVOS",
+    sidebar_save: "💾 GUARDAR COMO ARCHIVO (.py)",
+    sidebar_lang: "🌐 IDIOMA: ESPAÑOL (SWITCH)",
+    sidebar_theme: "🎨 CAMBIAR TEMA VISUAL",
+    sidebar_crt: "📺 LÍNEAS DE ESCANEO CRT: ACTIVO",
+    sidebar_docs_lbl: "[ DOCS Y RUTA DE DESARROLLO ]",
+    sidebar_docs_btn: "📖 DOCS Y RUTA DE DESARROLLO",
+    ai_hint: "La IA lee automáticamente el código en el editor activo; pregunte cualquier cosa sobre el código.",
+    exec_btn: "▶ EJECUTAR",
+    stop_btn: "⏹ DETENER",
+    clear_btn: "LIMPIAR",
+    market_title: "🧩 MERCADO DE COMPLEMENTOS Y TEMAS DE ZABACODE",
+    stdin_label: "stdin >",
+    stdin_placeholder_idle: "Ejecute el programa para habilitar la entrada",
+    stdin_placeholder_active: "Escriba la entrada y presione Enter/ENVIAR para enviar al programa...",
+    stdin_send: "ENVIAR",
+    toast_lang: "✓ Cambiado a Español"
   }
 };
+
+const LANG_CYCLE = ['id', 'en', 'ja', 'ko', 'ar', 'es'];
 
 function applyLanguage(lang) {
   currentLang = lang;
@@ -621,14 +731,26 @@ function applyLanguage(lang) {
   document.getElementById('run-btn').textContent = t.exec_btn;
   document.getElementById('clear-btn').textContent = t.clear_btn;
   document.getElementById('lbl-market-title').textContent = t.market_title;
+
+  // Stdin i18n
+  const stdinLabel = document.getElementById('terminal-stdin-label');
+  const stdinInput = document.getElementById('stdin-input');
+  const stdinSendBtn = document.getElementById('stdin-send-btn');
+  if (stdinLabel) stdinLabel.textContent = t.stdin_label;
+  if (stdinInput) {
+    stdinInput.placeholder = stdinInput.disabled ? t.stdin_placeholder_idle : t.stdin_placeholder_active;
+  }
+  if (stdinSendBtn) stdinSendBtn.textContent = t.stdin_send;
 }
 
 document.getElementById('sidebar-lang-btn').onclick = () => {
   sidebar.classList.remove('open');
   sidebarBackdrop.classList.remove('open');
-  const nextLang = currentLang === 'id' ? 'en' : 'id';
+  const currentIndex = LANG_CYCLE.indexOf(currentLang);
+  const nextLang = LANG_CYCLE[(currentIndex + 1) % LANG_CYCLE.length];
   applyLanguage(nextLang);
-  showToast(nextLang === 'en' ? '✓ Switched to English' : '✓ Berubah ke Bahasa Indonesia', 'success');
+  const t = TRANSLATIONS[nextLang] || TRANSLATIONS['id'];
+  showToast(t.toast_lang, 'success');
 };
 
 // ---------- Boot Sequence Animation ----------
@@ -1147,11 +1269,20 @@ function finishInteractiveSession(exitCode, note) {
   if (interactivePollTimer) { clearInterval(interactivePollTimer); interactivePollTimer = null; }
 
   const runBtn = document.getElementById('run-btn');
-  runBtn.textContent = '\u25B6 EXECUTE';
+  const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
+  runBtn.textContent = t.exec_btn || '▶ JALANKAN';
   runBtn.disabled = false;
 
   const stdinInput = document.getElementById('stdin-input');
-  stdinInput.placeholder = 'Input interaktif (STDIN) \u2014 jalankan program dulu';
+  const stdinSendBtn = document.getElementById('stdin-send-btn');
+  if (stdinInput) {
+    stdinInput.value = '';
+    stdinInput.disabled = true;
+    stdinInput.placeholder = t.stdin_placeholder_idle;
+  }
+  if (stdinSendBtn) {
+    stdinSendBtn.disabled = true;
+  }
 
   if (interactiveStderrBuffer.trim()) {
     const fixBtn = document.createElement('button');
@@ -1248,11 +1379,24 @@ document.getElementById('run-btn').onclick = async () => {
     }
 
     interactiveActive = true;
-    runBtn.textContent = '\u25A0 STOP';
+    const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
+    runBtn.textContent = t.stop_btn || '⏹ BERHENTI';
     runBtn.disabled = false;
 
     const stdinInput = document.getElementById('stdin-input');
-    stdinInput.placeholder = 'Ketik input lalu tekan Enter untuk mengirim ke program...';
+    const stdinSendBtn = document.getElementById('stdin-send-btn');
+    if (stdinInput) {
+      stdinInput.disabled = false;
+      stdinInput.placeholder = t.stdin_placeholder_active;
+    }
+    if (stdinSendBtn) {
+      stdinSendBtn.disabled = false;
+    }
+
+    // Auto-focus input for a smoother terminal user experience
+    if (stdinInput) {
+      stdinInput.focus();
+    }
 
     interactivePollTimer = setInterval(pollInteractiveOutput, 150);
   } catch (e) {
@@ -1263,25 +1407,55 @@ document.getElementById('run-btn').onclick = async () => {
   }
 };
 
-// STDIN live input: Enter sends the line into the running process
-document.getElementById('stdin-input').addEventListener('keydown', async (e) => {
-  if (e.key !== 'Enter') return;
-  if (e.isComposing || e.keyCode === 229) return;
-  if (!interactiveActive) return;
-  const input = e.target;
+// STDIN live input: Enter or SEND button sends the line into the running process
+async function sendTerminalInput() {
+  const input = document.getElementById('stdin-input');
+  const sendBtn = document.getElementById('stdin-send-btn');
+  if (!interactiveActive || !input || input.disabled) return;
+
   const text = input.value;
   input.value = '';
-  appendStreamChunk('stdout', text + '\n');
+
+  // Disable to prevent double send / race conditions
+  input.disabled = true;
+  if (sendBtn) sendBtn.disabled = true;
+
   try {
-    await fetchApi('/api/run/interactive/input', {
+    const res = await fetchApi('/api/run/interactive/input', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text + '\n' }),
     });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.message || 'Input ditolak oleh proses.');
+    appendStreamChunk('stdout', text + '\n');
   } catch (err) {
     appendStreamChunk('stderr', 'Gagal mengirim input: ' + err + '\n');
+  } finally {
+    if (interactiveActive) {
+      const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
+      if (input) {
+        input.disabled = false;
+        input.placeholder = t.stdin_placeholder_active;
+        input.focus();
+      }
+      if (sendBtn) {
+        sendBtn.disabled = false;
+      }
+    }
   }
+}
+
+document.getElementById('stdin-input').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  sendTerminalInput();
 });
+
+const stdinSendBtnEl = document.getElementById('stdin-send-btn');
+if (stdinSendBtnEl) {
+  stdinSendBtnEl.onclick = sendTerminalInput;
+}
 
 // ---------- Sidebar Navigation ----------
 const sidebar = document.getElementById('sidebar');

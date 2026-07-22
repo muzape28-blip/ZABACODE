@@ -4,14 +4,15 @@ title = Zabacode
 package.name = zabacode
 package.domain = com.zaba
 source.dir = .
-source.include_exts = py,png,jpg,json,ttf,otf
+source.include_exts = py,png,jpg,html,js,css,json,ttf,otf
 version = 1.0.0
 
-# Kivy native UI (sdl2 bootstrap, NOT webview!)
-p4a.bootstrap = sdl2
+# WebView shell over the v1.0.0 modular Python core
+p4a.bootstrap = webview
+p4a.port = 5000
 
 # Core requirements
-requirements = python3,kivy,pygments,pip,setuptools,requests,tinydb,beautifulsoup4,python-dotenv
+requirements = python3,flask,waitress,pip,setuptools,requests,tinydb,beautifulsoup4,python-dotenv
 
 orientation = portrait
 fullscreen = 0

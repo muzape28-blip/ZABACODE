@@ -1,13 +1,11 @@
-"""ZABACODE v1.0.0 — Native Kivy entry point."""
+"""ZABACODE v1.0.0 — WebView shell entry point for the native Python core."""
 
 import os
-import sys
 import traceback
 from pathlib import Path
 
 
 def _write_crash_log() -> None:
-    """Persist startup tracebacks where an Android user can retrieve them."""
     app_dir = Path(os.environ.get("ANDROID_PRIVATE", Path(__file__).parent))
     try:
         app_dir.mkdir(parents=True, exist_ok=True)
@@ -18,8 +16,8 @@ def _write_crash_log() -> None:
 
 if __name__ == "__main__":
     try:
-        from zabacode.ui.app import ZabacodeApp
-        ZabacodeApp().run()
+        from zabacode.web_app import run_webview_server
+        run_webview_server()
     except Exception:
         _write_crash_log()
         raise

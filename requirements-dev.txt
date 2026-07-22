@@ -1,8 +1,8 @@
 # Zabacode Development Requirements (v1.0.0 — Kivy Native Edition)
 
-# Kivy Framework
-Kivy>=2.3.0
-Pygments>=2.16.0
+# WebView shell
+Flask>=2.3.3
+waitress>=2.1.2
 
 # Core Dependencies
 requests>=2.31.0

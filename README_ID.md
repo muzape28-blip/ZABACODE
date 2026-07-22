@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <i>Menggabungkan kekuatan eksekusi murni <b>Pydroid 3</b> dengan kerapihan UI, multi-tab, & kontrol <b>Acode</b> — kini berbasis <b>Kivy Native UI</b> — 100% Gratis, Open Source, & Zero Telemetry.</i>
+  <i>Menggabungkan kekuatan eksekusi murni <b>Pydroid 3</b> dengan kerapihan UI, multi-tab, & kontrol <b>Acode</b> — kini memakai <b>WebView shell di atas core Python modular</b> — 100% Gratis, Open Source, & Zero Telemetry.</i>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-39FF14.svg?style=flat&logo=android" alt="Version"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3 License"></a>
   <img src="https://img.shields.io/badge/Architecture-ARMv7%20%7C%20ARM64-FFB000.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/UI-Kivy%20Native-9B59B6.svg" alt="Kivy Native">
+  <img src="https://img.shields.io/badge/UI-WebView%20Shell-147885.svg" alt="WebView Shell">
   <img src="https://img.shields.io/badge/Telemetry-ZERO-brightgreen.svg" alt="Zero Telemetry">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20First-success.svg" alt="Offline First">
 </p>
@@ -30,9 +30,9 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ZABACODE v1.0.0 — Kivy Native Edition                                     │
-│  [ OK ] Kivy SDL2 Native UI Engine Active                                  │
-│  [ OK ] Pygments Syntax Highlighting Active                                │
+│  ZABACODE v1.0.0 — WebView Shell + Core Python Modular                    │
+│  [ OK ] Local WebView UI Engine Active                                     │
+│  [ OK ] Core Engine Modular Active                                         │
 │  [ OK ] Subprocess Runner dengan Timeout & Process-Group Cleanup           │
 │  [ OK ] Android Keystore untuk API Key Aktif                                │
 │  [ OK ] Direct PyPI Wheel Extractor dengan Verifikasi TLS                  │
@@ -62,12 +62,12 @@ Di tengah ekosistem aplikasi mobile yang dipenuhi oleh iklan mengganggu, *paywal
 
 ## 🆕 Apa yang Baru di v1.0.0 (Kivy Native Edition)
 
-### 🔥 Besar: WebView → Kivy Migration
-Seluruh UI telah migrasi dari Flask+WebView ke **native Kivy (SDL2)**. Artinya:
-- **Tanpa web server lokal** — semua operasi adalah pemanggilan fungsi Python langsung
-- **Respons lebih cepat** — tanpa overhead HTTP antara UI dan backend
-- **Keamanan lebih baik** — tidak ada server localhost yang terekspos
-- **Tampilan native** — widget Kivy render langsung via GPU
+### 🔥 Besar: Core modular + WebView shell kompatibel
+UI memakai WebView lokal, sedangkan core v1.0.0 tetap modular untuk eksekusi, file, package, tema, plugin, dan AI. Perubahan ini menghindari jalur startup Kivy yang force close pada ARMv7 tanpa membuang perbaikan core.
+- **UI compatibility-first** — kembali ke WebView yang lebih stabil untuk perangkat ini
+- **Core modular tetap dipakai** — modul executor, security, file, package, dan provider tetap terpisah
+- **Server hanya localhost** — shell hanya bind ke `127.0.0.1`
+- **Inti tetap offline-first** — edit dan eksekusi lokal tidak butuh internet
 
 ### 📦 2. Library Manager Diperkaya — 50+ Pustaka dengan Tag Offline/Online
 Setiap pustaka kini memiliki tag `mode`:

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — now powered by <b>Kivy Native UI</b> — 100% Free, Open Source, & Zero Telemetry.</i>
+  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — now powered by a <b>WebView shell over a modular Python core</b> — 100% Free, Open Source, & Zero Telemetry.</i>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="https://github.com/muzape28-blip/ZABACODE/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-39FF14.svg?style=flat&logo=android" alt="Version"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3 License"></a>
   <img src="https://img.shields.io/badge/Architecture-ARMv7%20%7C%20ARM64-FFB000.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/UI-Kivy%20Native-9B59B6.svg" alt="Kivy Native">
+  <img src="https://img.shields.io/badge/UI-WebView%20Shell-147885.svg" alt="WebView Shell">
   <img src="https://img.shields.io/badge/Telemetry-ZERO-brightgreen.svg" alt="Zero Telemetry">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20First-success.svg" alt="Offline First">
 </p>
@@ -30,9 +30,9 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ZABACODE v1.0.0 — Kivy Native Edition                                     │
-│  [ OK ] Kivy SDL2 Native UI Engine Active                                  │
-│  [ OK ] Pygments Syntax Highlighting Active                                │
+│  ZABACODE v1.0.0 — WebView Shell + Modular Python Core                    │
+│  [ OK ] Local WebView UI Engine Active                                     │
+│  [ OK ] Modular Core Engine Active                                         │
 │  [ OK ] Subprocess Runner with Timeout & Process-Group Cleanup             │
 │  [ OK ] Android Keystore API-Key Storage Active                             │
 │  [ OK ] Direct PyPI Wheel Extractor with TLS Verification                  │
@@ -60,14 +60,13 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 
 ---
 
-## 🆕 What's New in v1.0.0 (Kivy Native Edition)
+## 🆕 v1.0.0: Modular core with a lightweight WebView shell
 
-### 🔥 Major: WebView → Kivy Migration
-The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. This means:
-- **No local web server** — all operations are direct Python function calls
-- **Faster response** — no HTTP overhead between UI and backend
-- **Better security** — no exposed localhost server
-- **Native look & feel** — Kivy widgets render directly via GPU
+The UI uses a local WebView while the v1.0.0 modular Python core provides execution, file handling, package management, themes, plugins, and AI providers. This restores compatibility on constrained devices without discarding the refactored core.
+- **Compatibility-first UI** — avoids the Kivy startup path that caused force closes on the current ARMv7 device
+- **Modular core retained** — execution, security, file, package, and provider modules remain separate
+- **Local-only server binding** — the shell binds to `127.0.0.1` only
+- **Offline core** — editing and local execution work without a network connection
 
 ### 🧠 1. Subprocess Isolation & Auto `__file__` Resolution
 * **Separate Process Runner:** Every Python script runs in a separate subprocess with a 30-second execution timeout. This is not a security sandbox; run only code you trust.
@@ -117,8 +116,8 @@ The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. Th
 
 ```
  ┌──────────────────────────────────────────────────────────┐
-│              Kivy Native UI Front-End (SDL2)             │
-│    (CodeInput + Pygments + Line Numbers + Themes)       │
+│              Local WebView UI Shell                       │
+│    (HTML editor + themes + plugins + mobile controls)     │
 └────────────────────────┬─────────────────────────────────┘
                          │ Direct Python Function Calls
 ┌────────────────────────▼─────────────────────────────────┐
@@ -142,7 +141,7 @@ The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. Th
 | **License Model** | Freemium / Paywall | Paid Play Store | **100% Free & Open-Source (GPLv3)** |
 | **Ads & Telemetry** | Includes Ads & Trackers | Includes Analytics | **ZERO Telemetry & ZERO Ads** |
 | **Python Execution Engine**| ✅ Native | ❌ Requires Termux | ✅ **Isolated Subprocess Sandbox** |
-| **UI Engine** | ⚠️ IDLE Style | ✅ Modern Ace/Monaco | ✅ **Kivy Native (GPU-Accelerated)** |
+| **UI Engine** | ⚠️ IDLE Style | ✅ Modern Ace/Monaco | ✅ **Local WebView shell** |
 | **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **6 Providers + 1 Offline (Ollama)** |
 | **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Offline/Online Tags** |
 | **Themes** | ⚠️ Limited | ✅ Multiple | 🚀 **10 Themes (Tokyo Night, Catppuccin, etc.)** |

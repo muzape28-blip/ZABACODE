@@ -8,6 +8,13 @@
 
 ## 🟩 Progress Log & Changes
 
+### 🩹 Hotfix — WebView UI Restoration & Interactive Terminal Frontend
+* [x] **Restored `templates/index.html`:** File was accidentally emptied (0 bytes) in PR #4, leaving the WebView shell with a blank UI. Restored from the last good revision.
+* [x] **Interactive Terminal wired to frontend:** RUN now uses `/api/run/interactive/start|output|input|stop` — real-time char streaming, live STDIN input via Enter, and the EXECUTE button doubles as STOP while a process runs.
+* [x] **Removed stale `zabacode_crash.log`** from the repo and gitignored it.
+* [x] **Fixed `.gitignore`:** removed the obsolete `templates/` ignore rule (WebView shell is the active UI again) that caused the template loss to go unnoticed.
+
+
 ### 🔥 v1.0.0 — Kivy Native Edition (MAJOR RELEASE)
 * [x] **Full WebView → Kivy Migration:** Replaced Flask+WebView with native Kivy (SDL2) UI. No more local HTTP server.
 * [x] **Direct Python Function Calls:** All backend operations are now direct Python calls instead of HTTP API routes. Faster and more secure.

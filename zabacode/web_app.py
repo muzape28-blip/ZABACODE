@@ -17,7 +17,9 @@ from zabacode.themes.definitions import get_theme, list_themes
 APP_VERSION = "1.0.0"
 MAX_AI_FIELD_CHARS = 100_000
 
-app = Flask(__name__)
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "assets"))
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 

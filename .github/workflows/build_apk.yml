@@ -52,6 +52,67 @@ jobs:
         yes | "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" --licenses || true
         "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" || true
 
+    # FIX KEYBOARD WEBVIEW: bootstrap webview p4a membuat WebView tanpa focus,
+    # sehingga soft keyboard Android tidak pernah muncul (tidak bisa mengetik
+    # di Monaco, input STDIN, atau field apapun). Patch ini menambahkan
+    # setFocusable + requestFocus + touch-to-focus, dan windowSoftInputMode
+    # adjustResize agar keyboard tidak menutupi input.
+    - name: Clone & patch python-for-android (WebView keyboard fix)
+      run: |
+        git clone --depth 1 --branch master https://github.com/kivy/python-for-android.git p4a-patched
+
+        ACTIVITY=p4a-patched/pythonforandroid/bootstraps/webview/build/src/main/java/org/kivy/android/PythonActivity.java
+        MANIFEST=p4a-patched/pythonforandroid/bootstraps/webview/build/templates/AndroidManifest.tmpl.xml
+
+        python3 - "$ACTIVITY" <<'PYEOF'
+        import sys
+        path = sys.argv[1]
+        src = open(path).read()
+        anchor = "mWebView.getSettings().setDomStorageEnabled(true);"
+        assert anchor in src, "Anchor not found in PythonActivity.java"
+        patch = anchor + """
+                mWebView.setFocusable(true);
+                mWebView.setFocusableInTouchMode(true);
+                mWebView.requestFocus(android.view.View.FOCUS_DOWN);
+                mWebView.setOnTouchListener(new android.view.View.OnTouchListener() {
+                    @Override
+                    public boolean onTouch(android.view.View v, android.view.MotionEvent event) {
+                        switch (event.getAction()) {
+                            case android.view.MotionEvent.ACTION_DOWN:
+                            case android.view.MotionEvent.ACTION_UP:
+                                if (!v.hasFocus()) {
+                                    v.requestFocus();
+                                }
+                                break;
+                        }
+                        return false;
+                    }
+                });"""
+        open(path, "w").write(src.replace(anchor, patch, 1))
+        print("PythonActivity.java patched: WebView focus + touch-to-focus")
+        PYEOF
+
+        python3 - "$MANIFEST" <<'PYEOF'
+        import re, sys
+        path = sys.argv[1]
+        src = open(path).read()
+        if "windowSoftInputMode" not in src:
+            # Inject the attribute right after the activity opening tag name
+            new, n = re.subn(
+                r'(<activity\s)',
+                r'<activity android:windowSoftInputMode="adjustResize" ',
+                src, count=1)
+            assert n == 1, "Could not patch AndroidManifest.tmpl.xml"
+            open(path, "w").write(new)
+            print("AndroidManifest.tmpl.xml patched: adjustResize")
+        else:
+            print("AndroidManifest.tmpl.xml already has windowSoftInputMode")
+        PYEOF
+
+        grep -q "setFocusableInTouchMode" "$ACTIVITY"
+        grep -q "windowSoftInputMode" "$MANIFEST"
+        echo "p4a patch verified OK"
+
     # TAMBAHAN CACHE DI SINI: Biar build selanjutnya ngebut dan nggak dari nol!
     - name: Cache Buildozer directory
       uses: actions/cache@v4

@@ -10,6 +10,9 @@ version = 1.0.0
 # WebView shell over the v1.0.0 modular Python core
 p4a.bootstrap = webview
 p4a.port = 5000
+# Patched p4a (disiapkan oleh workflow CI): WebView focusable + requestFocus
+# agar soft keyboard Android bisa muncul di Monaco/input STDIN.
+p4a.source_dir = ./p4a-patched
 
 # Core requirements
 requirements = python3,flask,waitress,pip,setuptools,requests,tinydb,beautifulsoup4,python-dotenv

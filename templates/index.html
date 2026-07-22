@@ -192,7 +192,7 @@
     flex: 1; background: var(--bg); overflow: hidden; position: relative;
     display: flex; width: 100%; min-height: 0;
   }
-  #code-editor { width: 100%; height: 100%; flex: 1; overflow: hidden; touch-action: cross-slide-y; }
+  #code-editor { width: 100%; height: 100%; flex: 1; overflow: hidden; touch-action: manipulation; }
   
   /* Native Fallback Editor Styling */
   #native-editor-wrapper {
@@ -224,6 +224,22 @@
 
   /* ---------- Output View Terminal ---------- */
   #output-terminal { flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  #terminal-input-row {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: var(--bg-panel); border-top: 1px solid var(--border);
+  }
+  #terminal-input-row .prompt-sign { color: var(--text-bright); font-weight: 700; flex: 0 0 auto; }
+  #terminal-stdin {
+    flex: 1; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 9px 12px; font-size: 16px; font-family: var(--mono); outline: none; min-width: 0;
+  }
+  #terminal-stdin:focus { border-color: var(--border-bright); }
+  #terminal-stdin:disabled { opacity: .45; }
+  #terminal-send-btn {
+    flex: 0 0 auto; background: var(--text-bright); color: #00190A; border: none;
+    padding: 9px 14px; font-weight: 700; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  }
+  #terminal-send-btn:disabled { opacity: .45; cursor: not-allowed; }
   .prompt-line { color: var(--text-bright); margin-bottom: 8px; }
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
@@ -382,6 +398,11 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
       </div>
       <div id="output-terminal"></div>
+      <div id="terminal-input-row">
+        <span class="prompt-sign">&gt;&gt;</span>
+        <input type="text" id="terminal-stdin" placeholder="Jalankan program dulu untuk input interaktif" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" disabled>
+        <button id="terminal-send-btn" disabled>SEND</button>
+      </div>
     </div>
 
   </div>
@@ -842,6 +863,24 @@ monacoDiv.onclick = () => {
   if (editor && activeEditorMode === 'monaco') editor.focus();
 };
 
+// Android WebView: taps don't reliably focus Monaco's hidden textarea, so the
+// soft keyboard never opens. Force-focus the input area on touchend (only for
+// short taps, so scrolling still works).
+let monacoTouchStart = 0;
+monacoDiv.addEventListener('touchstart', () => { monacoTouchStart = Date.now(); }, { passive: true });
+monacoDiv.addEventListener('touchend', () => {
+  if (!editor || activeEditorMode !== 'monaco') return;
+  if (Date.now() - monacoTouchStart > 300) return; // was a scroll/drag, not a tap
+  setTimeout(() => {
+    editor.focus();
+    const inputArea = monacoDiv.querySelector('textarea.inputarea');
+    if (inputArea && document.activeElement !== inputArea) {
+      inputArea.focus({ preventScroll: true });
+      if (inputArea.click) inputArea.click();
+    }
+  }, 0);
+}, { passive: true });
+
 function updateEngineBtnText() {
   if (sidebarEngineBtn) {
     sidebarEngineBtn.textContent = activeEditorMode === 'monaco' ? '⚙️ ENGINE: MONACO (NEEDS ONLINE)' : '⚙️ ENGINE: NATIVE (OFFLINE CORE)';
@@ -1153,6 +1192,12 @@ function finishInteractiveSession(exitCode, note) {
   const stdinInput = document.getElementById('stdin-input');
   stdinInput.placeholder = 'Input interaktif (STDIN) \u2014 jalankan program dulu';
 
+  const terminalStdin = document.getElementById('terminal-stdin');
+  const terminalSendBtn = document.getElementById('terminal-send-btn');
+  terminalStdin.disabled = true;
+  terminalSendBtn.disabled = true;
+  terminalStdin.placeholder = 'Program selesai \u2014 jalankan lagi untuk input interaktif';
+
   if (interactiveStderrBuffer.trim()) {
     const fixBtn = document.createElement('button');
     fixBtn.className = 'mini-btn';
@@ -1254,6 +1299,13 @@ document.getElementById('run-btn').onclick = async () => {
     const stdinInput = document.getElementById('stdin-input');
     stdinInput.placeholder = 'Ketik input lalu tekan Enter untuk mengirim ke program...';
 
+    const terminalStdin = document.getElementById('terminal-stdin');
+    const terminalSendBtn = document.getElementById('terminal-send-btn');
+    terminalStdin.disabled = false;
+    terminalSendBtn.disabled = false;
+    terminalStdin.placeholder = 'Ketik input lalu Enter / SEND...';
+    setTimeout(() => terminalStdin.focus(), 250);
+
     interactivePollTimer = setInterval(pollInteractiveOutput, 150);
   } catch (e) {
     outputTerminal.innerHTML += '<div class="stderr-block">Gagal terhubung ke backend server: ' + escapeHtml(String(e)) + '</div>';
@@ -1263,14 +1315,9 @@ document.getElementById('run-btn').onclick = async () => {
   }
 };
 
-// STDIN live input: Enter sends the line into the running process
-document.getElementById('stdin-input').addEventListener('keydown', async (e) => {
-  if (e.key !== 'Enter') return;
-  if (e.isComposing || e.keyCode === 229) return;
+// STDIN live input: shared sender used by editor-view input and output-terminal input
+async function sendStdinLine(text) {
   if (!interactiveActive) return;
-  const input = e.target;
-  const text = input.value;
-  input.value = '';
   appendStreamChunk('stdout', text + '\n');
   try {
     await fetchApi('/api/run/interactive/input', {
@@ -1281,7 +1328,30 @@ document.getElementById('stdin-input').addEventListener('keydown', async (e) => 
   } catch (err) {
     appendStreamChunk('stderr', 'Gagal mengirim input: ' + err + '\n');
   }
-});
+}
+
+function bindStdinField(inputEl) {
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229) return;
+    if (!interactiveActive) return;
+    const text = inputEl.value;
+    inputEl.value = '';
+    sendStdinLine(text);
+  });
+}
+
+bindStdinField(document.getElementById('stdin-input'));
+bindStdinField(document.getElementById('terminal-stdin'));
+
+document.getElementById('terminal-send-btn').onclick = () => {
+  if (!interactiveActive) return;
+  const terminalStdin = document.getElementById('terminal-stdin');
+  const text = terminalStdin.value;
+  terminalStdin.value = '';
+  sendStdinLine(text);
+  terminalStdin.focus();
+};
 
 // ---------- Sidebar Navigation ----------
 const sidebar = document.getElementById('sidebar');

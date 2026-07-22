@@ -363,7 +363,10 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <button class="symbol-btn" data-sym="import ">import</button>
       </div>
 
-      <div id="editor-controls">
+      <div style="flex: 0 0 auto; padding: 8px 12px 0 12px; background: var(--bg-panel); border-top: 1px solid var(--border); width: 100%;">
+        <input type="text" id="stdin-input" placeholder="Input interaktif (STDIN, opsional)" style="width: 100%; background: var(--bg-panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; font-size: 12px; font-family: var(--mono); outline: none;">
+      </div>
+      <div id="editor-controls" style="border-top: none;">
         <button id="run-btn" class="action">▶ EXECUTE</button>
         <button id="clear-btn" class="action" title="Bersihkan Editor / Terminal">CLEAR</button>
       </div>
@@ -1064,12 +1067,15 @@ document.getElementById('run-btn').onclick = async () => {
   outputStatusDot.style.background = 'var(--ai)';
   outputTerminal.innerHTML = `<div class="prompt-line"><span class="user">zaba@zabacode:~$</span> python3 main.py<span class="cursor-block"></span></div>`;
   goToOutput();
+  
+  const stdinRaw = document.getElementById('stdin-input').value;
+  const stdinData = stdinRaw ? stdinRaw.replace(/\\n/g, '\n') + '\n' : '';
 
   try {
     const res = await fetchApi('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, stdin_data: stdinData }),
     });
     const data = await res.json();
 

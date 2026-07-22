@@ -25,6 +25,17 @@ def _truncate(text: str) -> str:
     return text[:MAX_OUTPUT_CHARS] + "\n[Output truncated]"
 
 
+SAFE_INPUT_PATCH = """import builtins
+_orig_input = builtins.input
+def _safe_input(prompt=""):
+    try:
+        return _orig_input(prompt)
+    except EOFError:
+        return ""
+builtins.input = _safe_input
+
+"""
+
 def normalize_code(code: str) -> str:
     """
     Normalize Python code to prevent EOF/syntax errors.
@@ -37,10 +48,10 @@ def normalize_code(code: str) -> str:
         code = code[1:]
     lines = code.split('\n')
     normalized_lines = [line.rstrip() for line in lines]
-    return '\n'.join(normalized_lines)
+    return SAFE_INPUT_PATCH + '\n'.join(normalized_lines)
 
 
-def execute_code_isolated(code: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
+def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAULT_TIMEOUT) -> dict:
     """
     Run user code in a separate subprocess.
     This isolates process lifetime, not filesystem/network privileges.
@@ -76,6 +87,7 @@ def execute_code_isolated(code: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
         
         proc = subprocess.Popen(
             [sys.executable, "_active_run.py"],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -86,7 +98,7 @@ def execute_code_isolated(code: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
         )
         
         try:
-            stdout_text, stderr_text = proc.communicate(timeout=timeout)
+            stdout_text, stderr_text = proc.communicate(input=stdin_data, timeout=timeout)
         except subprocess.TimeoutExpired:
             if os.name != "nt":
                 try:

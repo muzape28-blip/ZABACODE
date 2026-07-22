@@ -45,9 +45,10 @@ def health_check():
 def run_code():
     payload = request.get_json(silent=True) or {}
     code = payload.get("code", "")
+    stdin_data = payload.get("stdin_data", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
-    return jsonify(execute_code_isolated(code))
+    return jsonify(execute_code_isolated(code, stdin_data=stdin_data))
 
 
 @app.get("/api/libraries")

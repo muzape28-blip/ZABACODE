@@ -1,63 +1,47 @@
 # Security Policy & Architecture
 
-## Reporting Security Vulnerabilities
+## Reporting vulnerabilities
 
-Jika Anda menemukan kerentanan keamanan, mohon **tidak** mempublikasikannya di public issues.
+Please do **not** publish suspected vulnerabilities in public issues. Email `muzape28@gmail.com` with the subject:
 
-Kirimkan email ke: **muzape28@gmail.com** dengan subjek:
-```
+```text
 [SECURITY] ZABACODE vulnerability report
 ```
 
-### Penanganan:
-- Konfirmasi laporan dalam 24-48 jam.
-- Penilaian dampak dan pembuatan perbaikan (*patch*).
-- Kredit nama pelapor di *release notes*.
+Include the affected version, reproduction steps, expected impact, and any proof of concept that can be shared safely.
 
----
+## Security model in v1.0.0
 
-## Implemented Security Architecture (`v1.0.0`)
+### No local HTTP server
 
-### 🔒 1. No Exposed HTTP Server (Kivy Native)
-* **v1.0.0 eliminates the Flask/Waitress HTTP server entirely.** All backend operations are direct Python function calls within the same process.
-* **No localhost binding risk** — there is no network-facing server to exploit.
-* This is a significant security improvement over v0.3.5 which bound a Flask server to 127.0.0.1:5000.
+The Kivy-native application no longer runs the Flask/Waitress localhost server used by earlier releases. UI actions call Python functions directly, so there are no HTTP API routes or browser-visible session headers to expose.
 
-### 🛡️ 2. Dual-Layer Encrypted API Key Storage
-* **Android Production Environment:** Menggunakan **Android Keystore System** via `EncryptedSharedPreferences` (`androidx.security.crypto`) melalui pembungkus `pyjnius`. Kunci API tidak pernah disimpan secara plaintext di storage HP.
-* **Development / Desktop Mode:** Menggunakan obfuscated XOR-Base64 encryption berbasis hardware UUID lokal untuk memastikan `.zabacode_keys.json` terenkripsi dan tidak berupa teks polos.
+### API-key storage
 
-### 🔐 3. Local Session Auth Token
-* Setiap sesi menghasilkan token keamanan acak (`AUTH_TOKEN`) 128-bit yang terisolasi di internal app storage.
-* Token digunakan untuk enkripsi kunci API (XOR cipher key).
-* Tanpa web server, token tidak lagi diekspos melalui HTTP headers, meningkatkan keamanan.
+On Android, ZABACODE uses `EncryptedSharedPreferences` through Pyjnius when the Android keystore is available. If that facility is unavailable, keys are held in memory for the current app session and are not written to disk. This fallback means the user must re-enter a key after restarting the app; it is intentional and safer than persisting a weakly obfuscated secret.
 
-### 📁 4. Sanitasi Nama File & Proteksi Path Traversal
-* Penolakan eksplisit terhadap `..`, `/`, `\\`, null bytes `\\x00`, serta file tersembunyi yang diawali dengan titik `.` atau garis bawah `_`.
-* Validasi regex: hanya alphanumeric, dash, underscore, dan dot yang diizinkan.
-* Null byte injection prevention.
-* Auto-append `.py` extension.
+### Package downloads
 
-### 🧩 5. Wheel Archive Path Validation
-* PyPI Direct Wheel Extractor memvalidasi setiap path di dalam wheel archive.
-* Jika path resolve ke luar `USER_PACKAGES_DIR`, instalasi ditolak (mencegah zip slip attack).
+Package downloads retain normal HTTPS certificate verification. ZABACODE does not accept invalid certificates as a workaround for device or network failures. Direct wheel extraction validates every archive path before extraction and rejects paths outside `USER_PACKAGES_DIR`.
 
-### 🔄 6. Subprocess Isolation
-* User code execution berjalan di subprocess terpisah dengan timeout 30s.
-* `start_new_session=True` memastikan process group killing saat timeout.
-* `PYTHONNOUSERSITE=1` mencegah akses ke user site-packages yang tidak diizinkan.
-* `__file__` resolution via `_active_run.py` temporary script.
+### Files and code execution
 
----
+File names reject traversal sequences, hidden/system names, null bytes, and unsupported characters. Source files and execution output have size limits.
 
-## Security Audit Checklist
-- [x] No Exposed HTTP Server (Kivy native, no Flask/Waitress)
-- [x] Process Subprocess Sandbox Execution
-- [x] Dual-Layer Encrypted API Key Storage (Keystore + XOR file)
-- [x] Session Auth Token for Key Encryption
-- [x] Path Traversal Attack Prevention
-- [x] Null Byte Injection Prevention
-- [x] Wheel Archive Path Validation (zip slip prevention)
-- [x] Filename Validation with Regex
-- [x] Code Size Limits (512KB max)
-- [x] Output Truncation (256KB max)
+User Python runs in a separate subprocess with a 30-second timeout and process-group cleanup. This improves reliability but **is not a security sandbox**: user code can still have the permissions of the app process. Do not run untrusted code.
+
+### Android backups
+
+Android backup is disabled in the build configuration to reduce the chance that app-private data is copied through platform backups.
+
+## Security checklist
+
+- [x] Kivy-native app with no localhost HTTP server
+- [x] Android keystore storage when available
+- [x] In-memory-only fallback for API keys
+- [x] TLS certificate verification for package and AI-provider HTTPS traffic
+- [x] Wheel archive path validation
+- [x] Filename validation and path-traversal protections
+- [x] Source and output size limits
+- [x] Subprocess timeout and process-group cleanup
+- [x] Android backup disabled

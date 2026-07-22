@@ -33,10 +33,9 @@
 │  ZABACODE v1.0.0 — Kivy Native Edition                                     │
 │  [ OK ] Kivy SDL2 Native UI Engine Active                                  │
 │  [ OK ] Pygments Syntax Highlighting Active                                │
-│  [ OK ] Subprocess Sandbox Engine Ready                                    │
-│  [ OK ] Local Session Auth Token Security Active (X-Zabacode-Token)        │
-│  [ OK ] Android Keystore Encrypted Key Storage Active                      │
-│  [ OK ] Direct PyPI Wheel Extractor Active (SSL & SIGSEGV -11 Bypass)     │
+│  [ OK ] Subprocess Runner dengan Timeout & Process-Group Cleanup           │
+│  [ OK ] Android Keystore untuk API Key Aktif                                │
+│  [ OK ] Direct PyPI Wheel Extractor dengan Verifikasi TLS                  │
 │  [ OK ] Multi-Provider AI Engine (6 Provider: OpenRouter/Gemini/Groq/     │
 │         Mistral/DeepSeek/Ollama)                                           │
 │  [ OK ] Multi-Language i18n Engine (6 Bahasa: ID/EN/JA/KO/AR/ES)         │
@@ -57,7 +56,7 @@ Di tengah ekosistem aplikasi mobile yang dipenuhi oleh iklan mengganggu, *paywal
 * **100% Gratis & Open-Source (GPLv3)**
 * **Bebas Iklan Banner / Pop-up**
 * **Zero Telemetry / Zero Tracking**
-* **Eksekusi Lokal Terisolasi (Offline First)**
+* **Eksekusi kode local-first (inti offline)**
 
 ---
 
@@ -95,3 +94,4 @@ Plugin baru: Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown
 
 * **[Zaqi (`muzape28-blip`)](https://github.com/muzape28-blip)** — *Creator, Lead Developer & Architect*
 * **[Arena.ai Agent](https://arena.ai)** — *AI Co-Developer & Code Engineer*
+* **Elicit AI** — *Security hardening, code review & release-quality engineering*

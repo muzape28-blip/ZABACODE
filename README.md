@@ -33,10 +33,9 @@
 │  ZABACODE v1.0.0 — Kivy Native Edition                                     │
 │  [ OK ] Kivy SDL2 Native UI Engine Active                                  │
 │  [ OK ] Pygments Syntax Highlighting Active                                │
-│  [ OK ] Subprocess Sandbox Engine Ready                                    │
-│  [ OK ] Local Session Auth Token Security Active (X-Zabacode-Token)        │
-│  [ OK ] Android Keystore Encrypted Key Storage Active                      │
-│  [ OK ] Direct PyPI Wheel Extractor Active (SSL & SIGSEGV -11 Bypass)     │
+│  [ OK ] Subprocess Runner with Timeout & Process-Group Cleanup             │
+│  [ OK ] Android Keystore API-Key Storage Active                             │
+│  [ OK ] Direct PyPI Wheel Extractor with TLS Verification                  │
 │  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq/    │
 │         Mistral/DeepSeek/Ollama)                                           │
 │  [ OK ] Multi-Language i18n Engine (6 Languages: ID/EN/JA/KO/AR/ES)       │
@@ -57,7 +56,7 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 * **100% Free & Open-Source (GPLv3)**
 * **Zero Banner Ads or Annoying Pop-ups**
 * **Zero Telemetry / Zero Tracking**
-* **100% Isolated Local Code Execution (Offline First)**
+* **Local-first code execution (offline core)**
 
 ---
 
@@ -71,7 +70,7 @@ The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. Th
 - **Native look & feel** — Kivy widgets render directly via GPU
 
 ### 🧠 1. Subprocess Isolation & Auto `__file__` Resolution
-* **Full Process Isolation:** Every Python script is executed in an isolated subprocess with a 30-second execution timeout.
+* **Separate Process Runner:** Every Python script runs in a separate subprocess with a 30-second execution timeout. This is not a security sandbox; run only code you trust.
 * **Automatic `__file__` Resolution:** Scripts are executed via `_active_run.py`, guaranteeing `Path(__file__)` **succeeds 100%**.
 
 ### 📦 2. Enhanced Library Manager (`zabapip`) — 50+ Libraries with Offline/Online Tags
@@ -79,7 +78,7 @@ The entire UI has been migrated from Flask+WebView to **native Kivy (SDL2)**. Th
   - 🟢 **offline** — Works completely without internet (pure Python)
   - 🔵 **online** — Requires internet to function (API clients)
   - 🟡 **hybrid** — Core features offline, some features need internet
-* **SSL Bypass:** If standard `pip` crashes on Android, Zabacode falls back to PyPI JSON API with bypass SSL context.
+* **TLS verification:** Package downloads keep HTTPS certificate verification enabled. A certificate error stops installation instead of accepting an unsafe connection.
 * **Categories:** Web & API, Data & Math, Database, AI & Automation, Utilities, Security, Media, Testing, Data Format, Networking
 
 ### 🤖 3. Multi-Provider AI — 6 Providers
@@ -223,6 +222,7 @@ ZABACODE/
 
 * **[Zaqi (`muzape28-blip`)](https://github.com/muzape28-blip)** — *Creator, Lead Developer & Architect*
 * **[Arena.ai Agent](https://arena.ai)** — *AI Co-Developer & Code Engineer*
+* **Elicit AI** — *Security hardening, code review & release-quality engineering*
 
 ---
 

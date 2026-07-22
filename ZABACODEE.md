@@ -18,7 +18,7 @@
 * [x] **6-Language i18n:** Full translations for Indonesian, English, Japanese, Korean, Arabic, and Spanish.
 * [x] **12 Plugins + 8 Snippets:** Added Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown Preview, Code Timer, ASCII Art, and TODO Manager.
 * [x] **Background Threading:** AI calls and library installations run in background threads to keep UI responsive.
-* [x] **Enhanced Security:** Removed exposed HTTP server. All operations are internal Python function calls. Token-based auth still used for key storage encryption.
+* [x] **Security hardening:** Removed the exposed HTTP server; package downloads verify TLS; wheel paths are validated; Android Keystore is preferred for API keys with an in-memory-only fallback.
 * [x] **Responsive Design:** Kivy's native layout system with dp/sp sizing ensures proper scaling on all screen sizes.
 * [x] **78 Unit Tests:** Comprehensive test suite covering execution, checker, file manager, security, library manager, themes, i18n, plugins, and AI providers.
 
@@ -26,7 +26,7 @@
 * [x] Local Session Auth Token Security (`X-Zabacode-Token`)
 * [x] Real Android Keystore Integration
 * [x] Addon Plugin & Theme Marketplace
-* [x] PyPI Direct Extractor SSL Bypass
+* [x] PyPI direct extractor (TLS verification required)
 * [x] Fix Monaco Mobile Soft Keyboard Focus
 * [x] XSS HTML Sanitization
 * [x] Dependency Completion

@@ -542,3 +542,16 @@ class TestInteractiveExecution:
         assert "HELLO ZAQI" in stdout_chars
 
         stop_interactive_session()
+
+    def test_interactive_multiple_inputs(self):
+        code = "name = input('Name: ')\nage = input('Age: ')\nprint(f'{name} is {age}')\n"
+        assert start_interactive_session(code)["ok"] is True
+        assert send_interactive_input("Zaqi\n")["ok"] is True
+        assert send_interactive_input("20\n")["ok"] is True
+
+        import time
+        time.sleep(0.5)
+        out_res = get_interactive_output()
+        stdout_chars = "".join(char for stream, char in out_res["output"] if stream == "stdout")
+        assert "Name: Age: Zaqi is 20" in stdout_chars
+        assert out_res["done"] is True

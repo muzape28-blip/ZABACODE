@@ -7,7 +7,14 @@ from flask import Flask, jsonify, render_template, request
 from waitress import serve
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
-from zabacode.core.executor import execute_code_isolated
+from zabacode.core.executor import (
+    execute_code_isolated,
+    start_interactive_session,
+    send_interactive_input,
+    get_interactive_output,
+    stop_interactive_session
+)
+from zabacode.core.checker import check_code
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
@@ -52,6 +59,56 @@ def run_code():
         return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
     return jsonify(execute_code_isolated(code, stdin_data=stdin_data))
 
+
+# ---------------------------------------------------------------------------
+# Interactive Execution & Check Endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/run/interactive/start")
+@require_auth
+def run_interactive_start():
+    payload = request.get_json(silent=True) or {}
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
+    return jsonify(start_interactive_session(code))
+
+
+@app.get("/api/run/interactive/output")
+@require_auth
+def run_interactive_output():
+    return jsonify(get_interactive_output())
+
+
+@app.post("/api/run/interactive/input")
+@require_auth
+def run_interactive_input():
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text", "")
+    if not isinstance(text, str):
+        return jsonify({"ok": False, "message": "Field text harus berupa string."}), 400
+    return jsonify(send_interactive_input(text))
+
+
+@app.post("/api/run/interactive/stop")
+@require_auth
+def run_interactive_stop():
+    return jsonify(stop_interactive_session())
+
+
+@app.post("/api/check")
+@require_auth
+def check_code_endpoint():
+    payload = request.get_json(silent=True) or {}
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
+    return jsonify(check_code(code))
+
+
+# ---------------------------------------------------------------------------
+# Other Core Endpoints
+# ---------------------------------------------------------------------------
 
 @app.get("/api/libraries")
 @require_auth

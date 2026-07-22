@@ -6,6 +6,91 @@ Pre-execution validation to prevent EOFError and common syntax issues.
 import re
 
 
+def strip_comments_and_strings(code: str) -> tuple[str, list[str]]:
+    """
+    Strips comments and string literals from Python code,
+    returning the clean structure and a list of structural string errors.
+    """
+    issues = []
+    out = []
+    i = 0
+    n = len(code)
+    state = "normal"  # normal, sq, dq, tsq, tdq, comment
+
+    while i < n:
+        if state == "normal":
+            if code[i:i+3] == '"""':
+                state = "tdq"
+                i += 3
+            elif code[i:i+3] == "'''":
+                state = "tsq"
+                i += 3
+            elif code[i] == '"':
+                state = "dq"
+                i += 1
+            elif code[i] == "'":
+                state = "sq"
+                i += 1
+            elif code[i] == '#':
+                state = "comment"
+                i += 1
+            else:
+                out.append(code[i])
+                i += 1
+        elif state == "comment":
+            if code[i] == '\n':
+                state = "normal"
+                out.append('\n')
+            i += 1
+        elif state == "dq":
+            if code[i] == '\\':
+                i += 2  # skip escaped character
+            elif code[i] == '"':
+                state = "normal"
+                i += 1
+            elif code[i] == '\n':
+                issues.append("Unterminated double-quoted string")
+                state = "normal"
+                i += 1
+            else:
+                i += 1
+        elif state == "sq":
+            if code[i] == '\\':
+                i += 2  # skip escaped character
+            elif code[i] == "'":
+                state = "normal"
+                i += 1
+            elif code[i] == '\n':
+                issues.append("Unterminated single-quoted string")
+                state = "normal"
+                i += 1
+            else:
+                i += 1
+        elif state == "tdq":
+            if code[i:i+3] == '"""':
+                state = "normal"
+                i += 3
+            elif code[i] == '\\':
+                i += 2
+            else:
+                i += 1
+        elif state == "tsq":
+            if code[i:i+3] == "'''":
+                state = "normal"
+                i += 3
+            elif code[i] == '\\':
+                i += 2
+            else:
+                i += 1
+
+    if state in ["dq", "tdq"]:
+        issues.append("Unterminated double quotes (\")")
+    elif state in ["sq", "tsq"]:
+        issues.append("Unterminated single quotes (')")
+
+    return "".join(out), issues
+
+
 def check_code(code: str) -> dict:
     """
     Validate Python code structure before execution.
@@ -15,38 +100,29 @@ def check_code(code: str) -> dict:
     from zabacode.core.executor import normalize_code
     code = normalize_code(code)
     
-    issues = []
+    # Strip comments and string literals to prevent bracket/quote imbalances inside them
+    clean_code, string_issues = strip_comments_and_strings(code)
+    issues = list(string_issues)
     
     # Check balanced parentheses
-    paren_open = code.count('(')
-    paren_close = code.count(')')
+    paren_open = clean_code.count('(')
+    paren_close = clean_code.count(')')
     if paren_open != paren_close:
         issues.append(f"Parenthesis () imbalance: {paren_open} '(' vs {paren_close} ')'")
     
     # Check balanced brackets
-    bracket_open = code.count('[')
-    bracket_close = code.count(']')
+    bracket_open = clean_code.count('[')
+    bracket_close = clean_code.count(']')
     if bracket_open != bracket_close:
         issues.append(f"Brackets [] imbalance: {bracket_open} '[' vs {bracket_close} ']'")
     
     # Check balanced braces
-    brace_open = code.count('{')
-    brace_close = code.count('}')
+    brace_open = clean_code.count('{')
+    brace_close = clean_code.count('}')
     if brace_open != brace_close:
         issues.append(f"Braces {{}} imbalance: {brace_open} '{{' vs {brace_close} '}}'")
     
-    # Check string balance (basic heuristic)
-    code_no_triple = re.sub(r'""".*?"""', '', code, flags=re.DOTALL)
-    code_no_triple = re.sub(r"'''.*?'''", '', code_no_triple, flags=re.DOTALL)
-    
-    sq = code_no_triple.count("'")
-    dq = code_no_triple.count('"')
-    if sq % 2 != 0:
-        issues.append("Single quotes (') imbalance")
-    if dq % 2 != 0:
-        issues.append('Double quotes (") imbalance')
-    
-    # Check for common Python errors
+    # Check for common Python syntax errors
     lines = code.split('\n')
     for i, line in enumerate(lines, 1):
         stripped = line.rstrip()
@@ -54,7 +130,7 @@ def check_code(code: str) -> dict:
             next_line = lines[i]
             if next_line.strip() and not next_line.startswith(' ') and not next_line.startswith('\t'):
                 if not next_line.strip().startswith('#') and not next_line.strip().startswith('"""'):
-                    pass  # Allow single-line after colon (e.g., dict comprehensions)
+                    pass  # Allow single-line statements or let python parse them
     
     return {
         "ok": True,

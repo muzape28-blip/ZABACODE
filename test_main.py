@@ -15,7 +15,15 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 from zabacode import __version__
-from zabacode.core.executor import execute_code_isolated, normalize_code, MAX_CODE_BYTES
+from zabacode.core.executor import (
+    execute_code_isolated,
+    normalize_code,
+    MAX_CODE_BYTES,
+    start_interactive_session,
+    send_interactive_input,
+    get_interactive_output,
+    stop_interactive_session
+)
 from zabacode.core.checker import check_code
 from zabacode.core.file_manager import (
     secure_filename, list_files, save_file, read_file, delete_file, FILES_DIR
@@ -495,3 +503,42 @@ class TestVersion:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ===================================================================
+# Test Interactive Subprocess Execution
+# ===================================================================
+
+class TestInteractiveExecution:
+    """Test interactive unbuffered code execution engine."""
+
+    def test_interactive_start_and_stop(self):
+        code = "import sys\nline = sys.stdin.readline()\nprint('ECHO:', line)"
+        res = start_interactive_session(code)
+        assert res["ok"] is True
+
+        # Stop session
+        stop_res = stop_interactive_session()
+        assert stop_res["ok"] is True
+
+    def test_interactive_communication(self):
+        code = "import sys\nline = sys.stdin.readline().strip()\nprint('HELLO ' + line)\n"
+        start_res = start_interactive_session(code)
+        assert start_res["ok"] is True
+
+        # Send input
+        send_res = send_interactive_input("ZAQI\n")
+        assert send_res["ok"] is True
+
+        # Wait a bit and get output
+        import time
+        time.sleep(0.5)
+
+        out_res = get_interactive_output()
+        assert out_res["ok"] is True
+
+        # Collect stdout chars
+        stdout_chars = "".join([char for stype, char in out_res["output"] if stype == "stdout"])
+        assert "HELLO ZAQI" in stdout_chars
+
+        stop_interactive_session()

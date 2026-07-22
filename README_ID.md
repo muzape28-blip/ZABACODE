@@ -38,7 +38,7 @@
 │  [ OK ] Direct PyPI Wheel Extractor dengan Verifikasi TLS                  │
 │  [ OK ] Multi-Provider AI Engine (6 Provider: OpenRouter/Gemini/Groq/     │
 │         Mistral/DeepSeek/Ollama)                                           │
-│  [ OK ] Multi-Language i18n Engine (6 Bahasa: ID/EN/JA/KO/AR/ES)         │
+│  [ OK ] Multi-Language i18n Engine (2 Bahasa: ID/EN)         │
 │  [ OK ] Theme Engine Active (10 Tema incl. Tokyo Night/Catppuccin)       │
 │  [ OK ] Plugin Marketplace Active (12 Plugin, 8 Snippet)                 │
 │  [ OK ] Library Manager (50+ Pustaka dengan Tag Offline/Online)          │
@@ -82,8 +82,9 @@ Setiap pustaka kini memiliki tag `mode`:
 * Retro Green, Solarized Dark, Dracula, Cyberpunk Neon, Nord Arctic, Monokai Pro
 * **Tokyo Night** *(BARU)*, **One Dark** *(BARU)*, **Gruvbox Dark** *(BARU)*, **Catppuccin Mocha** *(BARU)*
 
-### 🌐 5. Multi-Bahasa — 6 Bahasa
-🇮🇩 Indonesia, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇸🇦 العربية, 🇪🇸 Español
+### 🌐 5. Multi-Bahasa — 2 Bahasa (ID & EN)
+* 🇮🇩 **Bahasa Indonesia** (default)
+* 🇬🇧 **English**
 
 ### 🧩 6. Plugin Marketplace — 12 Plugin + 8 Snippet
 Plugin baru: Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown Preview, Code Timer, ASCII Art, TODO Manager

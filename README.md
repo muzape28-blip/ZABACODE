@@ -38,7 +38,7 @@
 │  [ OK ] Direct PyPI Wheel Extractor with TLS Verification                  │
 │  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq/    │
 │         Mistral/DeepSeek/Ollama)                                           │
-│  [ OK ] Multi-Language i18n Engine (6 Languages: ID/EN/JA/KO/AR/ES)       │
+│  [ OK ] Multi-Language i18n Engine (2 Languages: ID/EN)       │
 │  [ OK ] Theme Engine Active (10 Themes incl. Tokyo Night/Catppuccin)      │
 │  [ OK ] Plugin Marketplace Active (12 Plugins, 8 Snippets)                │
 │  [ OK ] Library Manager (50+ Libraries with Offline/Online Mode Tags)     │
@@ -92,13 +92,9 @@ The UI uses a local WebView while the v1.0.0 modular Python core provides execut
 * **Retro Green**, **Solarized Dark**, **Dracula**, **Cyberpunk Neon**, **Nord Arctic**, **Monokai Pro** *(carried over)*
 * **Tokyo Night** *(NEW)*, **One Dark** *(NEW)*, **Gruvbox Dark** *(NEW)*, **Catppuccin Mocha** *(NEW)*
 
-### 🌐 5. Multi-Language i18n — 6 Languages
+### 🌐 5. Multi-Language i18n — 2 Languages (ID & EN)
 * 🇮🇩 **Bahasa Indonesia** (default)
 * 🇬🇧 **English**
-* 🇯🇵 **日本語** *(NEW)*
-* 🇰🇷 **한국어** *(NEW)*
-* 🇸🇦 **العربية** *(NEW)*
-* 🇪🇸 **Español** *(NEW)*
 
 ### 🧩 6. Plugin Marketplace — 12 Plugins + 8 Snippets
 * **Core Plugins:** Auto-Code Formatter, Snippets Pack, Syntax Linter, Symbol Bar
@@ -145,7 +141,7 @@ The UI uses a local WebView while the v1.0.0 modular Python core provides execut
 | **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **6 Providers + 1 Offline (Ollama)** |
 | **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Offline/Online Tags** |
 | **Themes** | ⚠️ Limited | ✅ Multiple | 🚀 **10 Themes (Tokyo Night, Catppuccin, etc.)** |
-| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **6 Languages (ID/EN/JA/KO/AR/ES)** |
+| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **2 Languages (ID/EN)** |
 | **Architecture Support** | 32-bit / 64-bit | - | ✅ **Universal Fat APK (ARMv7 + ARM64)** |
 
 ---

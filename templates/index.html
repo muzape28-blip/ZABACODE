@@ -340,7 +340,7 @@
 <div id="boot-screen">
   <canvas id="matrix-canvas"></canvas>
   <div id="boot-container">
-    <img src="/static/logo.png" alt="Zabacode Logo" class="boot-logo-img">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Zabacode Logo" class="boot-logo-img">
     <div id="boot-lines"></div>
   </div>
 </div>
@@ -596,172 +596,125 @@ function fetchApi(url, options = {}) {
   return fetch(url, options);
 }
 
-// Full i18n Translation Dictionary (ID / EN)
-const TRANSLATIONS = {
-  id: {
-    sidebar_control: "[ FITUR & KONTROL ]",
-    sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
-    sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
-    sidebar_open: "📂 OPEN / MANAGE FILES",
-    sidebar_save: "💾 SAVE AS FILE (.py)",
-    sidebar_lang: "🌐 BAHASA: INDONESIA (SWITCH)",
-    sidebar_theme: "🎨 CHANGE THEME PRESET",
-    sidebar_crt: "📺 CRT SCANLINES: ON",
-    sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
-    sidebar_docs_btn: "📖 DOCS & ROADMAP",
-    ai_hint: "AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.",
-    exec_btn: "▶ JALANKAN",
-    stop_btn: "⏹ BERHENTI",
-    clear_btn: "BERSIHKAN",
-    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "Jalankan program untuk mengaktifkan input",
-    stdin_placeholder_active: "Ketik input lalu tekan Enter/KIRIM untuk mengirim ke program...",
-    stdin_send: "KIRIM",
-    toast_lang: "✓ Berubah ke Bahasa Indonesia"
-  },
-  en: {
-    sidebar_control: "[ FEATURES & CONTROLS ]",
-    sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
-    sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
-    sidebar_open: "📂 OPEN / MANAGE FILES",
-    sidebar_save: "💾 SAVE AS FILE (.py)",
-    sidebar_lang: "🌐 LANGUAGE: ENGLISH (SWITCH)",
-    sidebar_theme: "🎨 CHANGE THEME PRESET",
-    sidebar_crt: "📺 CRT SCANLINES: ON",
-    sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
-    sidebar_docs_btn: "📖 DOCS & ROADMAP",
-    ai_hint: "AI automatically reads code in the active editor — ask anything about the code.",
-    exec_btn: "▶ RUN",
-    stop_btn: "⏹ STOP",
-    clear_btn: "CLEAR",
-    market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "Run the program to enable input",
-    stdin_placeholder_active: "Type input then press Enter/SEND to send to program...",
-    stdin_send: "SEND",
-    toast_lang: "✓ Switched to English"
-  },
-  ja: {
-    sidebar_control: "[ 機能とコントロール ]",
-    sidebar_market: "🧩 プラグインとテーマのマーケットプレイス",
-    sidebar_lib: "📦 ライブラリマネージャー (zabapip)",
-    sidebar_open: "📂 ファイルを開く/管理する",
-    sidebar_save: "💾 ファイルとして保存 (.py)",
-    sidebar_lang: "🌐 言語: 日本語 (SWITCH)",
-    sidebar_theme: "🎨 テーマプリセットの変更",
-    sidebar_crt: "📺 CRTスキャンライン: オン",
-    sidebar_docs_lbl: "[ ドキュメントとロードマップ ]",
-    sidebar_docs_btn: "📖 ドキュメントとロードマップ",
-    ai_hint: "AIはアクティブなエディターのコードを自動的に読み取ります。コードについて質問してください。",
-    exec_btn: "▶ 実行",
-    stop_btn: "⏹ 停止",
-    clear_btn: "クリア",
-    market_title: "🧩 ZABACODE アドオン＆テーママーケットプレイス",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "プログラムを実行して入力を有効にします",
-    stdin_placeholder_active: "入力を入力し、Enterまたは「送信」を押してプログラムに送信します...",
-    stdin_send: "送信",
-    toast_lang: "✓ 日本語に切り替えました"
-  },
-  ko: {
-    sidebar_control: "[ 기능 및 컨트롤 ]",
-    sidebar_market: "🧩 플러그인 및 테마 마켓플레이스",
-    sidebar_lib: "📦 라이브러리 관리자 (zabapip)",
-    sidebar_open: "📂 파일 열기/관리",
-    sidebar_save: "💾 파일로 저장 (.py)",
-    sidebar_lang: "🌐 언어: 한국어 (SWITCH)",
-    sidebar_theme: "🎨 테마 프리셋 변경",
-    sidebar_crt: "📺 CRT 스캔라인: 켜짐",
-    sidebar_docs_lbl: "[ 문서 및 로드맵 ]",
-    sidebar_docs_btn: "📖 문서 및 로드맵",
-    ai_hint: "AI가 활성 에디터의 코드를 자동으로 읽습니다. 코드에 대해 무엇이든 물어보세요.",
-    exec_btn: "▶ 실행",
-    stop_btn: "⏹ 중지",
-    clear_btn: "지우기",
-    market_title: "🧩 ZABACODE 애드온 및 테마 마켓플레이스",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "입력을 활성화하려면 프로그램을 실행하세요",
-    stdin_placeholder_active: "입력값을 입력한 후 Enter/전송을 눌러 프로그램으로 전송하세요...",
-    stdin_send: "전송",
-    toast_lang: "✓ 한국어로 변경되었습니다"
-  },
-  ar: {
-    sidebar_control: "[ الميزات وعناصر التحكم ]",
-    sidebar_market: "🧩 متجر الإضافات والسمات",
-    sidebar_lib: "📦 مدير المكتبات (zabapip)",
-    sidebar_open: "📂 فتح / إدارة الملفات",
-    sidebar_save: "💾 حفظ كملف (.py)",
-    sidebar_lang: "🌐 اللغة: العربية (SWITCH)",
-    sidebar_theme: "🎨 تغيير سمة المظهر",
-    sidebar_crt: "📺 خطوط مسح CRT: تشغيل",
-    sidebar_docs_lbl: "[ المستندات وخارطة الطريق ]",
-    sidebar_docs_btn: "📖 المستندات وخارطة الطريق",
-    ai_hint: "يقرأ الذكاء الاصطناعي الكود تلقائيًا في المحرر النشط — اسأل أي شيء عن الكود.",
-    exec_btn: "▶ تشغيل",
-    stop_btn: "⏹ إيقاف",
-    clear_btn: "مسح",
-    market_title: "🧩 متجر إضافات وسمات ZABACODE",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "قم بتشغيل البرنامج لتمكين الإدخال",
-    stdin_placeholder_active: "اكتب المدخلات ثم اضغط Enter/إرسال للإرسال إلى البرنامج...",
-    stdin_send: "إرسال",
-    toast_lang: "✓ تم التغيير إلى اللغة العربية"
-  },
-  es: {
-    sidebar_control: "[ CARACTERÍSTICAS Y CONTROLES ]",
-    sidebar_market: "🧩 MERCADO DE COMPLEMENTOS Y TEMAS",
-    sidebar_lib: "📦 GESTOR DE BIBLIOTECAS (zabapip)",
-    sidebar_open: "📂 ABRIR / GESTIONAR ARCHIVOS",
-    sidebar_save: "💾 GUARDAR COMO ARCHIVO (.py)",
-    sidebar_lang: "🌐 IDIOMA: ESPAÑOL (SWITCH)",
-    sidebar_theme: "🎨 CAMBIAR TEMA VISUAL",
-    sidebar_crt: "📺 LÍNEAS DE ESCANEO CRT: ACTIVO",
-    sidebar_docs_lbl: "[ DOCS Y RUTA DE DESARROLLO ]",
-    sidebar_docs_btn: "📖 DOCS Y RUTA DE DESARROLLO",
-    ai_hint: "La IA lee automáticamente el código en el editor activo; pregunte cualquier cosa sobre el código.",
-    exec_btn: "▶ EJECUTAR",
-    stop_btn: "⏹ DETENER",
-    clear_btn: "LIMPIAR",
-    market_title: "🧩 MERCADO DE COMPLEMENTOS Y TEMAS DE ZABACODE",
-    stdin_label: "stdin >",
-    stdin_placeholder_idle: "Ejecute el programa para habilitar la entrada",
-    stdin_placeholder_active: "Escriba la entrada y presione Enter/ENVIAR para enviar al programa...",
-    stdin_send: "ENVIAR",
-    toast_lang: "✓ Cambiado a Español"
-  }
-};
+let TRANSLATIONS = {};
+let LANGUAGES = {};
+const LANG_CYCLE = ['id', 'en'];
 
-const LANG_CYCLE = ['id', 'en', 'ja', 'ko', 'ar', 'es'];
+async function loadTranslations() {
+  try {
+    const res = await fetchApi('/api/translations');
+    const data = await res.json();
+    if (data.ok) {
+      TRANSLATIONS = data.translations;
+      LANGUAGES = data.languages;
+    }
+  } catch (e) {
+    console.error('Failed to load translations from backend:', e);
+  }
+  // Robust fallback
+  if (!TRANSLATIONS || !TRANSLATIONS.id) {
+    TRANSLATIONS = {
+      id: {
+        sidebar_control: "[ FITUR & KONTROL ]",
+        sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
+        sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
+        sidebar_open: "📂 OPEN / MANAGE FILES",
+        sidebar_save: "💾 SAVE AS FILE (.py)",
+        sidebar_lang: "🌐 BAHASA: INDONESIA (SWITCH)",
+        sidebar_theme: "🎨 CHANGE THEME PRESET",
+        sidebar_crt: "📺 CRT SCANLINES: ON",
+        sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
+        sidebar_docs_btn: "📖 DOCS & ROADMAP",
+        ai_hint: "AI otomatis membaca kode di editor aktif — tanyakan apa saja seputar kode.",
+        exec_btn: "▶ JALANKAN",
+        stop_btn: "⏹ BERHENTI",
+        clear_btn: "BERSIHKAN",
+        market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
+        stdin_label: "stdin >",
+        stdin_placeholder_idle: "Jalankan program untuk mengaktifkan input",
+        stdin_placeholder_active: "Ketik input lalu tekan Enter/KIRIM untuk mengirim ke program...",
+        stdin_send: "KIRIM",
+        toast_lang: "✓ Berubah ke Bahasa Indonesia"
+      },
+      en: {
+        sidebar_control: "[ FEATURES & CONTROLS ]",
+        sidebar_market: "🧩 PLUGIN & THEME MARKETPLACE",
+        sidebar_lib: "📦 LIBRARY MANAGER (zabapip)",
+        sidebar_open: "📂 OPEN / MANAGE FILES",
+        sidebar_save: "💾 SAVE AS FILE (.py)",
+        sidebar_lang: "🌐 LANGUAGE: ENGLISH (SWITCH)",
+        sidebar_theme: "🎨 CHANGE THEME PRESET",
+        sidebar_crt: "📺 CRT SCANLINES: ON",
+        sidebar_docs_lbl: "[ DOCS & ROADMAP ]",
+        sidebar_docs_btn: "📖 DOCS & ROADMAP",
+        ai_hint: "AI automatically reads code in the active editor — ask anything about the code.",
+        exec_btn: "▶ RUN",
+        stop_btn: "⏹ STOP",
+        clear_btn: "CLEAR",
+        market_title: "🧩 ZABACODE ADDON & THEME MARKETPLACE",
+        stdin_label: "stdin >",
+        stdin_placeholder_idle: "Run the program to enable input",
+        stdin_placeholder_active: "Type input then press Enter/SEND to send to program...",
+        stdin_send: "SEND",
+        toast_lang: "✓ Switched to English"
+      }
+    };
+  }
+}
 
 function applyLanguage(lang) {
   currentLang = lang;
   localStorage.setItem('zabacode-lang', lang);
-  const t = TRANSLATIONS[lang] || TRANSLATIONS['id'];
+  const t = TRANSLATIONS[lang] || TRANSLATIONS['id'] || {};
 
-  document.getElementById('lbl-sidebar-control').textContent = t.sidebar_control;
-  document.getElementById('sidebar-market-btn').textContent = t.sidebar_market;
-  document.getElementById('sidebar-lib-btn').textContent = t.sidebar_lib;
-  document.getElementById('sidebar-open-btn').textContent = t.sidebar_open;
-  document.getElementById('sidebar-save-btn').textContent = t.sidebar_save;
-  document.getElementById('sidebar-lang-btn').textContent = t.sidebar_lang;
-  document.getElementById('sidebar-theme-btn').textContent = t.sidebar_theme;
-  document.getElementById('lbl-sidebar-docs').textContent = t.sidebar_docs_lbl;
-  document.getElementById('sidebar-docs-btn').textContent = t.sidebar_docs_btn;
-  document.getElementById('lbl-ai-hint').textContent = t.ai_hint;
-  document.getElementById('run-btn').textContent = t.exec_btn;
-  document.getElementById('clear-btn').textContent = t.clear_btn;
-  document.getElementById('lbl-market-title').textContent = t.market_title;
+  const controlEl = document.getElementById('lbl-sidebar-control');
+  if (controlEl) controlEl.textContent = t.sidebar_control || "[ FITUR & KONTROL ]";
+
+  const marketBtn = document.getElementById('sidebar-market-btn');
+  if (marketBtn) marketBtn.textContent = t.sidebar_market || "🧩 PLUGIN & THEME MARKETPLACE";
+
+  const libBtn = document.getElementById('sidebar-lib-btn');
+  if (libBtn) libBtn.textContent = t.sidebar_lib || "📦 LIBRARY MANAGER (zabapip)";
+
+  const openBtn = document.getElementById('sidebar-open-btn');
+  if (openBtn) openBtn.textContent = t.sidebar_open || "📂 OPEN / MANAGE FILES";
+
+  const saveBtn = document.getElementById('sidebar-save-btn');
+  if (saveBtn) saveBtn.textContent = t.sidebar_save || "💾 SAVE AS FILE (.py)";
+
+  const langBtn = document.getElementById('sidebar-lang-btn');
+  if (langBtn) langBtn.textContent = t.sidebar_lang || "🌐 BAHASA: INDONESIA (SWITCH)";
+
+  const themeBtn = document.getElementById('sidebar-theme-btn');
+  if (themeBtn) themeBtn.textContent = t.sidebar_theme || "🎨 CHANGE THEME PRESET";
+
+  const docsLbl = document.getElementById('lbl-sidebar-docs');
+  if (docsLbl) docsLbl.textContent = t.sidebar_docs_lbl || "[ DOCS & ROADMAP ]";
+
+  const docsBtn = document.getElementById('sidebar-docs-btn');
+  if (docsBtn) docsBtn.textContent = t.sidebar_docs_btn || "📖 DOCS & ROADMAP";
+
+  const aiHint = document.getElementById('lbl-ai-hint');
+  if (aiHint) aiHint.textContent = t.ai_hint || "AI otomatis membaca kode di editor aktif...";
+
+  const runBtn = document.getElementById('run-btn');
+  if (runBtn && !interactiveActive) runBtn.textContent = t.exec_btn || "▶ JALANKAN";
+
+  const clearBtn = document.getElementById('clear-btn');
+  if (clearBtn) clearBtn.textContent = t.clear_btn || "BERSIHKAN";
+
+  const marketTitle = document.getElementById('lbl-market-title');
+  if (marketTitle) marketTitle.textContent = t.market_title || "🧩 ZABACODE ADDON & THEME MARKETPLACE";
 
   // Stdin i18n
   const stdinLabel = document.getElementById('terminal-stdin-label');
   const stdinInput = document.getElementById('stdin-input');
   const stdinSendBtn = document.getElementById('stdin-send-btn');
-  if (stdinLabel) stdinLabel.textContent = t.stdin_label;
+  if (stdinLabel) stdinLabel.textContent = t.stdin_label || "stdin >";
   if (stdinInput) {
-    stdinInput.placeholder = stdinInput.disabled ? t.stdin_placeholder_idle : t.stdin_placeholder_active;
+    stdinInput.placeholder = stdinInput.disabled ? (t.stdin_placeholder_idle || "Jalankan program...") : (t.stdin_placeholder_active || "Ketik input...");
   }
-  if (stdinSendBtn) stdinSendBtn.textContent = t.stdin_send;
+  if (stdinSendBtn) stdinSendBtn.textContent = t.stdin_send || "KIRIM";
 }
 
 document.getElementById('sidebar-lang-btn').onclick = () => {
@@ -770,9 +723,10 @@ document.getElementById('sidebar-lang-btn').onclick = () => {
   const currentIndex = LANG_CYCLE.indexOf(currentLang);
   const nextLang = LANG_CYCLE[(currentIndex + 1) % LANG_CYCLE.length];
   applyLanguage(nextLang);
-  const t = TRANSLATIONS[nextLang] || TRANSLATIONS['id'];
-  showToast(t.toast_lang, 'success');
+  const t = TRANSLATIONS[nextLang] || TRANSLATIONS['id'] || {};
+  showToast(t.toast_lang || "Language changed", 'success');
 };
+
 
 // ---------- Matrix Rain Animation ----------
 let matrixInterval = null;
@@ -852,9 +806,10 @@ const BOOT_MESSAGES = [
 
 const bootLines = document.getElementById('boot-lines');
 let bootIdx = 0;
-function playBoot() {
+async function playBoot() {
   if (bootIdx === 0) {
     startMatrixRain();
+    await loadTranslations();
   }
   if (bootIdx < BOOT_MESSAGES.length) {
     const msg = BOOT_MESSAGES[bootIdx++];
@@ -926,6 +881,44 @@ let editor = null;
 // Native editor is the default so the core IDE works on first launch without connectivity.
 let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'monaco' ? 'loading' : 'native';
 
+function saveTabsToStorage() {
+  localStorage.setItem('zabacode-tabs', JSON.stringify(tabs));
+  localStorage.setItem('zabacode-active-tab-id', activeTabId);
+}
+
+function loadTabsFromStorage() {
+  const savedTabs = localStorage.getItem('zabacode-tabs');
+  const savedActiveTabId = localStorage.getItem('zabacode-active-tab-id');
+  if (savedTabs) {
+    try {
+      const parsedTabs = JSON.parse(savedTabs);
+      if (parsedTabs && parsedTabs.length > 0) {
+        tabs = parsedTabs;
+        activeTabId = savedActiveTabId || tabs[0].id;
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to parse saved tabs:', e);
+    }
+  }
+  return false;
+}
+
+// Load tabs from storage immediately on startup
+loadTabsFromStorage();
+
+let saveTimeout = null;
+function triggerAutoSave() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) {
+      activeTab.content = getEditorValue();
+    }
+    saveTabsToStorage();
+  }, 500); // 500ms debounce prevents UI freezing/lag with large (>10k lines) files
+}
+
 const tabBarEl = document.getElementById('tab-bar');
 const addTabBtn = document.getElementById('add-tab-btn');
 
@@ -961,9 +954,9 @@ function renderTabs() {
 }
 
 function switchTab(id) {
-  if (activeTabId) {
-    const currentTab = tabs.find(t => t.id === activeTabId);
-    if (currentTab) currentTab.content = getEditorValue();
+  if (activeTabId && activeTabId !== id) {
+    const prevTab = tabs.find(t => t.id === activeTabId);
+    if (prevTab) prevTab.content = getEditorValue();
   }
   activeTabId = id;
   const targetTab = tabs.find(t => t.id === activeTabId);
@@ -971,6 +964,7 @@ function switchTab(id) {
     setEditorValue(targetTab.content);
   }
   renderTabs();
+  saveTabsToStorage();
 }
 
 function closeTab(id) {
@@ -978,11 +972,20 @@ function closeTab(id) {
     alert('Minimal harus ada 1 tab aktif!');
     return;
   }
-  tabs = tabs.filter(t => t.id !== id);
+
   if (activeTabId === id) {
-    activeTabId = tabs[tabs.length - 1].id;
+    const otherTab = tabs.find(t => t.id !== id);
+    if (otherTab) {
+      switchTab(otherTab.id);
+    }
+  } else {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) activeTab.content = getEditorValue();
   }
-  switchTab(activeTabId);
+
+  tabs = tabs.filter(t => t.id !== id);
+  renderTabs();
+  saveTabsToStorage();
 }
 
 addTabBtn.onclick = () => {
@@ -1080,7 +1083,11 @@ function updateNativeGutter() {
   nativeGutter.textContent = numbers;
 }
 
-nativeCodeArea.addEventListener('input', () => { updateNativeGutter(); updateLineCounter(); });
+nativeCodeArea.addEventListener('input', () => {
+  updateNativeGutter();
+  updateLineCounter();
+  triggerAutoSave();
+});
 nativeCodeArea.addEventListener('keyup', updateLineCounter);
 nativeCodeArea.addEventListener('click', updateLineCounter);
 
@@ -1089,7 +1096,7 @@ function activateNativeFallback(reason) {
   localStorage.setItem('zabacode-preferred-engine', 'native');
   monacoDiv.style.display = 'none';
   nativeWrapper.classList.add('active');
-  const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
   if (activeTab) nativeCodeArea.value = activeTab.content;
   updateNativeGutter();
   updateLineCounter();
@@ -1193,8 +1200,9 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
       try {
         registerCustomMonacoTheme(currentThemeData);
 
+        const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
         editor = monaco.editor.create(monacoDiv, {
-          value: tabs[0].content,
+          value: activeTab.content,
           language: 'python',
           theme: 'zabacode-custom-theme',
           fontSize: 14,
@@ -1232,6 +1240,9 @@ if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
         updateLineCounter();
         updateEngineBtnText();
         editor.onDidChangeCursorPosition(updateLineCounter);
+        editor.onDidChangeModelContent(() => {
+          triggerAutoSave();
+        });
         
         window.addEventListener('resize', () => { if (editor) editor.layout(); });
         setTimeout(() => { if (editor) editor.layout(); }, 100);
@@ -1934,11 +1945,14 @@ async function loadFileList() {
         const fileRes = await fetchApi(`/api/files/${f.name}`);
         const fileData = await fileRes.json();
         if (fileData.ok) {
-          const activeTab = tabs.find(t => t.id === activeTabId);
-          if (activeTab) {
-            activeTab.name = f.name;
-            activeTab.content = fileData.content;
-            switchTab(activeTabId);
+          let existingTab = tabs.find(t => t.name === f.name);
+          if (existingTab) {
+            existingTab.content = fileData.content;
+            switchTab(existingTab.id);
+          } else {
+            const newId = 'tab-' + Date.now();
+            tabs.push({ id: newId, name: f.name, content: fileData.content });
+            switchTab(newId);
           }
           fileDialogBackdrop.classList.remove('open');
         }

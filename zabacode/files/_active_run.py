@@ -1,3 +1,3 @@
-import sys
-line = sys.stdin.readline().strip()
-print('HELLO ' + line)
+name = input('Name: ')
+age = input('Age: ')
+print(f'{name} is {age}')

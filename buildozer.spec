@@ -7,6 +7,9 @@ source.dir = .
 source.include_exts = py,png,jpg,html,js,css,json,ttf,otf
 version = 1.0.0
 
+# (string) Icon of the application
+icon.filename = %(source.dir)s/assets/logo.png
+
 # WebView shell over the v1.0.0 modular Python core
 p4a.bootstrap = webview
 p4a.port = 5000

@@ -22,7 +22,7 @@
 * [x] **50+ Library Catalog with Offline/Online/Hybrid Tags:** Every library now has a `mode` indicator showing whether it works offline, needs internet, or is hybrid.
 * [x] **6 AI Providers:** Added DeepSeek and Ollama (offline!) alongside OpenRouter, Gemini, Groq, and Mistral.
 * [x] **10 Themes:** Added Tokyo Night, One Dark, Gruvbox Dark, and Catppuccin Mocha.
-* [x] **6-Language i18n:** Full translations for Indonesian, English, Japanese, Korean, Arabic, and Spanish.
+* [x] **Streamlined 2-Language i18n:** Full, robust translations for Indonesian and English.
 * [x] **12 Plugins + 8 Snippets:** Added Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown Preview, Code Timer, ASCII Art, and TODO Manager.
 * [x] **Background Threading:** AI calls and library installations run in background threads to keep UI responsive.
 * [x] **Security hardening:** Removed the exposed HTTP server; package downloads verify TLS; wheel paths are validated; Android Keystore is preferred for API keys with an in-memory-only fallback.

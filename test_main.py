@@ -385,11 +385,10 @@ class TestI18n:
         langs = i18n.get_available_languages()
         assert "id" in langs
         assert "en" in langs
-        assert "ja" in langs
     
-    def test_min_4_languages(self):
-        """v1.0.0 supports at least 4 languages."""
-        assert len(LANGUAGES) >= 4
+    def test_min_2_languages(self):
+        """v1.0.0 supports streamlined languages."""
+        assert len(LANGUAGES) >= 2
 
 
 # ===================================================================

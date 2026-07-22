@@ -155,6 +155,12 @@ def theme(name):
     return jsonify({"ok": True, "theme": result})
 
 
+@app.get("/api/translations")
+def get_translations():
+    from zabacode.i18n.translations import TRANSLATIONS, LANGUAGES
+    return jsonify({"ok": True, "translations": TRANSLATIONS, "languages": LANGUAGES})
+
+
 @app.get("/api/marketplace/plugins")
 def plugins():
     return jsonify({"ok": True, "plugins": get_all_plugins()})

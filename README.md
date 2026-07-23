@@ -109,7 +109,7 @@ Our **Safe Calculator** Starter Kit is completely updated in English! If you att
 
 ### Option 1: Download Pre-compiled APK (Recommended)
 1. Visit the [GitHub Releases](https://github.com/muzape28-blip/ZABACODE/releases) page.
-2. Download `Zabacode-Kivy-v1.0.0.apk`.
+2. Download `Zabacode-1.0.0-.apk`.
 3. Install on your Android phone (Android 8.0 / API 26+).
 
 ### Option 2: Running Development Server Locally

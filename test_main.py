@@ -495,3 +495,56 @@ class TestInteractiveExecution:
         stdout_chars = "".join(char for stream, char in out_res["output"] if stream == "stdout")
         assert "Name: Age: Zaqi is 20" in stdout_chars
         assert out_res["done"] is True
+
+
+# ===================================================================
+# Test New Transform Plugins (v1.1.0)
+# ===================================================================
+
+class TestNewPlugins:
+    """Test suite for the 5 new transform plugins and PluginExecutor."""
+
+    def test_auto_import_optimizer(self):
+        from zabacode.plugins.implementations import AutoImportOptimizer
+        code = "import os\nimport sys\nimport math\nprint(os.name)\n"
+        new_code, report = AutoImportOptimizer.optimize(code)
+        assert "import sys" in new_code
+        assert "# import sys" in new_code or "#import sys" in new_code or "unused import" in "".join(report)
+        assert "math" in "".join(report)
+
+    def test_duplicate_line_detector(self):
+        from zabacode.plugins.implementations import DuplicateLineDetector
+        code = "x = 10\ny = 20\nx = 10\n"
+        new_code, report = DuplicateLineDetector.detect(code)
+        assert "WARNING: Duplicate line" in new_code
+        assert len(report) > 1
+
+    def test_smart_comment_generator(self):
+        from zabacode.plugins.implementations import SmartCommentGenerator
+        code = "def greet(name):\n    print('Hello', name)\n"
+        new_code, report = SmartCommentGenerator.generate(code)
+        assert '"""Docstring for greet.' in new_code
+        assert "name" in new_code
+
+    def test_code_beautifier_pro(self):
+        from zabacode.plugins.implementations import CodeBeautifierPro
+        code = "x=5\ny  =  10\nprint(x,y)\n"
+        new_code, report = CodeBeautifierPro.beautify(code)
+        assert "x = 5" in new_code
+        assert "y = 10" in new_code
+        assert "x, y" in new_code
+
+    def test_variable_type_hint_generator(self):
+        from zabacode.plugins.implementations import VariableTypeHintGenerator
+        code = "def add(a=5, b=''):\n    return a + b\n"
+        new_code, report = VariableTypeHintGenerator.generate(code)
+        assert "a: int" in new_code
+        assert "b: str" in new_code
+        assert "from typing import Any" in new_code
+
+    def test_plugin_executor(self):
+        from zabacode.plugins.implementations import PluginExecutor
+        code = "x=5\n"
+        res = PluginExecutor.execute_plugin("code_beautifier_pro", code)
+        assert res["ok"] is True
+        assert "code" in res

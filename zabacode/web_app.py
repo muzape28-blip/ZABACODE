@@ -19,6 +19,7 @@ from zabacode.core.file_manager import delete_file, list_files, read_file, save_
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
 from zabacode.plugins.registry import get_all_plugins
+from zabacode.plugins.implementations import PluginExecutor
 from zabacode.themes.definitions import get_theme, list_themes
 
 APP_VERSION = "1.0.0"
@@ -164,6 +165,22 @@ def get_translations():
 @app.get("/api/marketplace/plugins")
 def plugins():
     return jsonify({"ok": True, "plugins": get_all_plugins()})
+
+
+@app.post("/api/plugins/execute")
+@require_auth
+def execute_plugin():
+    payload = request.get_json(silent=True) or {}
+    plugin_id = payload.get("plugin_id", "")
+    code = payload.get("code", "")
+    if not isinstance(plugin_id, str) or not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'plugin_id' dan 'code' harus berupa string."}), 400
+
+    try:
+        result = PluginExecutor.execute_plugin(plugin_id, code)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"Gagal mengeksekusi plugin: {str(e)}"}), 500
 
 
 @app.get("/api/keys/status")

@@ -9,17 +9,20 @@ import urllib.error
 
 ALLOWED_PROVIDERS = {"openrouter", "gemini", "groq", "mistral", "deepseek", "ollama"}
 
-# Default system prompt
+# Default system prompt (Updated to English and Tsundere persona as requested)
 SYSTEM_PROMPT = (
-    "Anda adalah Zabacode AI, asisten coding adaptif, bermulut tajam/tsundere, "
-    "suka mengejek Zaba, namun sangat ahli membantu coding Python di Android. "
-    "Jawab dengan singkat, padat, dan langsung ke solusi."
+    "You are Zabacode AI, an adaptive, sharp-tongued/tsundere coding assistant. "
+    "You like to tease Zaba, but are extremely expert at helping with Python coding on Android. "
+    "Answer concisely, directly, and go straight to the solution in English."
 )
 
 
 def _handle_url_error(e: Exception, provider_name: str) -> dict:
-    """Handle URL errors from AI providers, returning error dict."""
+    """Handle URL errors from AI providers, returning error dict with rate-limit flag."""
+    is_rate_limit = False
     if isinstance(e, urllib.error.HTTPError):
+        if e.code in (429, 402):
+            is_rate_limit = True
         try:
             err_body = e.read().decode("utf-8", errors="ignore")
             err_json = json.loads(err_body)
@@ -27,17 +30,28 @@ def _handle_url_error(e: Exception, provider_name: str) -> dict:
                 msg = err_json["error"].get("message", str(e))
             else:
                 msg = err_json.get("error") or str(e)
-            return {"ok": False, "message": f"{provider_name} error ({e.code}): {msg}"}
+            
+            lower_msg = msg.lower()
+            if any(w in lower_msg for w in ("rate limit", "quota", "credit", "billing", "balance", "insufficient", "exhausted")):
+                is_rate_limit = True
+
+            return {"ok": False, "message": f"{provider_name} error ({e.code}): {msg}", "is_rate_limit": is_rate_limit}
         except Exception:
-            return {"ok": False, "message": f"{provider_name} error ({e.code})"}
-    return {"ok": False, "message": f"{provider_name} error: {e}"}
+            return {"ok": False, "message": f"{provider_name} error ({e.code})", "is_rate_limit": is_rate_limit}
+            
+    err_str = str(e)
+    lower_err = err_str.lower()
+    if any(w in lower_err for w in ("rate limit", "quota", "credit", "billing", "balance", "insufficient", "exhausted")):
+        is_rate_limit = True
+    return {"ok": False, "message": f"{provider_name} error: {e}", "is_rate_limit": is_rate_limit}
 
 
-def call_openrouter(api_key: str, message: str, code_context: str = "") -> dict:
+def call_openrouter(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call OpenRouter API (supports multiple models)."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "qwen/qwen-2.5-coder-32b-instruct:free"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
-        "model": "qwen/qwen-2.5-coder-32b-instruct:free",
+        "model": actual_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -61,14 +75,15 @@ def call_openrouter(api_key: str, message: str, code_context: str = "") -> dict:
         return _handle_url_error(e, "OpenRouter")
 
 
-def call_gemini(api_key: str, message: str, code_context: str = "") -> dict:
+def call_gemini(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call Google Gemini API."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "gemini-1.5-flash"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
         "contents": [{"parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_content}]}]
     }).encode()
     req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={api_key}",
         data=body,
         headers={"Content-Type": "application/json"},
     )
@@ -81,11 +96,12 @@ def call_gemini(api_key: str, message: str, code_context: str = "") -> dict:
         return _handle_url_error(e, "Gemini")
 
 
-def call_groq(api_key: str, message: str, code_context: str = "") -> dict:
+def call_groq(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call Groq API (ultra-fast inference)."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "llama-3.1-8b-instant"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
-        "model": "llama-3.1-8b-instant",
+        "model": actual_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -104,11 +120,12 @@ def call_groq(api_key: str, message: str, code_context: str = "") -> dict:
         return _handle_url_error(e, "Groq")
 
 
-def call_mistral(api_key: str, message: str, code_context: str = "") -> dict:
+def call_mistral(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call Mistral API (Codestral model)."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "codestral-latest"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
-        "model": "codestral-latest",
+        "model": actual_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -127,11 +144,12 @@ def call_mistral(api_key: str, message: str, code_context: str = "") -> dict:
         return _handle_url_error(e, "Mistral")
 
 
-def call_deepseek(api_key: str, message: str, code_context: str = "") -> dict:
+def call_deepseek(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call DeepSeek API (coding-specialized model)."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "deepseek-coder"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
-        "model": "deepseek-coder",
+        "model": actual_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -150,11 +168,12 @@ def call_deepseek(api_key: str, message: str, code_context: str = "") -> dict:
         return _handle_url_error(e, "DeepSeek")
 
 
-def call_ollama(api_key: str, message: str, code_context: str = "") -> dict:
+def call_ollama(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
     """Call Ollama local API (offline-capable, runs on localhost)."""
-    user_content = f"Kode yang sedang dibuka:\n```python\n{code_context}\n```\n\nPertanyaan: {message}" if code_context else message
+    actual_model = model if (model and model.strip()) else "codellama"
+    user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
     body = json.dumps({
-        "model": "codellama",
+        "model": actual_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},

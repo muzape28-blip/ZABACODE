@@ -333,6 +333,60 @@
   .tag { font-size: 9px; padding: 2px 6px; border: 1px solid; }
   .tag.runtime { border-color: var(--border-bright); color: var(--text-bright); }
   .tag.buildtime { border-color: var(--ai-dim); color: var(--ai); }
+
+  /* ---------- ACE SETTINGS MENU OVERRIDES (OLED Dark & Hacker Green) ---------- */
+  #ace_settingsmenu {
+    background: #000000 !important;
+    color: #39FF14 !important;
+    font-family: var(--mono) !important;
+    padding: 24px !important;
+    border: 1px solid #39FF14 !important;
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.4) !important;
+    max-width: 600px !important;
+    margin: 20px auto !important;
+    border-radius: 8px !important;
+    max-height: 85vh !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+  #ace_settingsmenu input,
+  #ace_settingsmenu select,
+  #ace_settingsmenu button {
+    background: #000000 !important;
+    color: #39FF14 !important;
+    border: 1px solid #39FF14 !important;
+    font-family: var(--mono) !important;
+    padding: 6px 10px !important;
+    border-radius: 4px !important;
+    outline: none !important;
+  }
+  #ace_settingsmenu button:hover,
+  #ace_settingsmenu select:hover,
+  #ace_settingsmenu input:focus {
+    background: rgba(57, 255, 20, 0.1) !important;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.5) !important;
+  }
+  #ace_settingsmenu select option {
+    background: #000000 !important;
+    color: #39FF14 !important;
+  }
+  #ace_settingsmenu button[ace_selected_button="true"],
+  #ace_settingsmenu button[aria-pressed="true"] {
+    background: #39FF14 !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+  }
+  #ace_settingsmenu label {
+    color: #39FF14 !important;
+    font-family: var(--mono) !important;
+    font-size: 13px !important;
+  }
+  .ace_optionsMenuEntry {
+    border-bottom: 1px solid rgba(57, 255, 20, 0.15) !important;
+  }
+  .ace_optionsMenuEntry td {
+    padding: 8px 4px !important;
+  }
 </style>
 </head>
 <body>
@@ -368,8 +422,8 @@
         <div id="code-editor" tabindex="0"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
-          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Halo Zaqi! Welcome to ZABACODE')
-print('Coba jalankan library atau eksekusi kode di sini!')
+          <textarea id="native-code-area" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">print('Hello! Welcome to ZABACODE')
+print('Try running libraries or executing code here!')
 </textarea>
         </div>
       </div>
@@ -410,7 +464,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
       <div id="output-terminal" aria-live="polite"></div>
       <div id="terminal-stdin-row">
         <label id="terminal-stdin-label" for="stdin-input">stdin &gt;</label>
-        <input type="text" id="stdin-input" placeholder="Jalankan program untuk mengaktifkan input" disabled autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Input untuk program yang sedang berjalan">
+        <input type="text" id="stdin-input" placeholder="Run the program to enable input" disabled autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Input for the currently running program">
         <button id="stdin-send-btn" type="button" disabled>KIRIM</button>
       </div>
     </div>
@@ -444,12 +498,21 @@ print('Coba jalankan library atau eksekusi kode di sini!')
     <div id="ai-panel-header">
       zabacode ai
       <select id="ai-provider">
-        <option value="openrouter">openrouter (qwen 2.5 coder)</option>
-        <option value="gemini">gemini (1.5 flash)</option>
-        <option value="groq">groq (llama 3.1 8b)</option>
-        <option value="mistral">mistral (codestral)</option>
+        <option value="openrouter">openrouter</option>
+        <option value="gemini">gemini</option>
+        <option value="groq">groq</option>
+        <option value="mistral">mistral</option>
+        <option value="deepseek">deepseek</option>
+        <option value="ollama">ollama</option>
       </select>
       <button id="ai-close">✕</button>
+    </div>
+    <!-- Model Selector Row -->
+    <div id="ai-model-row" style="padding: 6px 14px; background: var(--bg-panel-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-family: var(--mono);">Model:</span>
+      <select id="ai-model" style="flex: 1; background: var(--bg-panel); color: var(--text); border: 1px solid var(--border); font-size: 11px; padding: 4px 6px; outline: none; font-family: var(--mono);">
+        <!-- populated dynamically -->
+      </select>
     </div>
     <div id="ai-messages">
       <div class="msg system-hint" id="lbl-ai-hint">AI automatically reads code in the active editor — ask anything about the code.</div>
@@ -576,15 +639,15 @@ print('Coba jalankan library atau eksekusi kode di sini!')
       </div>
       <div style="flex:1;overflow-y:auto;padding:18px;font-size:12px;line-height:1.7;" id="docs-modal-body">
         <h3 style="color:var(--text-bright);">⚡ ZABACODE Overview</h3>
-        <p>Zabacode adalah Mobile Python IDE 100% Standalone & Anti-Kapitalis dengan zero-telemetry, didesain untuk berjalan di HP Android (ARMv7 32-bit & ARM64 64-bit).</p>
+        <p>Zabacode is a 100% Standalone, Anti-Capitalist Mobile Python IDE with zero telemetry, designed to run flawlessly on Android devices (ARMv7 32-bit & ARM64 64-bit).</p>
         
-        <h3 style="color:var(--text-bright);">🚀 Fitur Utama & Solusi</h3>
+        <h3 style="color:var(--text-bright);">🚀 Key Features & Solutions</h3>
         <ul>
-          <li><b>High-Performance Ace Editor:</b> Menggantikan Monaco Editor untuk responsivitas sentuhan 45-60 FPS pada perangkat mobile ARMv7.</li>
-          <li><b>Bilingual i18n Engine:</b> Dukungan penuh Bahasa Indonesia dan Bahasa Inggris yang bisa dipindah dalam 1 klik.</li>
-          <li><b>Functional Plugin Addon System:</b> Auto-Formatter, Snippets, Linter, dan Extended Mobile Symbol Bar.</li>
-          <li><b>Local Session Auth Token Protection:</b> Mengikat endpoint API lokal dengan token keamanan <code>X-Zabacode-Token</code> acak.</li>
-          <li><b>Android Keystore Key Encryption:</b> Penyimpanan kunci API terenkripsi aman.</li>
+          <li><b>High-Performance Ace Editor:</b> Replaces Monaco Editor to ensure touch responsiveness of 45-60 FPS on mobile devices.</li>
+          <li><b>English-Only i18n Engine:</b> Full-fidelity English support across all elements and backend responses.</li>
+          <li><b>Functional Plugin Addon System:</b> Auto-Formatter, Snippets, Linter, and Extended Mobile Symbol Bar.</li>
+          <li><b>Local Session Auth Token Protection:</b> Binds local API endpoints with a random security token.</li>
+          <li><b>Android Keystore Key Encryption:</b> Secure encrypted storage of API keys.</li>
         </ul>
       </div>
     </div>
@@ -593,12 +656,12 @@ print('Coba jalankan library atau eksekusi kode di sini!')
   <!-- API KEY DIALOG -->
   <div id="key-dialog-backdrop" class="dialog-backdrop">
     <div class="dialog-box">
-      <h4>&gt; Masukkan API Key <span id="key-dialog-provider"></span>_</h4>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Disimpan terenkripsi di Keystore/Local storage perangkat.</p>
+      <h4>&gt; Enter API Key for <span id="key-dialog-provider"></span>_</h4>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Saved encrypted on the device's Keystore/Local storage.</p>
       <input id="key-dialog-input" class="dialog-input" type="password" placeholder="api key...">
       <div class="dialog-actions">
-        <button class="mini-btn" id="key-dialog-cancel">batal</button>
-        <button class="mini-btn" id="key-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan</button>
+        <button class="mini-btn" id="key-dialog-cancel">cancel</button>
+        <button class="mini-btn" id="key-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">save</button>
       </div>
     </div>
   </div>
@@ -610,8 +673,8 @@ print('Coba jalankan library atau eksekusi kode di sini!')
       <div id="file-list-container" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
       <input id="file-save-input" class="dialog-input" type="text" placeholder="nama file (tanpa .py)...">
       <div class="dialog-actions">
-        <button class="mini-btn" id="file-dialog-cancel">tutup</button>
-        <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">simpan file</button>
+        <button class="mini-btn" id="file-dialog-cancel">close</button>
+        <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">save file</button>
       </div>
     </div>
   </div>
@@ -620,19 +683,30 @@ print('Coba jalankan library atau eksekusi kode di sini!')
   <div id="starter-dialog-backdrop" class="dialog-backdrop">
     <div class="dialog-box" style="max-width:520px;">
       <h4>🚀 Offline starter kits</h4>
-      <p style="color:var(--text-dim);font-size:11px;line-height:1.5;margin:0 0 12px;">Pilih template untuk membuka tab baru. Semua template ini berjalan lokal dan tidak membutuhkan akun, API key, atau koneksi internet.</p>
+      <p style="color:var(--text-dim);font-size:11px;line-height:1.5;margin:0 0 12px;">Select a template to open a new tab. All of these templates run locally and do not require an account, API key, or internet connection.</p>
       <div id="starter-kit-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-      <div class="dialog-actions"><button id="starter-dialog-cancel" class="mini-btn">tutup</button></div>
+      <div class="dialog-actions"><button id="starter-dialog-cancel" class="mini-btn">close</button></div>
     </div>
   </div>
 
   <!-- THEME SELECTOR DIALOG -->
   <div id="theme-dialog-backdrop" class="dialog-backdrop">
     <div class="dialog-box">
-      <h4>&gt; Pilih Tema Visual _</h4>
+      <h4>&gt; Select Visual Theme _</h4>
       <div id="theme-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
       <div class="dialog-actions">
-        <button class="mini-btn" id="theme-dialog-cancel">tutup</button>
+        <button class="mini-btn" id="theme-dialog-cancel">close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BILLING FAIL DIALOG -->
+  <div id="billing-dialog-backdrop" class="dialog-backdrop" style="z-index: 80;">
+    <div class="dialog-box" style="text-align: center; border-color: var(--err); box-shadow: 0 0 20px rgba(255, 75, 75, 0.4);">
+      <h4 style="color: var(--err); font-size: 16px;">🛑 OUT OF FUNDS</h4>
+      <p id="billing-dialog-message" style="font-size: 13px; color: var(--text); margin-bottom: 20px; font-weight: bold; font-family: var(--mono);">YOU BETER GET SOME JOB AND BE RICH</p>
+      <div class="dialog-actions" style="justify-content: center;">
+        <button class="mini-btn" id="billing-dialog-back" style="background: var(--err); color: #000000; border: none; font-weight: bold; padding: 8px 16px; font-family: var(--mono); cursor: pointer;">BACK</button>
       </div>
     </div>
   </div>
@@ -640,6 +714,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ace.js" type="text/javascript" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ext-settings_menu.js" type="text/javascript" charset="utf-8"></script>
 <script>
 
 function rgbaToCss(rgba) {
@@ -663,7 +738,7 @@ function rgbaToHex(rgba) {
 let interactiveActive = false;
 let currentLang = 'en';
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+  { id: 'tab-1', name: 'main.py', content: "print('Hello! Welcome to ZABACODE')\nprint('Try running libraries or executing code here!')\n" }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
@@ -832,7 +907,7 @@ const BOOT_MESSAGES = [
   { text: '[ OK ] Android Keystore Encrypted Key Storage Active', cls: 'ok' },
   { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
   { text: '[ OK ] Direct PyPI Wheel Extractor (SSL Bypass) siap', cls: 'ok' },
-  { text: '[ OK ] Dual Language Engine: Indonesian & English Ready', cls: 'ok' },
+  { text: '[ OK ] Dual Language Engine: English Ready', cls: 'ok' },
   { text: '> Theme Custom Tanpa Garis Putih & Fix Caret Alignment Aktif', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
@@ -1233,6 +1308,48 @@ try {
   ace.config.set("basePath", "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/");
   editor.session.setMode("ace/mode/python");
 
+  // Hook showSettingsMenu to style and add Close/Back button
+  const origShowSettingsMenu = editor.showSettingsMenu;
+  editor.showSettingsMenu = function() {
+    if (typeof origShowSettingsMenu === 'function') {
+      origShowSettingsMenu.call(this);
+    }
+    const menu = document.getElementById('ace_settingsmenu');
+    if (menu) {
+      const overlay = menu.parentNode;
+      if (overlay) {
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.85)";
+        overlay.style.backdropFilter = "blur(4px)";
+        overlay.style.display = "flex";
+        overlay.style.alignItems = "center";
+        overlay.style.justifyContent = "center";
+      }
+      if (!document.getElementById('ace-settings-close-btn')) {
+        const header = document.createElement('div');
+        header.className = 'ace_settings_header';
+        header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #39FF14; padding-bottom:12px; width:100%;';
+        
+        const title = document.createElement('span');
+        title.textContent = '⚙️ ACE EDITOR SETTINGS';
+        title.style.cssText = 'color:#39FF14; font-weight:bold; font-size:14px; font-family:"JetBrains Mono",monospace;';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'ace-settings-close-btn';
+        closeBtn.textContent = '✕ CLOSE';
+        closeBtn.style.cssText = 'background:#000000; color:#39FF14; border:1px solid #39FF14; padding:6px 12px; cursor:pointer; font-family:"JetBrains Mono",monospace; font-weight:bold; font-size:12px; border-radius:4px;';
+        closeBtn.onclick = function() {
+          if (overlay && overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+          }
+        };
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        menu.insertBefore(header, menu.firstChild);
+      }
+    }
+  };
+
   editor.setOptions({
     fontSize: "14px",
     fontFamily: "'JetBrains Mono', monospace",
@@ -1263,8 +1380,8 @@ try {
     activateAceEngine();
   }
 } catch (err) {
-  console.error("Gagal inisialisasi Ace Editor, fallback ke native:", err);
-  activateNativeFallback('Gagal load Ace');
+  console.error("Failed to initialize Ace Editor, falling back to native:", err);
+  activateNativeFallback('Failed to load Ace');
 }
 
 // ---------- Mobile Symbol Toolbar Handlers ----------
@@ -1443,7 +1560,7 @@ async function pollInteractiveOutput() {
       finishInteractiveSession(typeof data.exit_code === 'number' ? data.exit_code : 1);
     }
   } catch (e) {
-    appendStreamChunk('stderr', '\nGagal membaca output: ' + e + '\n');
+    appendStreamChunk('stderr', '\nFailed to read output: ' + e + '\n');
     finishInteractiveSession(1, '[connection lost]');
   }
 }
@@ -1470,7 +1587,7 @@ if (runBtnEl) {
     if (installedPlugins['syntax_linter']) {
       const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
       if (unclosedParen) {
-        alert('🔍 Syntax Guard: Jumlah tanda kurung ( ) tidak seimbang!');
+        alert('🔍 Syntax Guard: Unbalanced parentheses ( )!');
         return;
       }
     }
@@ -1497,7 +1614,7 @@ if (runBtnEl) {
       });
       const data = await res.json();
       if (!data.ok) {
-        appendStreamChunk('stderr', data.message || 'Gagal memulai sesi interaktif.');
+        appendStreamChunk('stderr', data.message || 'Failed to start interactive session.');
         finishInteractiveSession(1, '[failed to start]');
         return;
       }
@@ -1524,7 +1641,7 @@ if (runBtnEl) {
       interactivePollTimer = setInterval(pollInteractiveOutput, 150);
     } catch (e) {
       if (outputTerminal) {
-        outputTerminal.innerHTML += '<div class="stderr-block">Gagal terhubung ke backend server: ' + escapeHtml(String(e)) + '</div>';
+        outputTerminal.innerHTML += '<div class="stderr-block">Failed to connect to backend server: ' + escapeHtml(String(e)) + '</div>';
       }
       if (statusDot) statusDot.className = 'err';
       if (outputStatusDot) outputStatusDot.style.background = 'var(--err)';
@@ -1554,7 +1671,7 @@ async function sendTerminalInput() {
     if (!data.ok) throw new Error(data.message || 'Input ditolak oleh proses.');
     appendStreamChunk('stdout', text + '\n');
   } catch (err) {
-    appendStreamChunk('stderr', 'Gagal mengirim input: ' + err + '\n');
+    appendStreamChunk('stderr', 'Failed to send input: ' + err + '\n');
   } finally {
     if (interactiveActive) {
       const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
@@ -1627,7 +1744,7 @@ async function fetchAndRenderLibraries() {
     renderLibraryGrid();
   } catch (e) {
     if (libGridContainer) {
-      libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--err);">Gagal memuat daftar library dari backend.</div>';
+      libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--err);">Failed to load libraries list from backend.</div>';
     }
   }
 }
@@ -1648,7 +1765,7 @@ function renderLibraryGrid() {
   }
 
   if (entries.length === 0) {
-    libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);text-align:center;padding:20px;">Library tidak ditemukan. Gunakan input Custom PyPI di bawah untuk menginstall package pilihan Anda!</div>';
+    libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);text-align:center;padding:20px;">Library not found. Use the Custom PyPI input below to install your package of choice!</div>';
     return;
   }
 
@@ -1783,7 +1900,7 @@ async function loadMarketplace() {
             showToast(`Plugin ${plugin.name} dinonaktifkan.`, 'error');
           } else {
             installedPlugins[plugin.id] = true;
-            showToast(`✓ Plugin ${plugin.name} berhasil diaktifkan!`, 'success');
+            showToast(`✓ Plugin ${plugin.name} successfully activated!`, 'success');
           }
           localStorage.setItem('zabacode-active-plugins', JSON.stringify(installedPlugins));
           
@@ -1800,7 +1917,7 @@ async function loadMarketplace() {
             "variable_type_hint_generator"
           ];
           if (isActivating && transformPlugins.includes(plugin.id)) {
-            showToast(`Menjalankan ${plugin.name}...`, 'loading');
+            showToast(`Running ${plugin.name}...`, 'loading');
             try {
               const currentCode = getEditorValue();
               const executeRes = await fetchApi('/api/plugins/execute', {
@@ -1815,10 +1932,10 @@ async function loadMarketplace() {
                 if (result.report) {
                   showToast(`✓ Terimplementasi:\n${result.report}`, 'success');
                 } else {
-                  showToast(`✓ Plugin ${plugin.name} berhasil diterapkan!`, 'success');
+                  showToast(`✓ Plugin ${plugin.name} successfully applied!`, 'success');
                 }
               } else {
-                showToast(`✗ Gagal menerapkan plugin: ${result.message}`, 'error');
+                showToast(`✗ Failed to apply plugin: ${result.message}`, 'error');
               }
             } catch (err) {
               showToast(`✗ Error eksekusi: ${err.message}`, 'error');
@@ -1932,8 +2049,172 @@ if (keyDialogSave) {
       body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
     });
     if (keyDialogBackdrop) keyDialogBackdrop.classList.remove('open');
-    addMsg(`API Key ${pendingProvider} berhasil disimpan secara terenkripsi.`, 'system-hint');
+    addMsg(`API Key for ${pendingProvider} successfully saved.`, 'system-hint');
   };
+}
+
+const PROVIDER_MODELS = {
+  openrouter: [
+    { id: "qwen/qwen-2.5-coder-32b-instruct:free", name: "Qwen 2.5 Coder 32B [FREE]" },
+    { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B [FREE]" },
+    { id: "google/gemini-2.5-flash:free", name: "Gemini 2.5 Flash [FREE]" },
+    { id: "deepseek/deepseek-chat:free", name: "DeepSeek Chat [FREE]" },
+    { id: "microsoft/phi-3-medium-128k-instruct:free", name: "Phi-3 Medium 128K [FREE]" },
+    { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B (Paid)" },
+    { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Paid)" }
+  ],
+  gemini: [
+    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash [FREE Tier]" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" }
+  ],
+  groq: [
+    { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile" },
+    { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant" },
+    { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B MoE" },
+    { id: "gemma2-9b-it", name: "Gemma 2 9B IT" }
+  ],
+  mistral: [
+    { id: "codestral-latest", name: "Codestral Latest" },
+    { id: "mistral-large-latest", name: "Mistral Large Latest" },
+    { id: "open-codestral-7b", name: "Codestral 7B (Open)" }
+  ],
+  deepseek: [
+    { id: "deepseek-coder", name: "DeepSeek Coder" },
+    { id: "deepseek-chat", name: "DeepSeek Chat" }
+  ],
+  ollama: [
+    { id: "codellama", name: "CodeLlama [FREE/Local]" },
+    { id: "llama3", name: "Llama 3 [FREE/Local]" },
+    { id: "qwen2.5-coder", name: "Qwen 2.5 Coder [FREE/Local]" },
+    { id: "mistral", name: "Mistral 7B [FREE/Local]" }
+  ]
+};
+
+const aiProviderEl = document.getElementById('ai-provider');
+const aiModelEl = document.getElementById('ai-model');
+const billingDialogBackdrop = document.getElementById('billing-dialog-backdrop');
+const billingDialogBack = document.getElementById('billing-dialog-back');
+
+if (billingDialogBack) {
+  billingDialogBack.onclick = () => {
+    if (billingDialogBackdrop) billingDialogBackdrop.classList.remove('open');
+  };
+}
+
+function updateModelDropdown() {
+  if (!aiProviderEl || !aiModelEl) return;
+  const provider = aiProviderEl.value;
+  const models = PROVIDER_MODELS[provider] || [];
+  aiModelEl.innerHTML = '';
+  models.forEach(model => {
+    const opt = document.createElement('option');
+    opt.value = model.id;
+    opt.textContent = model.name;
+    aiModelEl.appendChild(opt);
+  });
+}
+
+if (aiProviderEl) {
+  aiProviderEl.addEventListener('change', updateModelDropdown);
+}
+// Run initially to populate
+updateModelDropdown();
+
+async function callAiWithFallback(message, originalProvider, originalModel) {
+  let keysStatus = {};
+  try {
+    const statusRes = await fetchApi('/api/keys/status');
+    keysStatus = await statusRes.json();
+  } catch (err) {
+    console.error("Failed to fetch keys status", err);
+  }
+
+  const providersOrder = ["openrouter", "gemini", "groq", "mistral", "deepseek", "ollama"];
+  const attemptOrder = [originalProvider];
+  providersOrder.forEach(p => {
+    if (p !== originalProvider) {
+      attemptOrder.push(p);
+    }
+  });
+
+  for (let i = 0; i < attemptOrder.length; i++) {
+    const provider = attemptOrder[i];
+    
+    if (provider !== 'ollama' && !keysStatus[provider]) {
+      continue;
+    }
+
+    let model = "";
+    if (provider === originalProvider) {
+      model = originalModel;
+    } else {
+      const list = PROVIDER_MODELS[provider] || [];
+      if (list.length > 0) {
+        model = list[0].id;
+      }
+    }
+
+    try {
+      const res = await fetchApi('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, provider, model, code: getEditorValue() }),
+      });
+      const data = await res.json();
+
+      if (res.status === 401 && data.needs_key) {
+        if (provider === originalProvider) {
+          openKeyDialog(provider);
+          return null;
+        }
+        continue;
+      }
+
+      const isRateLimit = !data.ok && (
+        res.status === 429 || res.status === 402 || data.is_rate_limit ||
+        (data.message && (
+          data.message.toLowerCase().includes('billing') ||
+          data.message.toLowerCase().includes('credit') ||
+          data.message.toLowerCase().includes('quota') ||
+          data.message.toLowerCase().includes('rate limit') ||
+          data.message.toLowerCase().includes('rate_limit') ||
+          data.message.toLowerCase().includes('balance') ||
+          data.message.toLowerCase().includes('limit exceeded') ||
+          data.message.toLowerCase().includes('insufficient') ||
+          data.message.toLowerCase().includes('exhausted')
+        ))
+      );
+
+      if (isRateLimit) {
+        showToast("GET SOME MONEY AND PAY YOUR BILING", "error");
+        if (aiProviderEl) {
+          aiProviderEl.value = provider;
+          updateModelDropdown();
+        }
+        continue;
+      }
+
+      if (!data.ok) {
+        continue;
+      }
+
+      if (aiProviderEl) {
+        aiProviderEl.value = provider;
+        updateModelDropdown();
+        if (aiModelEl) {
+          aiModelEl.value = model;
+        }
+      }
+      return data.reply;
+
+    } catch (err) {
+      console.error(`Request to ${provider} failed:`, err);
+    }
+  }
+
+  if (billingDialogBackdrop) billingDialogBackdrop.classList.add('open');
+  return null;
 }
 
 async function sendAiMessage() {
@@ -1942,6 +2223,8 @@ async function sendAiMessage() {
   if (!message) return;
   const aiProviderEl = document.getElementById('ai-provider');
   const provider = aiProviderEl ? aiProviderEl.value : 'openrouter';
+  const aiModelEl = document.getElementById('ai-model');
+  const model = aiModelEl ? aiModelEl.value : '';
   const sendBtn = document.getElementById('ai-send');
   
   addMsg(message, 'user');
@@ -1949,22 +2232,10 @@ async function sendAiMessage() {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const res = await fetchApi('/api/ai/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, provider, code: getEditorValue() }),
-    });
-    const data = await res.json();
-
-    if (res.status === 401 && data.needs_key) {
-      openKeyDialog(provider);
-      return;
+    const reply = await callAiWithFallback(message, provider, model);
+    if (reply) {
+      addMsg(reply, 'ai');
     }
-    if (!data.ok) {
-      addMsg(`Error AI: ${data.message || 'Gagal merespons.'}`, 'system-hint');
-      return;
-    }
-    addMsg(data.reply, 'ai');
   } finally {
     if (sendBtn) sendBtn.disabled = false;
   }
@@ -2076,7 +2347,7 @@ async function loadFileList() {
       fileListContainer.appendChild(row);
     });
   } else {
-    fileListContainer.innerHTML = '<div style="font-size:11px;color:var(--text-dim);">Belum ada file tersimpan.</div>';
+    fileListContainer.innerHTML = '<div style="font-size:11px;color:var(--text-dim);">No saved files found.</div>';
   }
 }
 

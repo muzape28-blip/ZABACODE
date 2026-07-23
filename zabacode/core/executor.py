@@ -242,21 +242,21 @@ def start_interactive_session(code: str) -> dict:
 
         return {"ok": True, "message": "Interactive process started"}
     except Exception as e:
-        return {"ok": False, "message": f"Gagal memulai sesi interaktif: {e}"}
+        return {"ok": False, "message": f"Failed to start interactive session: {e}"}
 
 
 def send_interactive_input(text: str) -> dict:
     """Send interactive input to the running subprocess's stdin."""
     global _session
     if not _session.active or not _session.proc:
-        return {"ok": False, "message": "Tidak ada sesi interaktif yang aktif."}
+        return {"ok": False, "message": "No active interactive session found."}
 
     try:
         _session.proc.stdin.write(text)
         _session.proc.stdin.flush()
         return {"ok": True}
     except Exception as e:
-        return {"ok": False, "message": f"Gagal mengirim input: {e}"}
+        return {"ok": False, "message": f"Failed to send input: {e}"}
 
 
 def get_interactive_output() -> dict:
@@ -286,7 +286,7 @@ def stop_interactive_session() -> dict:
     """Forcefully kills the active interactive subprocess and releases resources."""
     global _session
     if not _session.proc:
-        return {"ok": False, "message": "Tidak ada proses berjalan."}
+        return {"ok": False, "message": "No running process found."}
 
     try:
         if _session.proc.poll() is None:
@@ -299,6 +299,6 @@ def stop_interactive_session() -> dict:
                 _session.proc.kill()
         _session.active = False
         _session.proc = None
-        return {"ok": True, "message": "Proses berhasil dihentikan."}
+        return {"ok": True, "message": "Process successfully stopped."}
     except Exception as e:
-        return {"ok": False, "message": f"Gagal menghentikan proses: {e}"}
+        return {"ok": False, "message": f"Failed to stop process: {e}"}

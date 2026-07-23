@@ -34,7 +34,7 @@ from zabacode.lib_manager import (
     get_library_info, _PACKAGE_NAME_RE
 )
 from zabacode.themes.definitions import THEMES, DEFAULT_THEME, get_theme, list_themes
-from zabacode.i18n.translations import i18n, TRANSLATIONS, LANGUAGES
+# Translations removed
 from zabacode.plugins.registry import (
     get_all_plugins, toggle_plugin, is_plugin_active, get_snippets, MARKETPLACE_PLUGINS
 )
@@ -330,65 +330,6 @@ class TestThemes:
         """v1.0.0 added new themes."""
         for t in ["tokyo_night", "one_dark", "gruvbox", "catppuccin"]:
             assert t in THEMES, f"New theme '{t}' missing"
-
-
-# ===================================================================
-# Test i18n (Internationalization)
-# ===================================================================
-
-class TestI18n:
-    """Test multi-language support."""
-    
-    def test_default_language(self):
-        assert i18n.lang == "id"
-    
-    def test_translation_keys_present(self):
-        # Both en and id should have the same core keys
-        id_keys = set(TRANSLATIONS["id"].keys())
-        en_keys = set(TRANSLATIONS["en"].keys())
-        # en should be a superset or equal
-        assert len(id_keys & en_keys) >= 30
-    
-    def test_translate_id(self):
-        i18n.lang = "id"
-        assert i18n.t("run") == "▶ JALANKAN"
-    
-    def test_translate_en(self):
-        i18n.lang = "en"
-        assert i18n.t("run") == "▶ RUN"
-    
-    def test_translate_with_kwargs(self):
-        i18n.lang = "en"
-        result = i18n.t("about_version", version="1.0.0")
-        assert "1.0.0" in result
-    
-    def test_fallback_to_en(self):
-        i18n.lang = "ko"  # Korean has fewer translations
-        result = i18n.t("app_title")
-        assert result == "ZABACODE"
-    
-    def test_fallback_to_key(self):
-        result = i18n.t("nonexistent_key_xyz_12345")
-        assert result == "nonexistent_key_xyz_12345"
-    
-    def test_set_language(self):
-        i18n.set_language("en")
-        assert i18n.lang == "en"
-        i18n.set_language("id")  # Reset
-    
-    def test_invalid_language_not_set(self):
-        i18n.set_language("id")
-        i18n.set_language("invalid_lang")
-        assert i18n.lang == "id"  # Should not change
-    
-    def test_available_languages(self):
-        langs = i18n.get_available_languages()
-        assert "id" in langs
-        assert "en" in langs
-    
-    def test_min_2_languages(self):
-        """v1.0.0 supports streamlined languages."""
-        assert len(LANGUAGES) >= 2
 
 
 # ===================================================================

@@ -5,15 +5,11 @@
 <h1 align="center">⚡ ZABACODE ⚡</h1>
 
 <p align="center">
-  <b>Standalone Anti-Capitalist Mobile Python IDE & AI Code Assistant for Android</b>
+  <b>The Uncompromising, Standalone Anti-Capitalist Mobile Python IDE & AI Code Assistant for Android</b>
 </p>
 
 <p align="center">
-  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — now powered by a <b>WebView shell over a modular Python core</b> — 100% Free, Open Source, & Zero Telemetry.</i>
-</p>
-
-<p align="center">
-  <a href="README_ID.md"><b>🇮🇩 Baca Dokumentasi Bahasa Indonesia</b></a>
+  <i>Combining the raw execution power of <b>Pydroid 3</b> with the detail, multi-tab elegance & UI control of <b>Acode</b> — powered by a <b>WebView shell over a modular Python core</b> — 100% Free, Open Source, & Zero Telemetry.</i>
 </p>
 
 <p align="center">
@@ -30,19 +26,18 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ZABACODE v1.0.0 — WebView Shell + Modular Python Core                    │
+│  ZABACODE — WebView Shell + Modular Python Core                           │
 │  [ OK ] Local WebView UI Engine Active                                     │
 │  [ OK ] Modular Core Engine Active                                         │
 │  [ OK ] Subprocess Runner with Timeout & Process-Group Cleanup             │
 │  [ OK ] Android Keystore API-Key Storage Active                             │
-│  [ OK ] Direct PyPI Wheel Extractor with TLS Verification                  │
-│  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq/    │
-│         Mistral/DeepSeek/Ollama)                                           │
-│  [ OK ] Multi-Language i18n Engine (2 Languages: ID/EN)       │
+│  [ OK ] Direct PyPI Wheel Extractor (Auto-SSL Bypass Fallback Enabled!)    │
+│  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq)     │
+│  [ OK ] Universal English Language Engine Active                           │
 │  [ OK ] Theme Engine Active (10 Themes incl. Tokyo Night/Catppuccin)      │
 │  [ OK ] Plugin Marketplace Active (12 Plugins, 8 Snippets)                │
-│  [ OK ] Library Manager (50+ Libraries with Offline/Online Mode Tags)     │
-│  > WORKSPACE READY. HAPPY CODING!_                                         │
+│  [ OK ] System Settings Dashboard (Clean Sidebar, Fast Controls)           │
+│  > WORKSPACE READY. HAPPY MOBILE CODING!_                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,88 +55,52 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 
 ---
 
-## 🆕 v1.0.0: Modular core with a lightweight WebView shell
+## 🚀 Key Features
 
-The UI uses a local WebView while the v1.0.0 modular Python core provides execution, file handling, package management, themes, plugins, and AI providers. This restores compatibility on constrained devices without discarding the refactored core.
-- **Compatibility-first UI** — avoids the Kivy startup path that caused force closes on the current ARMv7 device
-- **Modular core retained** — execution, security, file, package, and provider modules remain separate
-- **Local-only server binding** — the shell binds to `127.0.0.1` only
-- **Offline core** — editing and local execution work without a network connection
+### 🛠️ 1. All-New System Settings Dashboard
+The sidebar has been redesigned to be ultra-clean, containing only:
+* 🧩 **Plugin & Theme Marketplace**
+* 📂 **Open / Manage Files**
+* 💾 **Save As File (.py)**
+* 🛠️ **Settings & Preferences**
+* 📖 **Docs & Roadmap**
 
-### 🧠 1. Subprocess Isolation & Auto `__file__` Resolution
-* **Separate Process Runner:** Every Python script runs in a separate subprocess with a 30-second execution timeout. This is not a security sandbox; run only code you trust.
-* **Automatic `__file__` Resolution:** Scripts are executed via `_active_run.py`, guaranteeing `Path(__file__)` **succeeds 100%**.
+Tapping **Settings & Preferences** opens a gorgeous, full-screen cyber-hacker dashboard where you can easily toggle and configure:
+* 📦 **Library Manager (zabapip)**
+* 🚀 **Offline Starter Kits**
+* ⚙️ **Editor Engine Selector (Monaco online / Native offline)**
+* 🎨 **UI Themes (10 presets)**
+* 📺 **CRT Scanline Effects**
 
-### 📦 2. Enhanced Library Manager (`zabapip`) — 50+ Libraries with Offline/Online Tags
-* **Every library now has a `mode` tag:**
-  - 🟢 **offline** — Works completely without internet (pure Python)
-  - 🔵 **online** — Requires internet to function (API clients)
-  - 🟡 **hybrid** — Core features offline, some features need internet
-* **TLS verification:** Package downloads keep HTTPS certificate verification enabled. A certificate error stops installation instead of accepting an unsafe connection.
-* **Categories:** Web & API, Data & Math, Database, AI & Automation, Utilities, Security, Media, Testing, Data Format, Networking
+### 📦 2. Library Manager (`zabapip`) with SSL/TLS Bypass Fallbacks
+Tired of certificate installation failures on Android? So are we!
+* **Auto SSL-Bypass Fallback:** If your device lacks updated root CA certificates (causing SSL verify failures), the installer automatically falls back to an unverified SSL context to ensure downloads *always* succeed.
+* **Friendly Error Logs:** If installation fails, detailed logs are captured and presented in a clean, user-friendly pop-up dialog.
+* **Pip Trusted Hosts:** Pip subprocess runs with `--trusted-host` configurations out of the box.
 
-### 🤖 3. Multi-Provider AI — 6 Providers
-* **OpenRouter** (🌐 online) — Multi-model access
-* **Google Gemini** (🌐 online) — Gemini 1.5 Flash
-* **Groq** (🌐 online) — Ultra-fast Llama 3.1
-* **Mistral** (🌐 online) — Codestral
-* **DeepSeek** (🌐 online) — DeepSeek Coder *(NEW)*
-* **Ollama** (🖥️ **offline!**) — Local models, zero internet required *(NEW)*
+### ⚙️ 3. Seamless Monaco WebView Focus
+* Removed non-standard CSS touch-action constraints that caused mobile WebView keyboards to lock.
+* Added deterministic responsive touch event handlers so clicking or touching the Monaco container instantly focuses the hidden cursor input and triggers the software keyboard flawlessly.
+* Graceful network check: Switching to Monaco editor is disabled when offline to prevent empty/blank screen lockouts.
 
-### 🎨 4. Theme Engine — 10 Themes
-* **Retro Green**, **Solarized Dark**, **Dracula**, **Cyberpunk Neon**, **Nord Arctic**, **Monokai Pro** *(carried over)*
-* **Tokyo Night** *(NEW)*, **One Dark** *(NEW)*, **Gruvbox Dark** *(NEW)*, **Catppuccin Mocha** *(NEW)*
-
-### 🌐 5. Multi-Language i18n — 2 Languages (ID & EN)
-* 🇮🇩 **Bahasa Indonesia** (default)
-* 🇬🇧 **English**
-
-### 🧩 6. Plugin Marketplace — 12 Plugins + 8 Snippets
-* **Core Plugins:** Auto-Code Formatter, Snippets Pack, Syntax Linter, Symbol Bar
-* **New Plugins:** Code Minifier, JSON Formatter, Regex Tester, Color Picker, Markdown Preview, Code Timer/Profiler, ASCII Art Generator, TODO Manager
-
-### ⚡ 7. Performance & Responsiveness
-* Direct Python function calls (no HTTP overhead)
-* Background threading for AI calls and library installations
-* Kivy GPU-accelerated rendering
-* Instant theme switching and language toggling
-
----
-
-## 🏗️ Architecture & Data Flow
-
-```
- ┌──────────────────────────────────────────────────────────┐
-│              Local WebView UI Shell                       │
-│    (HTML editor + themes + plugins + mobile controls)     │
-└────────────────────────┬─────────────────────────────────┘
-                         │ Direct Python Function Calls
-┌────────────────────────▼─────────────────────────────────┐
-│              ZABACODE Core Engine (Python)                │
-│    (executor.py / security.py / checker.py / etc.)      │
-└─────┬──────────────────┬──────────────────┬─────────────┘
-      │                  │                  │
-┌─────▼──────────┐ ┌────▼──────────────┐ ┌─▼──────────────┐
-│ Subprocess     │ │ Direct PyPI       │ │ Multi-Provider  │
-│ Code Execution │ │ Wheel Extractor   │ │ AI Chat Engine  │
-│ (_active_run)  │ │ (zabapip)         │ │ (6 providers)   │
-└────────────────┘ └──────────────────┘ └─────────────────┘
-```
+### 🧮 4. Safe Calculator with Natural-Law Error Handling
+Our **Safe Calculator** Starter Kit is completely updated in English! If you attempt to divide by zero, instead of a raw traceback crash, it returns a fun, philosophically correct response:
+`"Division by zero is a violation of natural law"`!
 
 ---
 
 ## 📊 Comparison: ZABACODE vs Pydroid 3 vs Acode
 
-| Feature / Characteristic | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE v1.0.0 |
+| Feature / Characteristic | 🐍 Pydroid 3 | 📝 Acode | ⚡ ZABACODE |
 | :--- | :--- | :--- | :--- |
 | **License Model** | Freemium / Paywall | Paid Play Store | **100% Free & Open-Source (GPLv3)** |
 | **Ads & Telemetry** | Includes Ads & Trackers | Includes Analytics | **ZERO Telemetry & ZERO Ads** |
 | **Python Execution Engine**| ✅ Native | ❌ Requires Termux | ✅ **Isolated Subprocess Sandbox** |
 | **UI Engine** | ⚠️ IDLE Style | ✅ Modern Ace/Monaco | ✅ **Local WebView shell** |
 | **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **6 Providers + 1 Offline (Ollama)** |
-| **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Offline/Online Tags** |
+| **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Auto-SSL Bypass** |
 | **Themes** | ⚠️ Limited | ✅ Multiple | 🚀 **10 Themes (Tokyo Night, Catppuccin, etc.)** |
-| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **2 Languages (ID/EN)** |
+| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **Streamlined English Only (No Lag!)** |
 | **Architecture Support** | 32-bit / 64-bit | - | ✅ **Universal Fat APK (ARMv7 + ARM64)** |
 
 ---
@@ -149,7 +108,7 @@ The UI uses a local WebView while the v1.0.0 modular Python core provides execut
 ## 🚀 Quick Start & Installation
 
 ### Option 1: Download Pre-compiled APK (Recommended)
-1. Visit the [GitHub Releases](https://github.com/muzape28-blip/ZABACODE/releases) page or the **Actions** tab.
+1. Visit the [GitHub Releases](https://github.com/muzape28-blip/ZABACODE/releases) page.
 2. Download `Zabacode-Kivy-v1.0.0.apk`.
 3. Install on your Android phone (Android 8.0 / API 26+).
 
@@ -172,63 +131,11 @@ pytest test_main.py -v
 
 ---
 
-## 📁 Project Structure
-
-```
-ZABACODE/
-├── main.py                          # Entry point
-├── zabacode/
-│   ├── __init__.py                  # Version & metadata
-│   ├── core/
-│   │   ├── paths.py                 # Path resolution
-│   │   ├── security.py              # Auth, encryption, keystore
-│   │   ├── executor.py              # Subprocess code execution
-│   │   ├── checker.py               # Code syntax validation
-│   │   ├── file_manager.py          # Safe file CRUD
-│   │   └── ai_provider.py           # 6 AI provider handlers
-│   ├── ui/
-│   │   └── app.py                   # Main Kivy App & widgets
-│   ├── themes/
-│   │   └── definitions.py           # 10 theme color definitions
-│   ├── i18n/
-│   │   └── translations.py          # 6-language i18n engine
-│   ├── plugins/
-│   │   └── registry.py              # 12 plugins + 8 snippets
-│   └── lib_manager.py               # 50+ library definitions + installer
-├── assets/logo.png
-├── buildozer.spec
-├── test_main.py                     # 78 unit tests
-└── ...
-```
-
----
-
 ## 👥 Core Team & Contributors
-
-<p align="left">
-  <a href="https://github.com/muzape28-blip">
-    <img src="https://github.com/muzape28-blip.png" width="60" height="60" style="border-radius:50%" alt="Zaqi">
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://arena.ai">
-    <img src="https://arena.ai/favicon.ico" width="60" height="60" style="border-radius:50%" alt="Arena.ai Agent">
-  </a>
-</p>
 
 * **[Zaqi (`muzape28-blip`)](https://github.com/muzape28-blip)** — *Creator, Lead Developer & Architect*
 * **[Arena.ai Agent](https://arena.ai)** — *AI Co-Developer & Code Engineer*
 * **Elicit AI** — *Security hardening, code review & release-quality engineering*
-
----
-
-## 📜 License & Freedom Statement
-
-This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License (GPLv3)** as published by the Free Software Foundation.
-
-```
-Copyright (C) 2026 Zaqi (muzape28-blip) and ZABACODE Contributors.
-ZABACODE comes with ABSOLUTELY NO WARRANTY.
-```
 
 ---
 

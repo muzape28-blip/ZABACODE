@@ -392,15 +392,20 @@ def is_package_installed(package_name: str) -> bool:
 
 def _fallback_pypi_download(name: str) -> tuple[bool, str]:
     """Install a pure-Python wheel after TLS and archive-path validation.
-
-    TLS verification is never disabled: a certificate problem must be fixed on
-    the device, not bypassed while downloading executable package content.
+    Falls back to unverified SSL context if standard certificate verification fails.
     """
+    import ssl
     try:
         pypi_url = f"https://pypi.org/pypi/{name}/json"
         req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/1.0.0"})
         
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        try:
+            resp = urllib.request.urlopen(req, timeout=20)
+        except Exception:
+            ctx = ssl._create_unverified_context()
+            resp = urllib.request.urlopen(req, timeout=20, context=ctx)
+
+        with resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
         
         urls = data.get("urls", [])
@@ -412,21 +417,27 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
                 break
         
         if not target_wheel_url:
-            return False, f"'{name}' memerlukan compiled C-extension. Tambahkan ke buildozer.spec."
+            return False, f"'{name}' requires a compiled C-extension. Please add it to buildozer.spec and rebuild the APK."
 
         wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/1.0.0"})
-        with urllib.request.urlopen(wheel_req, timeout=60) as resp:
-            wheel_bytes = resp.read()
+        try:
+            resp_wheel = urllib.request.urlopen(wheel_req, timeout=60)
+        except Exception:
+            ctx = ssl._create_unverified_context()
+            resp_wheel = urllib.request.urlopen(wheel_req, timeout=60, context=ctx)
+
+        with resp_wheel:
+            wheel_bytes = resp_wheel.read()
 
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
             base = USER_PACKAGES_DIR.resolve()
             for member in z.infolist():
                 target = (base / member.filename).resolve()
                 if target != base and base not in target.parents:
-                    raise ValueError("Wheel berisi path tidak aman.")
+                    raise ValueError("Wheel contains unsafe path.")
             z.extractall(base)
 
-        return True, f"'{name}' installed via Direct PyPI Extractor!"
+        return True, f"'{name}' installed successfully via Direct PyPI Extractor!"
     except Exception as e:
         return False, f"Direct Extractor Error: {e}"
 
@@ -447,11 +458,11 @@ def install_library(name: str) -> dict:
         return {
             "ok": False,
             "needs_rebuild": True,
-            "message": f"'{name}' memerlukan compiled C-extension. Tambahkan ke buildozer.spec lalu rebuild APK.",
+            "message": f"'{name}' requires a compiled C-extension. Please add it to buildozer.spec and rebuild the APK.",
         }
     
     if is_package_installed(name):
-        return {"ok": True, "message": f"'{name}' sudah terinstall & siap digunakan!"}
+        return {"ok": True, "message": f"'{name}' is already installed & ready to use!"}
     
     # Try Direct PyPI Extractor first (bypass SIGSEGV)
     ok, msg = _fallback_pypi_download(name)
@@ -471,6 +482,8 @@ def install_library(name: str) -> dict:
             "--disable-pip-version-check",
             "--no-cache-dir",
             "--prefer-binary",
+            "--trusted-host", "pypi.org",
+            "--trusted-host", "files.pythonhosted.org",
             "--target", str(USER_PACKAGES_DIR),
             name
         ]
@@ -482,9 +495,11 @@ def install_library(name: str) -> dict:
         if res.returncode == 0:
             return {"ok": True, "message": f"'{name}' installed via Pip!"}
         else:
-            return {"ok": False, "message": f"Installation failed: {msg}"}
+            friendly_err = f"Installation of '{name}' failed.\n\nDirect Extractor Log:\n{msg}\n\nPip Subprocess Log:\n{res.stderr or res.stdout}"
+            return {"ok": False, "message": friendly_err}
     except Exception as e:
-        return {"ok": False, "message": f"Failed to install package: {e}"}
+        friendly_err = f"Installation of '{name}' failed.\n\nDirect Extractor Log:\n{msg}\n\nPip Exception Log:\n{e}"
+        return {"ok": False, "message": friendly_err}
 
 
 def get_library_info(name: str) -> dict | None:

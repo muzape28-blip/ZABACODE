@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ZABACODE</title>
 
-<!-- Monaco Editor CDN -->
-<link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs.min.css">
-
 <style>
   :root {
     --bg: #050806;
@@ -35,43 +32,48 @@
     position: relative;
   }
 
-  /* Absolute Removal of Monaco Active Line Overlay & Tap Highlight */
-  .monaco-editor,
-  .monaco-editor .view-overlays,
-  .monaco-editor .view-overlays *,
-  .monaco-editor .current-line,
-  .monaco-editor .current-line-both,
-  .monaco-editor .margin-view-overlays .current-line,
-  .monaco-editor div[class*="current-line"],
-  .monaco-editor div[class*="cLine"] {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
+  /* Ace Editor Custom Terminal Theme Override */
+  .ace_editor {
+    background-color: var(--bg) !important;
+    color: var(--text) !important;
+    font-family: var(--mono) !important;
+    font-size: 14px !important;
+    line-height: 22px !important;
   }
-
-  .monaco-editor .view-overlays .current-line,
-  .monaco-editor .view-overlays .current-line-both,
-  .monaco-editor div[class*="current-line"] {
-    background: transparent !important;
+  .ace_gutter {
+    background-color: var(--bg-panel) !important;
+    color: var(--text-dim) !important;
+    border-right: 1px solid var(--border) !important;
+  }
+  .ace_gutter-active-line {
+    background-color: rgba(57, 255, 20, 0.05) !important;
+  }
+  .ace_active-line {
     background-color: transparent !important;
-    border: 0px transparent !important;
   }
-
-  .monaco-editor textarea.inputarea {
+  .ace_keyword {
+    color: var(--text-bright) !important;
+    font-weight: bold !important;
+  }
+  .ace_string {
+    color: var(--ai) !important;
+  }
+  .ace_numeric {
+    color: #50FA7B !important;
+  }
+  .ace_comment {
+    color: var(--text-dim) !important;
+    font-style: italic !important;
+  }
+  .ace_cursor {
+    color: var(--text-bright) !important;
+    border-left-width: 2px !important;
+  }
+  .ace_selection {
+    background: rgba(46, 139, 79, 0.3) !important;
+  }
+  .ace_marker-layer .ace_active-line {
     background: transparent !important;
-    color: transparent !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
-    -webkit-user-select: text !important;
-    user-select: text !important;
-  }
-
-  /* Fixed Cursors Layer for WebView Caret Placement */
-  .monaco-editor .cursors-layer .cursor {
-    background-color: var(--text-bright) !important;
-    border-color: var(--text-bright) !important;
   }
 
   /* Mobile Symbol Quick Bar */
@@ -493,9 +495,9 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         <div class="settings-card" id="btn-settings-engine" style="background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between;">
             <span style="font-weight: bold; color: var(--text-bright); font-size: 14px;">⚙️ Editor Engine Switcher</span>
-            <span id="label-settings-engine" style="font-family: var(--mono); font-size: 11px; background: rgba(57,255,20,0.1); color: var(--text-bright); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-bright);">MONACO</span>
+            <span id="label-settings-engine" style="font-family: var(--mono); font-size: 11px; background: rgba(57,255,20,0.1); color: var(--text-bright); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-bright);">ACE</span>
           </div>
-          <span style="color: var(--text-dim); font-size: 11px;">Switch between high-fidelity Monaco editor (online) and lightweight Kivy Native editor (offline fallback).</span>
+          <span style="color: var(--text-dim); font-size: 11px;">Switch between high-fidelity Ace editor (online) and lightweight Kivy Native editor (offline fallback).</span>
         </div>
 
         <!-- Setting Card 4: Change Theme Preset -->
@@ -578,7 +580,7 @@ print('Coba jalankan library atau eksekusi kode di sini!')
         
         <h3 style="color:var(--text-bright);">🚀 Fitur Utama & Solusi</h3>
         <ul>
-          <li><b>Deterministic Monaco Cursor Alignment:</b> Kursor menyala bergerak presisi mengikuti baris di Android WebView.</li>
+          <li><b>High-Performance Ace Editor:</b> Menggantikan Monaco Editor untuk responsivitas sentuhan 45-60 FPS pada perangkat mobile ARMv7.</li>
           <li><b>Bilingual i18n Engine:</b> Dukungan penuh Bahasa Indonesia dan Bahasa Inggris yang bisa dipindah dalam 1 klik.</li>
           <li><b>Functional Plugin Addon System:</b> Auto-Formatter, Snippets, Linter, dan Extended Mobile Symbol Bar.</li>
           <li><b>Local Session Auth Token Protection:</b> Mengikat endpoint API lokal dengan token keamanan <code>X-Zabacode-Token</code> acak.</li>
@@ -637,10 +639,39 @@ print('Coba jalankan library atau eksekusi kode di sini!')
 
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ace.js" type="text/javascript" charset="utf-8"></script>
 <script>
-const ZABACODE_TOKEN = "{{ auth_token }}";
+
+function rgbaToCss(rgba) {
+  if (!rgba || !Array.isArray(rgba)) return "";
+  const r = Math.round(rgba[0] * 255);
+  const g = Math.round(rgba[1] * 255);
+  const b = Math.round(rgba[2] * 255);
+  const a = rgba[3] !== undefined ? rgba[3] : 1;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function rgbaToHex(rgba) {
+  if (!rgba || !Array.isArray(rgba)) return "";
+  const r = Math.round(rgba[0] * 255).toString(16).padStart(2, "0");
+  const g = Math.round(rgba[1] * 255).toString(16).padStart(2, "0");
+  const b = Math.round(rgba[2] * 255).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+// ---------- Core Global States (at absolute top to prevent Temporal Dead Zone errors) ----------
+let interactiveActive = false;
 let currentLang = 'en';
+let tabs = [
+  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
+];
+let activeTabId = 'tab-1';
+let editor = null;
+let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'native' ? 'native' : 'ace';
+let installedPlugins = JSON.parse(localStorage.getItem('zabacode-active-plugins') || '{}');
+let currentThemeData = null;
+
+const ZABACODE_TOKEN = "{{ auth_token }}";
 
 function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -818,25 +849,25 @@ async function playBoot() {
     const line = document.createElement('div');
     line.className = `line ${msg.cls}`;
     line.textContent = msg.text;
-    bootLines.appendChild(line);
+    if (bootLines) bootLines.appendChild(line);
     setTimeout(playBoot, 80);
   } else {
     setTimeout(() => {
       stopMatrixRain();
-      document.getElementById('boot-screen').style.display = 'none';
+      const bootScreen = document.getElementById('boot-screen');
+      if (bootScreen) bootScreen.style.display = 'none';
       const app = document.getElementById('app');
-      app.classList.add('ready');
+      if (app) app.classList.add('ready');
       applyLanguage(currentLang);
-      if (editor) editor.layout();
+      if (editor && typeof editor.resize === 'function') editor.resize();
     }, 150);
   }
 }
 window.addEventListener('DOMContentLoaded', playBoot);
 
 window.addEventListener('pageshow', (e) => {
-  if (editor && activeEditorMode === 'monaco') {
-    monaco.editor.setTheme('zabacode-custom-theme');
-    editor.layout();
+  if (editor && activeEditorMode === 'ace') {
+    if (typeof editor.resize === 'function') editor.resize();
   }
 });
 
@@ -875,14 +906,6 @@ window.addEventListener('pageshow', (e) => {
 })();
 
 // ---------- Multi-Tab File System Manager ----------
-let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Halo Zaqi! Welcome to ZABACODE')\nprint('Coba jalankan library atau eksekusi kode di sini!')\n" }
-];
-let activeTabId = 'tab-1';
-let editor = null;
-// Native editor is the default so the core IDE works on first launch without connectivity.
-let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'monaco' ? 'loading' : 'native';
-
 function saveTabsToStorage() {
   localStorage.setItem('zabacode-tabs', JSON.stringify(tabs));
   localStorage.setItem('zabacode-active-tab-id', activeTabId);
@@ -918,13 +941,14 @@ function triggerAutoSave() {
       activeTab.content = getEditorValue();
     }
     saveTabsToStorage();
-  }, 500); // 500ms debounce prevents UI freezing/lag with large (>10k lines) files
+  }, 500);
 }
 
 const tabBarEl = document.getElementById('tab-bar');
 const addTabBtn = document.getElementById('add-tab-btn');
 
 function renderTabs() {
+  if (!tabBarEl) return;
   tabBarEl.querySelectorAll('.editor-tab').forEach(el => el.remove());
   tabs.forEach(tab => {
     const tabEl = document.createElement('div');
@@ -990,11 +1014,13 @@ function closeTab(id) {
   saveTabsToStorage();
 }
 
-addTabBtn.onclick = () => {
-  const newId = 'tab-' + Date.now();
-  tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "# Kode Python Baru\n" });
-  switchTab(newId);
-};
+if (addTabBtn) {
+  addTabBtn.onclick = () => {
+    const newId = 'tab-' + Date.now();
+    tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "# Kode Python Baru\n" });
+    switchTab(newId);
+  };
+}
 
 // ---------- Offline Starter Kits ----------
 const STARTER_KITS = [
@@ -1004,6 +1030,7 @@ const STARTER_KITS = [
 
 function openStarterKits() {
   const list = document.getElementById('starter-kit-list');
+  if (!list) return;
   list.replaceChildren();
   STARTER_KITS.forEach((kit) => {
     const button = document.createElement('button');
@@ -1014,250 +1041,230 @@ function openStarterKits() {
       const id = 'tab-' + Date.now();
       tabs.push({ id, name: kit.file, content: kit.code });
       switchTab(id);
-      document.getElementById('starter-dialog-backdrop').classList.remove('open');
-      document.getElementById('sidebar').classList.remove('open');
+      const starterDialog = document.getElementById('starter-dialog-backdrop');
+      if (starterDialog) starterDialog.classList.remove('open');
+      if (sidebar) sidebar.classList.remove('open');
     };
     list.appendChild(button);
   });
-  document.getElementById('starter-dialog-backdrop').classList.add('open');
+  const starterDialog = document.getElementById('starter-dialog-backdrop');
+  if (starterDialog) starterDialog.classList.add('open');
 }
 
-document.getElementById('sidebar-starter-btn').onclick = openStarterKits;
-document.getElementById('starter-dialog-cancel').onclick = () => document.getElementById('starter-dialog-backdrop').classList.remove('open');
-
-// ---------- Color Conversion Helpers ----------
-let currentThemeData = null;
-
-function rgbaToCss(rgba) {
-  if (!rgba || !Array.isArray(rgba)) return '';
-  const r = Math.round(rgba[0] * 255);
-  const g = Math.round(rgba[1] * 255);
-  const b = Math.round(rgba[2] * 255);
-  const a = rgba[3] !== undefined ? rgba[3] : 1;
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
+// BIND STARTER KITS EVENT IN SIDEBAR
+const settingsBtn = document.getElementById('sidebar-settings-btn');
+if (settingsBtn) {
+  settingsBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.add('open');
+  };
+}
+const settingsCloseBtn = document.getElementById('settings-modal-close');
+if (settingsCloseBtn) {
+  settingsCloseBtn.onclick = () => {
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('open');
+  };
+}
+const btnSettingsLib = document.getElementById('btn-settings-lib');
+if (btnSettingsLib) {
+  btnSettingsLib.onclick = () => {
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('open');
+    openLibraryManager();
+  };
+}
+const btnSettingsStarter = document.getElementById('btn-settings-starter');
+if (btnSettingsStarter) {
+  btnSettingsStarter.onclick = () => {
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('open');
+    openStarterKits();
+  };
+}
+const btnSettingsTheme = document.getElementById('btn-settings-theme');
+if (btnSettingsTheme) {
+  btnSettingsTheme.onclick = () => {
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('open');
+    const themeBackdrop = document.getElementById('theme-dialog-backdrop');
+    if (themeBackdrop) themeBackdrop.classList.add('open');
+    loadThemes();
+  };
+}
+const btnSettingsCrt = document.getElementById('btn-settings-crt');
+if (btnSettingsCrt) {
+  btnSettingsCrt.onclick = () => {
+    toggleCrt();
+  };
 }
 
-function rgbaToHex(rgba) {
-  if (!rgba || !Array.isArray(rgba)) return '';
-  const r = Math.round(rgba[0] * 255).toString(16).padStart(2, '0');
-  const g = Math.round(rgba[1] * 255).toString(16).padStart(2, '0');
-  const b = Math.round(rgba[2] * 255).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
+const starterDialogCancel = document.getElementById('starter-dialog-cancel');
+if (starterDialogCancel) {
+  starterDialogCancel.onclick = () => {
+    const starterDialog = document.getElementById('starter-dialog-backdrop');
+    if (starterDialog) starterDialog.classList.remove('open');
+  };
 }
 
-// ---------- Adaptive Monaco / Native Fallback Editor ----------
+// ---------- Adaptive Ace / Native Fallback Editor ----------
 const monacoDiv = document.getElementById('code-editor');
 const nativeWrapper = document.getElementById('native-editor-wrapper');
 const nativeCodeArea = document.getElementById('native-code-area');
 const nativeGutter = document.getElementById('native-gutter');
 const lineCounter = document.getElementById('line-counter');
-const sidebarEngineBtn = document.getElementById('sidebar-engine-btn');
+const sidebarEngineBtn = document.getElementById('sidebar-engine-btn') || document.getElementById('btn-settings-engine');
 
-monacoDiv.onclick = () => {
-  if (editor && activeEditorMode === 'monaco') editor.focus();
-};
+if (monacoDiv) {
+  monacoDiv.onclick = () => {
+    if (editor && activeEditorMode === 'ace') editor.focus();
+  };
+}
 
 function updateEngineBtnText() {
+  const lbl = document.getElementById('label-settings-engine');
+  if (lbl) {
+    lbl.textContent = activeEditorMode === 'ace' ? 'ACE' : 'NATIVE';
+  }
   if (sidebarEngineBtn) {
-    sidebarEngineBtn.textContent = activeEditorMode === 'monaco' ? '⚙️ ENGINE: MONACO (NEEDS ONLINE)' : '⚙️ ENGINE: NATIVE (OFFLINE CORE)';
+    sidebarEngineBtn.textContent = activeEditorMode === 'ace' ? '⚙️ ENGINE: ACE (OPTIMIZED)' : '⚙️ ENGINE: NATIVE (OFFLINE CORE)';
   }
 }
 
 function updateLineCounter() {
-  if (activeEditorMode === 'monaco' && editor) {
-    const pos = editor.getPosition();
-    if (pos) lineCounter.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+  if (activeEditorMode === 'ace' && editor) {
+    const pos = editor.getCursorPosition();
+    if (pos) lineCounter.textContent = `Ln ${pos.row + 1}, Col ${pos.column + 1}`;
   } else {
-    const val = nativeCodeArea.value;
-    const selStart = nativeCodeArea.selectionStart || 0;
+    const val = nativeCodeArea ? nativeCodeArea.value : '';
+    const selStart = nativeCodeArea ? (nativeCodeArea.selectionStart || 0) : 0;
     const lines = val.substring(0, selStart).split('\n');
     const line = lines.length;
     const col = lines[lines.length - 1].length + 1;
-    lineCounter.textContent = `Ln ${line}, Col ${col}`;
+    if (lineCounter) lineCounter.textContent = `Ln ${line}, Col ${col}`;
   }
 }
 
 function updateNativeGutter() {
+  if (!nativeCodeArea || !nativeGutter) return;
   const linesCount = nativeCodeArea.value.split('\n').length;
   let numbers = '';
   for (let i = 1; i <= linesCount; i++) numbers += i + '\n';
   nativeGutter.textContent = numbers;
 }
 
-nativeCodeArea.addEventListener('input', () => {
-  updateNativeGutter();
-  updateLineCounter();
-  triggerAutoSave();
-});
-nativeCodeArea.addEventListener('keyup', updateLineCounter);
-nativeCodeArea.addEventListener('click', updateLineCounter);
+if (nativeCodeArea) {
+  nativeCodeArea.addEventListener('input', () => {
+    updateNativeGutter();
+    updateLineCounter();
+    triggerAutoSave();
+  });
+  nativeCodeArea.addEventListener('keyup', updateLineCounter);
+  nativeCodeArea.addEventListener('click', updateLineCounter);
+}
 
 function activateNativeFallback(reason) {
   activeEditorMode = 'native';
   localStorage.setItem('zabacode-preferred-engine', 'native');
-  monacoDiv.style.display = 'none';
-  nativeWrapper.classList.add('active');
+  if (monacoDiv) monacoDiv.style.display = 'none';
+  if (nativeWrapper) nativeWrapper.classList.add('active');
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
-  if (activeTab) nativeCodeArea.value = activeTab.content;
+  if (activeTab && nativeCodeArea) nativeCodeArea.value = activeTab.content;
   updateNativeGutter();
   updateLineCounter();
   updateEngineBtnText();
 }
 
-function activateMonacoEngine() {
-  activeEditorMode = 'monaco';
-  localStorage.setItem('zabacode-preferred-engine', 'monaco');
-  nativeWrapper.classList.remove('active');
-  monacoDiv.style.display = 'block';
+function activateAceEngine() {
+  activeEditorMode = 'ace';
+  localStorage.setItem('zabacode-preferred-engine', 'ace');
+  if (nativeWrapper) nativeWrapper.classList.remove('active');
+  if (monacoDiv) monacoDiv.style.display = 'block';
   if (editor) {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (activeTab) editor.setValue(activeTab.content);
-    editor.layout();
+    editor.clearSelection();
+    editor.resize();
     editor.focus();
   }
   updateLineCounter();
   updateEngineBtnText();
 }
 
-sidebarEngineBtn.onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  if (activeEditorMode === 'monaco') {
-    activateNativeFallback('User toggled engine');
-  } else {
-    activateMonacoEngine();
-  }
-};
+if (sidebarEngineBtn) {
+  sidebarEngineBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    if (activeEditorMode === 'ace') {
+      activateNativeFallback('User toggled engine');
+    } else {
+      activateAceEngine();
+    }
+  };
+}
 
 function getEditorValue() {
-  return activeEditorMode === 'monaco' && editor ? editor.getValue() : nativeCodeArea.value;
+  return activeEditorMode === 'ace' && editor ? editor.getValue() : (nativeCodeArea ? nativeCodeArea.value : '');
 }
 
 function setEditorValue(val) {
-  if (activeEditorMode === 'monaco' && editor) {
+  if (activeEditorMode === 'ace' && editor) {
     editor.setValue(val);
-  } else {
+    editor.clearSelection();
+  } else if (nativeCodeArea) {
     nativeCodeArea.value = val;
     updateNativeGutter();
   }
   updateLineCounter();
 }
 
-// Custom Monaco Theme dengan LineHeight Presisi
+// Backward Compatibility placeholder function
 function registerCustomMonacoTheme(themeData) {
-  if (!window.monaco) return;
-  const textHex = themeData ? rgbaToHex(themeData.text) : '#B9F5C4';
-  const textDimHex = themeData ? rgbaToHex(themeData.text_dim) : '#4D7A5A';
-  const textBrightHex = themeData ? rgbaToHex(themeData.text_bright) : '#39FF14';
-  const borderBrightHex = themeData ? rgbaToHex(themeData.border_bright) : '#2E8B4F';
-  const bgHex = themeData ? rgbaToHex(themeData.bg) : '#050806';
-
-  monaco.editor.defineTheme('zabacode-custom-theme', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: textHex.replace('#', '') },
-      { token: 'keyword', foreground: '39FF14', fontStyle: 'bold' },
-      { token: 'string', foreground: 'FFB000' },
-      { token: 'number', foreground: '50FA7B' },
-      { token: 'comment', foreground: textDimHex.replace('#', '') }
-    ],
-    colors: {
-      'editor.background': bgHex,
-      'editor.foreground': textHex,
-      'editor.lineHighlightBackground': '#00000000',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorGutter.background': bgHex,
-      'editorLineNumber.foreground': textDimHex,
-      'editorLineNumber.activeForeground': textBrightHex,
-      'editorCursor.foreground': textBrightHex,
-      'editor.selectionBackground': borderBrightHex + '33',
-      'editor.selectionHighlightBackground': '#00000000',
-      'editor.wordHighlightBackground': '#00000000',
-      'editor.wordHighlightStrongBackground': '#00000000',
-      'editorScrollbar.shadow': '#00000000'
-    }
-  });
-  monaco.editor.setTheme('zabacode-custom-theme');
+  if (editor && activeEditorMode === 'ace') {
+    editor.resize();
+  }
 }
 
-if (localStorage.getItem('zabacode-preferred-engine') === 'native') {
-  activateNativeFallback('Saved user preference');
-} else {
-  const monacoLoadTimeout = setTimeout(() => {
-    if (activeEditorMode === 'loading') activateNativeFallback('Timeout koneksi CDN Monaco');
-  }, 2000);
+// ---------- Ace Initialization ----------
+try {
+  editor = ace.edit("code-editor");
+  ace.config.set("basePath", "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/");
+  editor.session.setMode("ace/mode/python");
 
-  try {
-    window.MonacoEnvironment = {
-      getWorkerUrl: function() {
-        return `data:text/javascript;charset=utf-8,${encodeURIComponent("self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');")}`;
-      }
-    };
-    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
-    require(['vs/editor/editor.main'], function() {
-      clearTimeout(monacoLoadTimeout);
-      if (activeEditorMode === 'native') return;
-      try {
-        registerCustomMonacoTheme(currentThemeData);
+  editor.setOptions({
+    fontSize: "14px",
+    fontFamily: "'JetBrains Mono', monospace",
+    showPrintMargin: false,
+    showGutter: true,
+    highlightActiveLine: false,
+    theme: "ace/theme/tomorrow_night_eighties"
+  });
 
-        const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
-        editor = monaco.editor.create(monacoDiv, {
-          value: activeTab.content,
-          language: 'python',
-          theme: 'zabacode-custom-theme',
-          fontSize: 14,
-          lineHeight: 22,               // EXPLICIT FIXED LINEHEIGHT METRIC FIX
-          fontFamily: "'JetBrains Mono', monospace",
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          wordWrap: 'on',
-          wrappingIndent: 'indent',
-          glyphMargin: false,
-          folding: false,
-          lineDecorationsWidth: 0,
-          lineNumbersMinChars: 3,
-          padding: { top: 8, bottom: 8 },
-          renderLineHighlight: 'none',
-          renderLineHighlightOnlyWhenFocus: false,
-          cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on',
-          cursorStyle: 'line',
-          cursorWidth: 2,
-          selectionHighlight: false,
-          occurrencesHighlight: 'off',
-          matchBrackets: 'never',
-          overviewRulerBorder: false,
-          hideCursorInOverviewRuler: true,
-          domReadOnly: false,
-          readOnly: false,
-          scrollbar: {
-            verticalScrollbarSize: 6,
-            horizontalScrollbarSize: 6
-          }
-        });
-        activeEditorMode = 'monaco';
-        updateLineCounter();
-        updateEngineBtnText();
-        editor.onDidChangeCursorPosition(updateLineCounter);
-        editor.onDidChangeModelContent(() => {
-          triggerAutoSave();
-        });
-        
-        window.addEventListener('resize', () => { if (editor) editor.layout(); });
-        setTimeout(() => { if (editor) editor.layout(); }, 100);
-      } catch (err) {
-        activateNativeFallback('Gagal inisialisasi Monaco');
-      }
-    }, function() {
-      clearTimeout(monacoLoadTimeout);
-      activateNativeFallback('Error CDN Monaco');
-    });
-  } catch (e) {
-    clearTimeout(monacoLoadTimeout);
-    activateNativeFallback('Exception Monaco: ' + e.message);
+  const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+  editor.setValue(activeTab.content);
+  editor.clearSelection();
+
+  editor.session.on('change', () => {
+    triggerAutoSave();
+  });
+
+  editor.selection.on('changeCursor', () => {
+    updateLineCounter();
+  });
+
+  window.addEventListener('resize', () => { if (editor && typeof editor.resize === 'function') editor.resize(); });
+  setTimeout(() => { if (editor && typeof editor.resize === 'function') editor.resize(); }, 100);
+
+  if (activeEditorMode === 'native') {
+    activateNativeFallback('Saved preference');
+  } else {
+    activateAceEngine();
   }
+} catch (err) {
+  console.error("Gagal inisialisasi Ace Editor, fallback ke native:", err);
+  activateNativeFallback('Gagal load Ace');
 }
 
 // ---------- Mobile Symbol Toolbar Handlers ----------
@@ -1265,10 +1272,10 @@ const symbolBar = document.getElementById('mobile-symbol-bar');
 document.querySelectorAll('.symbol-btn').forEach(btn => {
   btn.onclick = () => {
     const sym = btn.dataset.sym;
-    if (activeEditorMode === 'monaco' && editor) {
-      editor.trigger('keyboard', 'type', { text: sym });
+    if (activeEditorMode === 'ace' && editor) {
+      editor.insert(sym);
       editor.focus();
-    } else {
+    } else if (nativeCodeArea) {
       const start = nativeCodeArea.selectionStart;
       const end = nativeCodeArea.selectionEnd;
       const val = nativeCodeArea.value;
@@ -1282,8 +1289,7 @@ document.querySelectorAll('.symbol-btn').forEach(btn => {
 });
 
 // Active Plugins State Management
-let installedPlugins = JSON.parse(localStorage.getItem('zabacode-active-plugins') || '{}');
-if (installedPlugins['symbol_bar']) {
+if (installedPlugins['symbol_bar'] && symbolBar) {
   symbolBar.classList.add('active');
 }
 
@@ -1295,44 +1301,54 @@ const statusDot = document.getElementById('status-dot');
 const outputStatusDot = document.getElementById('output-status-dot');
 
 function goToOutput() {
-  viewEditor.classList.add('behind');
-  viewOutput.classList.add('active');
+  if (viewEditor) viewEditor.classList.add('behind');
+  if (viewOutput) viewOutput.classList.add('active');
 }
 function goToEditor() {
-  viewOutput.classList.remove('active');
-  viewEditor.classList.remove('behind');
-  if (editor && activeEditorMode === 'monaco') setTimeout(() => editor.layout(), 150);
+  if (viewOutput) viewOutput.classList.remove('active');
+  if (viewEditor) viewEditor.classList.remove('behind');
+  if (editor && activeEditorMode === 'ace') setTimeout(() => editor.resize(), 150);
 }
-document.getElementById('back-to-editor').onclick = goToEditor;
+const backToEditorBtn = document.getElementById('back-to-editor');
+if (backToEditorBtn) backToEditorBtn.onclick = goToEditor;
 
-document.getElementById('clear-btn').onclick = () => {
-  if (confirm('Bersihkan isi editor & terminal output?')) {
-    setEditorValue('');
-    outputTerminal.innerHTML = '';
-    showToast('✓ Editor & terminal dibersihkan', 'success');
-  }
-};
-document.getElementById('clear-output-btn').onclick = () => {
-  outputTerminal.innerHTML = '';
-  showToast('✓ Output terminal dibersihkan', 'success');
-};
+const clearBtn = document.getElementById('clear-btn');
+if (clearBtn) {
+  clearBtn.onclick = () => {
+    if (confirm('Bersihkan isi editor & terminal output?')) {
+      setEditorValue('');
+      if (outputTerminal) outputTerminal.innerHTML = '';
+      showToast('✓ Editor & terminal dibersihkan', 'success');
+    }
+  };
+}
+
+const clearOutputBtn = document.getElementById('clear-output-btn');
+if (clearOutputBtn) {
+  clearOutputBtn.onclick = () => {
+    if (outputTerminal) outputTerminal.innerHTML = '';
+    showToast('✓ Output terminal dibersihkan', 'success');
+  };
+}
 
 // ---------- CRT Toggle ----------
 let crtEnabled = true;
 function toggleCrt() {
   crtEnabled = !crtEnabled;
-  document.getElementById('scanlines').style.display = crtEnabled ? 'block' : 'none';
-  document.getElementById('sidebar-crt-btn').textContent = crtEnabled ? '📺 CRT SCANLINES: ON' : '📺 CRT SCANLINES: OFF';
+  const scanlines = document.getElementById('scanlines');
+  if (scanlines) scanlines.style.display = crtEnabled ? 'block' : 'none';
+  const crtLabel = document.getElementById('label-settings-crt');
+  if (crtLabel) crtLabel.textContent = crtEnabled ? 'ON' : 'OFF';
 }
-document.getElementById('sidebar-crt-btn').onclick = toggleCrt;
+const sidebarCrtBtn = document.getElementById('sidebar-crt-btn');
+if (sidebarCrtBtn) sidebarCrtBtn.onclick = toggleCrt;
 
 // ---------- Interactive Run Subprocess (unbuffered terminal) ----------
-let interactiveActive = false;
 let interactivePollTimer = null;
 let interactiveStderrBuffer = '';
 
 function appendStreamChunk(streamType, text) {
-  if (!text) return;
+  if (!text || !outputTerminal) return;
   const cls = streamType === 'stderr' ? 'stderr-block' : 'stdout-line';
   let last = outputTerminal.lastElementChild;
   if (last && last.dataset && last.dataset.stream === streamType) {
@@ -1349,7 +1365,6 @@ function appendStreamChunk(streamType, text) {
 }
 
 function flushOutputItems(items) {
-  // items: array of [streamType, char] tuples -- batch consecutive chars per stream
   let curType = null;
   let buf = '';
   for (const item of items) {
@@ -1371,8 +1386,10 @@ function finishInteractiveSession(exitCode, note) {
 
   const runBtn = document.getElementById('run-btn');
   const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
-  runBtn.textContent = t.exec_btn || '▶ JALANKAN';
-  runBtn.disabled = false;
+  if (runBtn) {
+    runBtn.textContent = t.exec_btn || '▶ RUN';
+    runBtn.disabled = false;
+  }
 
   const stdinInput = document.getElementById('stdin-input');
   const stdinSendBtn = document.getElementById('stdin-send-btn');
@@ -1385,30 +1402,35 @@ function finishInteractiveSession(exitCode, note) {
     stdinSendBtn.disabled = true;
   }
 
-  if (interactiveStderrBuffer.trim()) {
+  if (interactiveStderrBuffer.trim() && outputTerminal) {
     const fixBtn = document.createElement('button');
     fixBtn.className = 'mini-btn';
     fixBtn.style.cssText = 'background:var(--ai);color:#1A0F00;border:none;font-weight:bold;margin-top:8px;padding:6px 12px;cursor:pointer;';
     fixBtn.innerHTML = '\u26A1 ZABA AI: BENERIN ERROR INI!';
     const stderrSnapshot = interactiveStderrBuffer;
     fixBtn.onclick = () => {
-      document.getElementById('ai-panel').classList.add('open');
+      const aiPanelEl = document.getElementById('ai-panel');
+      if (aiPanelEl) aiPanelEl.classList.add('open');
       const input = document.getElementById('ai-input');
-      input.value = 'Kode saya mengalami error berikut, tolong analisis dan berikan solusinya:\n' + stderrSnapshot;
+      if (input) {
+        input.value = 'Kode saya mengalami error berikut, tolong analisis dan berikan solusinya:\n' + stderrSnapshot;
+      }
       sendAiMessage();
     };
     outputTerminal.appendChild(fixBtn);
   }
 
   const ok = exitCode === 0;
-  const exit = document.createElement('div');
-  exit.className = 'exit-line ' + (ok ? 'ok' : 'err');
-  exit.textContent = note || ('[process finished \u2014 exit ' + exitCode + ']');
-  outputTerminal.appendChild(exit);
-  outputTerminal.scrollTop = outputTerminal.scrollHeight;
+  if (outputTerminal) {
+    const exit = document.createElement('div');
+    exit.className = 'exit-line ' + (ok ? 'ok' : 'err');
+    exit.textContent = note || ('[process finished \u2014 exit ' + exitCode + ']');
+    outputTerminal.appendChild(exit);
+    outputTerminal.scrollTop = outputTerminal.scrollHeight;
+  }
 
-  statusDot.className = ok ? 'ok' : 'err';
-  outputStatusDot.style.background = ok ? 'var(--text-bright)' : 'var(--err)';
+  if (statusDot) statusDot.className = ok ? 'ok' : 'err';
+  if (outputStatusDot) outputStatusDot.style.background = ok ? 'var(--text-bright)' : 'var(--err)';
 }
 
 async function pollInteractiveOutput() {
@@ -1432,83 +1454,85 @@ async function stopInteractiveSession() {
   if (interactiveActive) finishInteractiveSession(1, '[process killed by user]');
 }
 
-document.getElementById('run-btn').onclick = async () => {
-  const runBtn = document.getElementById('run-btn');
+const runBtnEl = document.getElementById('run-btn');
+if (runBtnEl) {
+  runBtnEl.onclick = async () => {
+    const runBtn = document.getElementById('run-btn');
 
-  // While running, the button acts as STOP
-  if (interactiveActive) {
+    if (interactiveActive) {
+      runBtn.disabled = true;
+      await stopInteractiveSession();
+      return;
+    }
+
+    let code = getEditorValue();
+
+    if (installedPlugins['syntax_linter']) {
+      const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
+      if (unclosedParen) {
+        alert('🔍 Syntax Guard: Jumlah tanda kurung ( ) tidak seimbang!');
+        return;
+      }
+    }
+
+    if (installedPlugins['auto_formatter']) {
+      code = code.split('\n').map(line => line.trimEnd()).join('\n');
+      setEditorValue(code);
+    }
+
     runBtn.disabled = true;
-    await stopInteractiveSession();
-    return;
-  }
-
-  let code = getEditorValue();
-
-  // Plugin: Syntax Linter Guard
-  if (installedPlugins['syntax_linter']) {
-    const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
-    if (unclosedParen) {
-      alert('🔍 Syntax Guard: Jumlah tanda kurung ( ) tidak seimbang!');
-      return;
+    if (statusDot) statusDot.className = 'running';
+    if (outputStatusDot) outputStatusDot.style.background = 'var(--ai)';
+    if (outputTerminal) {
+      outputTerminal.innerHTML = '<div class="prompt-line"><span class="user">zaba@zabacode:~$</span> python3 main.py</div>';
     }
-  }
+    interactiveStderrBuffer = '';
+    goToOutput();
 
-  // Plugin: Auto-Formatter
-  if (installedPlugins['auto_formatter']) {
-    code = code.split('\n').map(line => line.trimEnd()).join('\n');
-    setEditorValue(code);
-  }
+    try {
+      const res = await fetchApi('/api/run/interactive/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        appendStreamChunk('stderr', data.message || 'Gagal memulai sesi interaktif.');
+        finishInteractiveSession(1, '[failed to start]');
+        return;
+      }
 
-  runBtn.disabled = true;
-  statusDot.className = 'running';
-  outputStatusDot.style.background = 'var(--ai)';
-  outputTerminal.innerHTML = '<div class="prompt-line"><span class="user">zaba@zabacode:~$</span> python3 main.py</div>';
-  interactiveStderrBuffer = '';
-  goToOutput();
+      interactiveActive = true;
+      const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
+      runBtn.textContent = t.stop_btn || '⏹ STOP';
+      runBtn.disabled = false;
 
-  try {
-    const res = await fetchApi('/api/run/interactive/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code }),
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      appendStreamChunk('stderr', data.message || 'Gagal memulai sesi interaktif.');
-      finishInteractiveSession(1, '[failed to start]');
-      return;
+      const stdinInput = document.getElementById('stdin-input');
+      const stdinSendBtn = document.getElementById('stdin-send-btn');
+      if (stdinInput) {
+        stdinInput.disabled = false;
+        stdinInput.placeholder = t.stdin_placeholder_active;
+      }
+      if (stdinSendBtn) {
+        stdinSendBtn.disabled = false;
+      }
+
+      if (stdinInput) {
+        stdinInput.focus();
+      }
+
+      interactivePollTimer = setInterval(pollInteractiveOutput, 150);
+    } catch (e) {
+      if (outputTerminal) {
+        outputTerminal.innerHTML += '<div class="stderr-block">Gagal terhubung ke backend server: ' + escapeHtml(String(e)) + '</div>';
+      }
+      if (statusDot) statusDot.className = 'err';
+      if (outputStatusDot) outputStatusDot.style.background = 'var(--err)';
+      runBtn.disabled = false;
     }
+  };
+}
 
-    interactiveActive = true;
-    const t = TRANSLATIONS[currentLang] || TRANSLATIONS['id'];
-    runBtn.textContent = t.stop_btn || '⏹ BERHENTI';
-    runBtn.disabled = false;
-
-    const stdinInput = document.getElementById('stdin-input');
-    const stdinSendBtn = document.getElementById('stdin-send-btn');
-    if (stdinInput) {
-      stdinInput.disabled = false;
-      stdinInput.placeholder = t.stdin_placeholder_active;
-    }
-    if (stdinSendBtn) {
-      stdinSendBtn.disabled = false;
-    }
-
-    // Auto-focus input for a smoother terminal user experience
-    if (stdinInput) {
-      stdinInput.focus();
-    }
-
-    interactivePollTimer = setInterval(pollInteractiveOutput, 150);
-  } catch (e) {
-    outputTerminal.innerHTML += '<div class="stderr-block">Gagal terhubung ke backend server: ' + escapeHtml(String(e)) + '</div>';
-    statusDot.className = 'err';
-    outputStatusDot.style.background = 'var(--err)';
-    runBtn.disabled = false;
-  }
-};
-
-// STDIN live input: Enter or SEND button sends the line into the running process
 async function sendTerminalInput() {
   const input = document.getElementById('stdin-input');
   const sendBtn = document.getElementById('stdin-send-btn');
@@ -1517,7 +1541,6 @@ async function sendTerminalInput() {
   const text = input.value;
   input.value = '';
 
-  // Disable to prevent double send / race conditions
   input.disabled = true;
   if (sendBtn) sendBtn.disabled = true;
 
@@ -1547,28 +1570,22 @@ async function sendTerminalInput() {
   }
 }
 
-document.getElementById('stdin-input').addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
-  e.preventDefault();
-  sendTerminalInput();
-});
-
-const stdinSendBtnEl = document.getElementById('stdin-send-btn');
-if (stdinSendBtnEl) {
-  stdinSendBtnEl.onclick = sendTerminalInput;
-}
-
 // ---------- Sidebar Navigation ----------
 const sidebar = document.getElementById('sidebar');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-document.getElementById('hamburger').onclick = () => {
-  sidebar.classList.add('open');
-  sidebarBackdrop.classList.add('open');
-};
-sidebarBackdrop.onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-};
+const hamburgerBtn = document.getElementById('hamburger');
+if (hamburgerBtn) {
+  hamburgerBtn.onclick = () => {
+    if (sidebar) sidebar.classList.add('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.add('open');
+  };
+}
+if (sidebarBackdrop) {
+  sidebarBackdrop.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+  };
+}
 
 // ---------- DEDICATED LIBRARY MANAGER (zabapip) ----------
 const libModalBackdrop = document.getElementById('lib-modal-backdrop');
@@ -1578,14 +1595,17 @@ let allLibraries = {};
 let activeCategory = 'all';
 
 function openLibraryManager() {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  libModalBackdrop.classList.add('open');
+  if (sidebar) sidebar.classList.remove('open');
+  if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+  if (libModalBackdrop) libModalBackdrop.classList.add('open');
   fetchAndRenderLibraries();
 }
 
-document.getElementById('sidebar-lib-btn').onclick = openLibraryManager;
-document.getElementById('lib-modal-close').onclick = () => libModalBackdrop.classList.remove('open');
+const sidebarLibBtn = document.getElementById('sidebar-lib-btn');
+if (sidebarLibBtn) sidebarLibBtn.onclick = openLibraryManager;
+
+const libModalClose = document.getElementById('lib-modal-close');
+if (libModalClose) libModalClose.onclick = () => { if (libModalBackdrop) libModalBackdrop.classList.remove('open'); };
 
 document.querySelectorAll('.lib-cat-pill').forEach(pill => {
   pill.onclick = () => {
@@ -1596,7 +1616,9 @@ document.querySelectorAll('.lib-cat-pill').forEach(pill => {
   };
 });
 
-libSearchInput.addEventListener('input', renderLibraryGrid);
+if (libSearchInput) {
+  libSearchInput.addEventListener('input', renderLibraryGrid);
+}
 
 async function fetchAndRenderLibraries() {
   try {
@@ -1604,12 +1626,15 @@ async function fetchAndRenderLibraries() {
     allLibraries = await res.json();
     renderLibraryGrid();
   } catch (e) {
-    libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--err);">Gagal memuat daftar library dari backend.</div>';
+    if (libGridContainer) {
+      libGridContainer.innerHTML = '<div style="grid-column:1/-1;color:var(--err);">Gagal memuat daftar library dari backend.</div>';
+    }
   }
 }
 
 function renderLibraryGrid() {
-  const query = libSearchInput.value.toLowerCase().trim();
+  if (!libGridContainer) return;
+  const query = libSearchInput ? libSearchInput.value.toLowerCase().trim() : '';
   libGridContainer.innerHTML = '';
 
   let entries = Object.entries(allLibraries);
@@ -1676,42 +1701,59 @@ async function handleInstallLibrary(name) {
   }
 }
 
-document.getElementById('custom-pip-btn').onclick = () => {
-  const customName = document.getElementById('custom-pip-input').value.trim();
-  if (customName) {
-    handleInstallLibrary(customName);
-    document.getElementById('custom-pip-input').value = '';
-  }
-};
+const customPipBtn = document.getElementById('custom-pip-btn');
+if (customPipBtn) {
+  customPipBtn.onclick = () => {
+    const customPipInput = document.getElementById('custom-pip-input');
+    const customName = customPipInput ? customPipInput.value.trim() : '';
+    if (customName) {
+      handleInstallLibrary(customName);
+      customPipInput.value = '';
+    }
+  };
+}
 
 // ---------- ADDON & THEME MARKETPLACE MODAL ----------
 const marketModalBackdrop = document.getElementById('market-modal-backdrop');
 const marketGridContainer = document.getElementById('market-grid-container');
 let currentMarketTab = 'plugins';
 
-document.getElementById('sidebar-market-btn').onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  marketModalBackdrop.classList.add('open');
-  loadMarketplace();
-};
-document.getElementById('market-modal-close').onclick = () => marketModalBackdrop.classList.remove('open');
+const sidebarMarketBtn = document.getElementById('sidebar-market-btn');
+if (sidebarMarketBtn) {
+  sidebarMarketBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    if (marketModalBackdrop) marketModalBackdrop.classList.add('open');
+    loadMarketplace();
+  };
+}
+const marketModalClose = document.getElementById('market-modal-close');
+if (marketModalClose) marketModalClose.onclick = () => { if (marketModalBackdrop) marketModalBackdrop.classList.remove('open'); };
 
-document.getElementById('market-tab-plugins').onclick = () => {
-  document.getElementById('market-tab-plugins').classList.add('active');
-  document.getElementById('market-tab-themes').classList.remove('active');
-  currentMarketTab = 'plugins';
-  loadMarketplace();
-};
+const marketTabPlugins = document.getElementById('market-tab-plugins');
+if (marketTabPlugins) {
+  marketTabPlugins.onclick = () => {
+    marketTabPlugins.classList.add('active');
+    const marketTabThemes = document.getElementById('market-tab-themes');
+    if (marketTabThemes) marketTabThemes.classList.remove('active');
+    currentMarketTab = 'plugins';
+    loadMarketplace();
+  };
+}
 
-document.getElementById('market-tab-themes').onclick = () => {
-  document.getElementById('market-tab-themes').classList.add('active');
-  document.getElementById('market-tab-plugins').classList.remove('active');
-  currentMarketTab = 'themes';
-  loadMarketplace();
-};
+const marketTabThemes = document.getElementById('market-tab-themes');
+if (marketTabThemes) {
+  marketTabThemes.onclick = () => {
+    marketTabThemes.classList.add('active');
+    const marketTabPluginsEl = document.getElementById('market-tab-plugins');
+    if (marketTabPluginsEl) marketTabPluginsEl.classList.remove('active');
+    currentMarketTab = 'themes';
+    loadMarketplace();
+  };
+}
 
 async function loadMarketplace() {
+  if (!marketGridContainer) return;
   marketGridContainer.innerHTML = '';
   if (currentMarketTab === 'plugins') {
     const res = await fetchApi('/api/marketplace/plugins');
@@ -1729,11 +1771,13 @@ async function loadMarketplace() {
             <div style="font-size:11px;color:var(--text);line-height:1.4;margin-bottom:10px;">${escapeHtml(plugin.description)}</div>
           </div>
           <button class="mini-btn toggle-plugin-btn" style="${isActive ? 'background:var(--border-bright);color:#00190A;border:none;' : 'background:var(--text-bright);color:#00190A;border:none;'}font-weight:bold;">
-            ${isActive ? 'NONAKTIFKAN ✕' : 'AKTIFFKAN ADDON ✓'}
+            ${isActive ? 'NONAKTIFKAN ✕' : 'AKTIFKAN ADDON ✓'}
           </button>
         `;
 
-        card.querySelector('.toggle-plugin-btn').onclick = () => {
+        card.querySelector('.toggle-plugin-btn').onclick = async () => {
+          const isActivating = !installedPlugins[plugin.id];
+
           if (installedPlugins[plugin.id]) {
             delete installedPlugins[plugin.id];
             showToast(`Plugin ${plugin.name} dinonaktifkan.`, 'error');
@@ -1743,9 +1787,44 @@ async function loadMarketplace() {
           }
           localStorage.setItem('zabacode-active-plugins', JSON.stringify(installedPlugins));
           
-          if (plugin.id === 'symbol_bar') {
+          if (plugin.id === 'symbol_bar' && symbolBar) {
             symbolBar.classList.toggle('active', Boolean(installedPlugins['symbol_bar']));
           }
+
+          // Auto-implement transform plugins upon activation
+          const transformPlugins = [
+            "auto_import_optimizer",
+            "duplicate_line_detector",
+            "smart_comment_generator",
+            "code_beautifier_pro",
+            "variable_type_hint_generator"
+          ];
+          if (isActivating && transformPlugins.includes(plugin.id)) {
+            showToast(`Menjalankan ${plugin.name}...`, 'loading');
+            try {
+              const currentCode = getEditorValue();
+              const executeRes = await fetchApi('/api/plugins/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin_id: plugin.id, code: currentCode })
+              });
+              const result = await executeRes.json();
+              if (result.ok) {
+                setEditorValue(result.code);
+                triggerAutoSave();
+                if (result.report) {
+                  showToast(`✓ Terimplementasi:\n${result.report}`, 'success');
+                } else {
+                  showToast(`✓ Plugin ${plugin.name} berhasil diterapkan!`, 'success');
+                }
+              } else {
+                showToast(`✗ Gagal menerapkan plugin: ${result.message}`, 'error');
+              }
+            } catch (err) {
+              showToast(`✗ Error eksekusi: ${err.message}`, 'error');
+            }
+          }
+
           loadMarketplace();
         };
 
@@ -1773,46 +1852,54 @@ async function loadMarketplace() {
 
 // ---------- IN-APP DOCS MODAL ----------
 const docsModalBackdrop = document.getElementById('docs-modal-backdrop');
-document.getElementById('sidebar-docs-btn').onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  docsModalBackdrop.classList.add('open');
-};
-document.getElementById('docs-modal-close').onclick = () => docsModalBackdrop.classList.remove('open');
+const sidebarDocsBtn = document.getElementById('sidebar-docs-btn');
+if (sidebarDocsBtn) {
+  sidebarDocsBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    if (docsModalBackdrop) docsModalBackdrop.classList.add('open');
+  };
+}
+const docsModalClose = document.getElementById('docs-modal-close');
+if (docsModalClose) docsModalClose.onclick = () => { if (docsModalBackdrop) docsModalBackdrop.classList.remove('open'); };
 
 // ---------- AI Chat & Floating FAB ----------
 const aiFab = document.getElementById('ai-fab');
 const aiPanel = document.getElementById('ai-panel');
-document.getElementById('ai-close').onclick = () => aiPanel.classList.remove('open');
+const aiCloseBtn = document.getElementById('ai-close');
+if (aiCloseBtn) aiCloseBtn.onclick = () => { if (aiPanel) aiPanel.classList.remove('open'); };
 
 let dragging = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
 const FAB_SIZE = 48;
 
-aiFab.addEventListener('pointerdown', e => {
-  dragging = true; moved = false;
-  startX = e.clientX; startY = e.clientY;
-  const rect = aiFab.getBoundingClientRect();
-  startLeft = rect.left; startTop = rect.top;
-  aiFab.setPointerCapture(e.pointerId);
-});
+if (aiFab) {
+  aiFab.addEventListener('pointerdown', e => {
+    dragging = true; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    const rect = aiFab.getBoundingClientRect();
+    startLeft = rect.left; startTop = rect.top;
+    aiFab.setPointerCapture(e.pointerId);
+  });
 
-aiFab.addEventListener('pointermove', e => {
-  if (!dragging) return;
-  const dx = e.clientX - startX, dy = e.clientY - startY;
-  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
-  if (moved) {
-    aiFab.style.left = `${Math.max(4, Math.min(window.innerWidth - FAB_SIZE - 4, startLeft + dx))}px`;
-    aiFab.style.top = `${Math.max(4, Math.min(window.innerHeight - FAB_SIZE - 4, startTop + dy))}px`;
-  }
-});
+  aiFab.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+    if (moved) {
+      aiFab.style.left = `${Math.max(4, Math.min(window.innerWidth - FAB_SIZE - 4, startLeft + dx))}px`;
+      aiFab.style.top = `${Math.max(4, Math.min(window.innerHeight - FAB_SIZE - 4, startTop + dy))}px`;
+    }
+  });
 
-aiFab.addEventListener('pointerup', () => {
-  dragging = false;
-  if (!moved) aiPanel.classList.add('open');
-});
+  aiFab.addEventListener('pointerup', () => {
+    dragging = false;
+    if (!moved && aiPanel) aiPanel.classList.add('open');
+  });
+}
 
 const aiMessages = document.getElementById('ai-messages');
 function addMsg(text, cls) {
+  if (!aiMessages) return;
   const div = document.createElement('div');
   div.className = `msg ${cls}`;
   div.textContent = text;
@@ -1828,32 +1915,38 @@ let pendingProvider = null;
 
 function openKeyDialog(provider) {
   pendingProvider = provider;
-  keyDialogProvider.textContent = provider;
-  keyDialogInput.value = '';
-  keyDialogBackdrop.classList.add('open');
+  if (keyDialogProvider) keyDialogProvider.textContent = provider;
+  if (keyDialogInput) keyDialogInput.value = '';
+  if (keyDialogBackdrop) keyDialogBackdrop.classList.add('open');
 }
-document.getElementById('key-dialog-cancel').onclick = () => keyDialogBackdrop.classList.remove('open');
-document.getElementById('key-dialog-save').onclick = async () => {
-  if (!keyDialogInput.value) return;
-  await fetchApi('/api/keys', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
-  });
-  keyDialogBackdrop.classList.remove('open');
-  addMsg(`API Key ${pendingProvider} berhasil disimpan secara terenkripsi.`, 'system-hint');
-};
+const keyDialogCancel = document.getElementById('key-dialog-cancel');
+if (keyDialogCancel) keyDialogCancel.onclick = () => { if (keyDialogBackdrop) keyDialogBackdrop.classList.remove('open'); };
+
+const keyDialogSave = document.getElementById('key-dialog-save');
+if (keyDialogSave) {
+  keyDialogSave.onclick = async () => {
+    if (!keyDialogInput || !keyDialogInput.value) return;
+    await fetchApi('/api/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: pendingProvider, api_key: keyDialogInput.value }),
+    });
+    if (keyDialogBackdrop) keyDialogBackdrop.classList.remove('open');
+    addMsg(`API Key ${pendingProvider} berhasil disimpan secara terenkripsi.`, 'system-hint');
+  };
+}
 
 async function sendAiMessage() {
   const input = document.getElementById('ai-input');
-  const message = input.value.trim();
+  const message = input ? input.value.trim() : '';
   if (!message) return;
-  const provider = document.getElementById('ai-provider').value;
+  const aiProviderEl = document.getElementById('ai-provider');
+  const provider = aiProviderEl ? aiProviderEl.value : 'openrouter';
   const sendBtn = document.getElementById('ai-send');
   
   addMsg(message, 'user');
-  input.value = '';
-  sendBtn.disabled = true;
+  if (input) input.value = '';
+  if (sendBtn) sendBtn.disabled = true;
 
   try {
     const res = await fetchApi('/api/ai/chat', {
@@ -1873,12 +1966,17 @@ async function sendAiMessage() {
     }
     addMsg(data.reply, 'ai');
   } finally {
-    sendBtn.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
   }
 }
 
-document.getElementById('ai-send').onclick = sendAiMessage;
-document.getElementById('ai-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(); });
+const aiSendBtn = document.getElementById('ai-send');
+if (aiSendBtn) aiSendBtn.onclick = sendAiMessage;
+
+const aiInputEl = document.getElementById('ai-input');
+if (aiInputEl) {
+  aiInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(); });
+}
 
 // ---------- File Manager Modal ----------
 const fileDialogBackdrop = document.getElementById('file-dialog-backdrop');
@@ -1886,35 +1984,44 @@ const fileListContainer = document.getElementById('file-list-container');
 const fileSaveInput = document.getElementById('file-save-input');
 
 function openFileManager(isSave) {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  fileDialogBackdrop.classList.add('open');
+  if (sidebar) sidebar.classList.remove('open');
+  if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+  if (fileDialogBackdrop) fileDialogBackdrop.classList.add('open');
   loadFileList();
-  if (isSave) fileSaveInput.focus();
+  if (isSave && fileSaveInput) fileSaveInput.focus();
 }
 
-document.getElementById('sidebar-open-btn').onclick = () => openFileManager(false);
-document.getElementById('sidebar-save-btn').onclick = () => openFileManager(true);
-document.getElementById('file-dialog-cancel').onclick = () => fileDialogBackdrop.classList.remove('open');
+const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+if (sidebarOpenBtn) sidebarOpenBtn.onclick = () => openFileManager(false);
 
-document.getElementById('file-dialog-save').onclick = async () => {
-  const filename = fileSaveInput.value.trim();
-  if (!filename) return;
-  
-  const res = await fetchApi(`/api/files/${filename}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: getEditorValue() }),
-  });
-  const data = await res.json();
-  if (data.ok) {
-    showToast(`✓ ${data.message}`, 'success');
-    fileSaveInput.value = '';
-    loadFileList();
-  }
-};
+const sidebarSaveBtn = document.getElementById('sidebar-save-btn');
+if (sidebarSaveBtn) sidebarSaveBtn.onclick = () => openFileManager(true);
+
+const fileDialogCancel = document.getElementById('file-dialog-cancel');
+if (fileDialogCancel) fileDialogCancel.onclick = () => { if (fileDialogBackdrop) fileDialogBackdrop.classList.remove('open'); };
+
+const fileDialogSave = document.getElementById('file-dialog-save');
+if (fileDialogSave) {
+  fileDialogSave.onclick = async () => {
+    const filename = fileSaveInput ? fileSaveInput.value.trim() : '';
+    if (!filename) return;
+
+    const res = await fetchApi(`/api/files/${filename}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: getEditorValue() }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✓ ${data.message}`, 'success');
+      if (fileSaveInput) fileSaveInput.value = '';
+      loadFileList();
+    }
+  };
+}
 
 async function loadFileList() {
+  if (!fileListContainer) return;
   const res = await fetchApi('/api/files');
   const data = await res.json();
   fileListContainer.innerHTML = '';
@@ -1955,7 +2062,7 @@ async function loadFileList() {
             tabs.push({ id: newId, name: f.name, content: fileData.content });
             switchTab(newId);
           }
-          fileDialogBackdrop.classList.remove('open');
+          if (fileDialogBackdrop) fileDialogBackdrop.classList.remove('open');
         }
       };
 
@@ -1977,15 +2084,20 @@ async function loadFileList() {
 const themeDialogBackdrop = document.getElementById('theme-dialog-backdrop');
 const themeList = document.getElementById('theme-list');
 
-document.getElementById('sidebar-theme-btn').onclick = () => {
-  sidebar.classList.remove('open');
-  sidebarBackdrop.classList.remove('open');
-  themeDialogBackdrop.classList.add('open');
-  loadThemes();
-};
-document.getElementById('theme-dialog-cancel').onclick = () => themeDialogBackdrop.classList.remove('open');
+const sidebarThemeBtn = document.getElementById('sidebar-theme-btn');
+if (sidebarThemeBtn) {
+  sidebarThemeBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    if (themeDialogBackdrop) themeDialogBackdrop.classList.add('open');
+    loadThemes();
+  };
+}
+const themeDialogCancel = document.getElementById('theme-dialog-cancel');
+if (themeDialogCancel) themeDialogCancel.onclick = () => { if (themeDialogBackdrop) themeDialogBackdrop.classList.remove('open'); };
 
 async function loadThemes() {
+  if (!themeList) return;
   const res = await fetchApi('/api/themes');
   const data = await res.json();
   themeList.innerHTML = '';
@@ -2018,7 +2130,6 @@ async function applyTheme(name) {
     document.documentElement.style.setProperty('--err', rgbaToCss(t.err));
     document.documentElement.style.setProperty('--ai', rgbaToCss(t.ai));
 
-    // Calculate/derive dim properties for error and ai highlights
     if (t.err) {
       const errDim = [t.err[0] * 0.48, t.err[1] * 0.14, t.err[2] * 0.14, t.err[3]];
       document.documentElement.style.setProperty('--err-dim', rgbaToCss(errDim));
@@ -2029,7 +2140,7 @@ async function applyTheme(name) {
     }
     
     registerCustomMonacoTheme(t);
-    themeDialogBackdrop.classList.remove('open');
+    if (themeDialogBackdrop) themeDialogBackdrop.classList.remove('open');
     if (marketModalBackdrop) marketModalBackdrop.classList.remove('open');
   }
 }

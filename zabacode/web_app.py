@@ -21,7 +21,6 @@ from zabacode.lib_manager import get_all_libraries, install_library
 from zabacode.plugins.registry import get_all_plugins
 from zabacode.plugins.implementations import PluginExecutor
 from zabacode.themes.definitions import get_theme, list_themes
-from zabacode.core.zmux import start_zmux_session, send_zmux_input, get_zmux_output, stop_zmux_session
 
 APP_VERSION = "1.0.0"
 MAX_AI_FIELD_CHARS = 100_000
@@ -108,37 +107,6 @@ def check_code_endpoint():
     return jsonify(check_code(code))
 
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# ZMUX Terminal Endpoints
-# ---------------------------------------------------------------------------
-
-@app.post("/api/zmux/start")
-@require_auth
-def zmux_start():
-    return jsonify(start_zmux_session())
-
-
-@app.get("/api/zmux/output")
-@require_auth
-def zmux_output():
-    return jsonify(get_zmux_output())
-
-
-@app.post("/api/zmux/input")
-@require_auth
-def zmux_input():
-    payload = request.get_json(silent=True) or {}
-    text = payload.get("text", "")
-    if not isinstance(text, str):
-        return jsonify({"ok": False, "message": "Field 'text' must be a string."}), 400
-    return jsonify(send_zmux_input(text))
-
-
-@app.post("/api/zmux/stop")
-@require_auth
-def zmux_stop():
-    return jsonify(stop_zmux_session())
 
 
 # ---------------------------------------------------------------------------

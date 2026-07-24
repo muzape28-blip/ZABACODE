@@ -615,7 +615,7 @@ class ZabacodeApp(App):
         )
         
         self.run_btn = Button(
-            text="▶ JALANKAN",
+            text="▶ RUN",
             font_size=sp(14),
             font_name='Roboto',
             bold=True,
@@ -812,17 +812,17 @@ class ZabacodeApp(App):
         self.run_btn.disabled = False
         
         if result.get("timeout"):
-            self.run_btn.text = "▶ JALANKAN"
+            self.run_btn.text = "▶ RUN"
             self.status_dot.color = (1.0, 0.29, 0.29, 1)  # red
             self.output_panel.show_output(
                 stderr=result.get("stderr", "") + "\n[Process timed out]"
             )
         elif result.get("ok"):
-            self.run_btn.text = "▶ JALANKAN"
+            self.run_btn.text = "▶ RUN"
             self.status_dot.color = (0.22, 1.0, 0.078, 1)  # green
             self.output_panel.show_output(stdout=result.get("stdout", ""))
         else:
-            self.run_btn.text = "▶ JALANKAN"
+            self.run_btn.text = "▶ RUN"
             self.status_dot.color = (1.0, 0.29, 0.29, 1)  # red
             self.output_panel.show_output(
                 stdout=result.get("stdout", ""),

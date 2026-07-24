@@ -35,7 +35,7 @@ def require_auth(func):
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
         if not verify_token(request.headers.get("X-Zabacode-Token", "")):
-            return jsonify({"ok": False, "message": "Akses ditolak: token autentikasi tidak valid."}), 401
+            return jsonify({"ok": False, "message": "Access denied: invalid authentication token."}), 401
         return func(*args, **kwargs)
     return wrapped
 
@@ -57,7 +57,7 @@ def run_code():
     code = payload.get("code", "")
     stdin_data = payload.get("stdin_data", "")
     if not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     return jsonify(execute_code_isolated(code, stdin_data=stdin_data))
 
 
@@ -71,7 +71,7 @@ def run_interactive_start():
     payload = request.get_json(silent=True) or {}
     code = payload.get("code", "")
     if not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     return jsonify(start_interactive_session(code))
 
 
@@ -103,7 +103,7 @@ def check_code_endpoint():
     payload = request.get_json(silent=True) or {}
     code = payload.get("code", "")
     if not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Field code harus berupa string."}), 400
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     return jsonify(check_code(code))
 
 
@@ -152,7 +152,7 @@ def themes():
 def theme(name):
     result = get_theme(name)
     if result is None:
-        return jsonify({"ok": False, "message": "Theme tidak ditemukan"}), 404
+        return jsonify({"ok": False, "message": "Theme not found"}), 404
     return jsonify({"ok": True, "theme": result})
 
 
@@ -174,13 +174,13 @@ def execute_plugin():
     plugin_id = payload.get("plugin_id", "")
     code = payload.get("code", "")
     if not isinstance(plugin_id, str) or not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Field 'plugin_id' dan 'code' harus berupa string."}), 400
+        return jsonify({"ok": False, "message": "Fields 'plugin_id' and 'code' must be strings."}), 400
 
     try:
         result = PluginExecutor.execute_plugin(plugin_id, code)
         return jsonify(result)
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Gagal mengeksekusi plugin: {str(e)}"}), 500
+        return jsonify({"ok": False, "message": f"Failed to execute plugin: {str(e)}"}), 500
 
 
 @app.get("/api/keys/status")
@@ -197,7 +197,7 @@ def set_key():
     provider = payload.get("provider", "")
     api_key = payload.get("api_key", "")
     if provider not in ALLOWED_PROVIDERS or not isinstance(api_key, str) or not api_key.strip():
-        return jsonify({"ok": False, "message": "Provider atau API key tidak valid."}), 400
+        return jsonify({"ok": False, "message": "Invalid provider or API key."}), 400
     save_key(provider, api_key)
     return jsonify({"ok": True})
 
@@ -207,16 +207,17 @@ def set_key():
 def ai_chat():
     payload = request.get_json(silent=True) or {}
     provider = payload.get("provider", "openrouter")
+    model = payload.get("model", "")
     message = payload.get("message", "")
     code = payload.get("code", "")
     if provider not in ALLOWED_PROVIDERS or not isinstance(message, str) or not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Permintaan AI tidak valid."}), 400
+        return jsonify({"ok": False, "message": "Invalid AI request."}), 400
     if len(message) > MAX_AI_FIELD_CHARS or len(code) > MAX_AI_FIELD_CHARS:
-        return jsonify({"ok": False, "message": "Konteks AI terlalu besar."}), 413
+        return jsonify({"ok": False, "message": "AI context is too large."}), 413
     api_key = load_keys().get(provider)
     if not api_key:
         return jsonify({"ok": False, "needs_key": True, "provider": provider}), 401
-    return jsonify(PROVIDER_HANDLERS[provider](api_key, message, code))
+    return jsonify(PROVIDER_HANDLERS[provider](api_key, message, code, model=model))
 
 
 def run_webview_server():

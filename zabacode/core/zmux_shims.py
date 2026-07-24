@@ -211,19 +211,36 @@ if __name__ == '__main__':
 }
 
 def generate_shims(zmux_bin_dir: Path) -> None:
-    """Writes all wrapper shim scripts to the specified directory and makes them executable."""
+    """Writes all wrapper shim scripts to the specified directory and makes them executable.
+
+    NOTE ON ANDROID NOEXEC:
+    On Android, the private application data partition (/data) is usually mounted with the
+    MS_NOEXEC flag. This prevents direct execution of scripts or binaries (even with chmod +x).
+    To bypass this limitation, we also write each python shim with a .py extension into
+    the .shims subdirectory. Instead of executing the shims directly, the ZMUX shell session
+    registers shell aliases pointing to explicitly invoked python commands:
+        alias cmd='python3 /data/.../zmux_bin/.shims/cmd.py'
+    This way, the OS executes the allowed python binary, and python loads the script as an argument.
+    """
     zmux_bin_dir.mkdir(parents=True, exist_ok=True)
+    shims_dir = zmux_bin_dir / ".shims"
+    shims_dir.mkdir(parents=True, exist_ok=True)
+
     for name, content in SHIMS.items():
-        # Write script
+        # Write the standard extension-less script
         script_path = zmux_bin_dir / name
         script_path.write_text(content.strip() + "\n", encoding="utf-8")
 
-        # Make script executable
+        # Make script executable (won't be effective on Android but kept for other POSIX platforms/fallback)
         try:
             st = script_path.stat()
             script_path.chmod(st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         except Exception:
             pass
+
+        # Write python script in .shims directory for Android/POSIX alias execution
+        py_shim_path = shims_dir / f"{name}.py"
+        py_shim_path.write_text(content.strip() + "\n", encoding="utf-8")
 
         # If on Windows, also write a batch file (.bat) so cmd.exe can execute it!
         if sys.platform == "win32":

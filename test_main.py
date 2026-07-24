@@ -589,6 +589,26 @@ class TestZmuxAndApiKeysClearing:
             assert shim_file.exists()
             assert shim_file.stat().st_size > 0
 
+    def test_zmux_shims_noexec_workaround(self):
+        from zabacode.core.paths import APP_DIR
+        from zabacode.core.zmux import start_zmux_session
+        from zabacode.core.zmux_shims import SHIMS
+
+        start_zmux_session()
+
+        shims_dir = APP_DIR / "zmux_bin" / ".shims"
+        assert shims_dir.exists()
+        assert shims_dir.is_dir()
+
+        # Check all shims exist as python files in .shims/
+        for name in SHIMS.keys():
+            py_shim = shims_dir / f"{name}.py"
+            assert py_shim.exists()
+            assert py_shim.stat().st_size > 0
+            # Read and verify it contains Python code
+            content = py_shim.read_text(encoding="utf-8")
+            assert "import " in content or "def " in content
+
     def test_clear_api_key(self):
         from zabacode.core.security import save_key, load_keys
         # Save a valid key

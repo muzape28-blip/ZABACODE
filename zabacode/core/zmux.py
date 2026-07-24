@@ -106,7 +106,19 @@ def start_zmux_session() -> dict:
             _zmux.output_queue.put(("stdout", char))
 
         if os.name != "nt":
-            _zmux.proc.stdin.write("\n")
+            from zabacode.core.zmux_shims import SHIMS
+            alias_cmds = []
+            shim_names = set(SHIMS.keys())
+            shims_dir = zmux_bin_dir / ".shims"
+            if shims_dir.exists():
+                for f in shims_dir.glob("*.py"):
+                    shim_names.add(f.stem)
+
+            for name in sorted(shim_names):
+                py_shim_path = (shims_dir / f"{name}.py").resolve()
+                alias_cmds.append(f"alias {name}='\"{sys.executable}\" \"{py_shim_path}\"'")
+
+            _zmux.proc.stdin.write("\n".join(alias_cmds) + "\n\n")
             _zmux.proc.stdin.flush()
 
         return {"ok": True, "message": "ZMUX session started"}

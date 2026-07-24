@@ -87,6 +87,22 @@ Tired of certificate installation failures on Android? So are we!
 Our **Safe Calculator** Starter Kit is completely updated in English! If you attempt to divide by zero, instead of a raw traceback crash, it returns a fun, philosophically correct response:
 `"Division by zero is a violation of natural law"`!
 
+### ⚡ 5. ZMUX Interactive Terminal (with Android `noexec` Bypass)
+ZABACODE's interactive terminal, ZMUX, is fully updated with a **"Launcher Shim Directory + Alias Injection"** hybrid architecture.
+* **The Android `noexec` Problem:** Android mounts the private app `/data` partition with `MS_NOEXEC`, blocking direct script/binary execution.
+* **The Elegant Solution:** Custom Termux commands (shims like `pkg`, `apt`, `termux-vibrate`, etc.) are written as standalone Python scripts into `zmux_bin/.shims/`.
+* **Dynamic Sourcing:** On terminal startup, the shell session dynamically generates and injects shell aliases (e.g. `alias pkg='python3 /data/.../zmux_bin/.shims/pkg.py'`).
+* This bypasses the OS execution restriction by running the allowed system Python binary with the script as an argument, keeping ZMUX incredibly stable and POSIX compliant.
+
+### 🧩 6. Advanced Transform Plugins (v1.1.0)
+Added 5 high-fidelity, offline-first transform plugins registered via a unified registry:
+* 🚀 **Auto-Import Optimizer:** Safely cleans and comments out unused imports.
+* 🔍 **Duplicate Line Detector:** Flags duplicate code patterns dynamically.
+* ✍️ **Smart Comment Generator:** Generates professional docstrings and inline comments.
+* 🎨 **Code Beautifier Pro:** Reformats spacing, operators, and arguments.
+* 💡 **Variable Type Hint Generator:** Automatically infers and appends Python PEP-484 type hints.
+
+
 ---
 
 ## 📊 Comparison: ZABACODE vs Pydroid 3 vs Acode
@@ -100,7 +116,7 @@ Our **Safe Calculator** Starter Kit is completely updated in English! If you att
 | **AI Assistant Built-in** | ❌ None | ❌ None | 🚀 **6 Providers + 1 Offline (Ollama)** |
 | **Library Manager** | ✅ Precompiled Wheels | ❌ None | 🚀 **50+ Libs with Auto-SSL Bypass** |
 | **Themes** | ⚠️ Limited | ✅ Multiple | 🚀 **10 Themes (Tokyo Night, Catppuccin, etc.)** |
-| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **Streamlined English Only (No Lag!)** |
+| **Multi-Language UI** | ❌ None | ❌ None | 🚀 **Streamlined English & Indonesian (Dynamic i18n)** |
 | **Architecture Support** | 32-bit / 64-bit | - | ✅ **Universal Fat APK (ARMv7 + ARM64)** |
 
 ---

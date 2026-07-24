@@ -37,6 +37,23 @@ jobs:
         python3 -m pip install --user buildozer cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+    - name: Install Code Quality & Testing Dependencies
+      run: |
+        python3 -m pip install ruff mypy pytest pytest-cov
+        python3 -m pip install -r requirements-dev.txt
+
+    - name: Run Ruff Linter
+      run: |
+        ruff check . --select=E9,F821
+
+    - name: Run Mypy Type Checking on Core Modules
+      run: |
+        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py
+
+    - name: Run Unit Tests with Pytest
+      run: |
+        python3 -m pytest test_main.py -v
+
     - name: Set up Android SDK
       uses: android-actions/setup-android@v3
       with:

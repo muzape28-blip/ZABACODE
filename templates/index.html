@@ -1308,46 +1308,77 @@ try {
   ace.config.set("basePath", "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/");
   editor.session.setMode("ace/mode/python");
 
-  // Hook showSettingsMenu to style and add Close/Back button
-  const origShowSettingsMenu = editor.showSettingsMenu;
+  // Hook showSettingsMenu dynamically to style and add Close/Back button safely
   editor.showSettingsMenu = function() {
-    if (typeof origShowSettingsMenu === 'function') {
-      origShowSettingsMenu.call(this);
-    }
-    const menu = document.getElementById('ace_settingsmenu');
-    if (menu) {
-      const overlay = menu.parentNode;
-      if (overlay) {
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.85)";
-        overlay.style.backdropFilter = "blur(4px)";
-        overlay.style.display = "flex";
-        overlay.style.alignItems = "center";
-        overlay.style.justifyContent = "center";
-      }
-      if (!document.getElementById('ace-settings-close-btn')) {
-        const header = document.createElement('div');
-        header.className = 'ace_settings_header';
-        header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #39FF14; padding-bottom:12px; width:100%;';
-        
-        const title = document.createElement('span');
-        title.textContent = '⚙️ ACE EDITOR SETTINGS';
-        title.style.cssText = 'color:#39FF14; font-weight:bold; font-size:14px; font-family:"JetBrains Mono",monospace;';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.id = 'ace-settings-close-btn';
-        closeBtn.textContent = '✕ CLOSE';
-        closeBtn.style.cssText = 'background:#000000; color:#39FF14; border:1px solid #39FF14; padding:6px 12px; cursor:pointer; font-family:"JetBrains Mono",monospace; font-weight:bold; font-size:12px; border-radius:4px;';
-        closeBtn.onclick = function() {
-          if (overlay && overlay.parentNode) {
-            overlay.parentNode.removeChild(overlay);
+    // 1. Ensure the settings menu module is loaded, required, and initialized
+    let realShowSettingsMenu = null;
+    try {
+      if (typeof ace !== "undefined" && ace.require) {
+        const ext = ace.require("ace/ext/settings_menu");
+        if (ext) {
+          if (typeof ext.init === 'function') {
+            ext.init(editor); // This registers showSettingsMenu on Editor.prototype
           }
-        };
-        
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-        menu.insertBefore(header, menu.firstChild);
+          const Editor = ace.require("ace/editor").Editor;
+          if (Editor && Editor.prototype && typeof Editor.prototype.showSettingsMenu === 'function') {
+            realShowSettingsMenu = Editor.prototype.showSettingsMenu;
+          }
+        }
       }
+    } catch (e) {
+      console.error("Failed to load or initialize ace/ext/settings_menu:", e);
     }
+
+    // Call the original settings menu creator
+    if (typeof realShowSettingsMenu === 'function') {
+      realShowSettingsMenu.call(this);
+    } else {
+      console.error("Original showSettingsMenu function not found.");
+    }
+
+    // 2. Use an interval-based polling mechanism to robustly style and add the close button
+    let attempts = 0;
+    const styleInterval = setInterval(() => {
+      const menu = document.getElementById('ace_settingsmenu');
+      attempts++;
+      if (menu) {
+        clearInterval(styleInterval);
+        const overlay = menu.parentNode;
+        if (overlay) {
+          overlay.style.backgroundColor = "rgba(0, 0, 0, 0.85)";
+          overlay.style.backdropFilter = "blur(4px)";
+          overlay.style.display = "flex";
+          overlay.style.alignItems = "center";
+          overlay.style.justifyContent = "center";
+        }
+        if (!document.getElementById('ace-settings-close-btn')) {
+          const header = document.createElement('div');
+          header.className = 'ace_settings_header';
+          header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #39FF14; padding-bottom:12px; width:100%;';
+
+          const title = document.createElement('span');
+          title.textContent = '⚙️ ACE EDITOR SETTINGS';
+          title.style.cssText = 'color:#39FF14; font-weight:bold; font-size:14px; font-family:"JetBrains Mono",monospace;';
+
+          const closeBtn = document.createElement('button');
+          closeBtn.id = 'ace-settings-close-btn';
+          closeBtn.textContent = '✕ CLOSE';
+          closeBtn.style.cssText = 'background:#000000; color:#39FF14; border:1px solid #39FF14; padding:6px 12px; cursor:pointer; font-family:"JetBrains Mono",monospace; font-weight:bold; font-size:12px; border-radius:4px;';
+          closeBtn.onclick = function() {
+            if (overlay && overlay.parentNode) {
+              overlay.parentNode.removeChild(overlay);
+            }
+          };
+
+          header.appendChild(title);
+          header.appendChild(closeBtn);
+          menu.insertBefore(header, menu.firstChild);
+        }
+      }
+      if (attempts > 30) {
+        clearInterval(styleInterval);
+      }
+    }, 50);
   };
 
   editor.setOptions({
@@ -1685,6 +1716,20 @@ async function sendTerminalInput() {
       }
     }
   }
+}
+
+// Bind stdin input and send button events to remain responsive
+const stdinInputEl = document.getElementById('stdin-input');
+if (stdinInputEl) {
+  stdinInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      sendTerminalInput();
+    }
+  });
+}
+const stdinSendBtnEl = document.getElementById('stdin-send-btn');
+if (stdinSendBtnEl) {
+  stdinSendBtnEl.onclick = sendTerminalInput;
 }
 
 // ---------- Sidebar Navigation ----------

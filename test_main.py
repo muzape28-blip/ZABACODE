@@ -548,3 +548,54 @@ class TestNewPlugins:
         res = PluginExecutor.execute_plugin("code_beautifier_pro", code)
         assert res["ok"] is True
         assert "code" in res
+
+# ===================================================================
+# Test ZMUX Backend and API Keys Clearing
+# ===================================================================
+
+class TestZmuxAndApiKeysClearing:
+    # Test ZMUX backend terminal, shims, and empty API key clearing.
+
+    def test_zmux_start_stop(self):
+        from zabacode.core.zmux import start_zmux_session, stop_zmux_session, get_zmux_output, send_zmux_input
+        # Start ZMUX
+        res = start_zmux_session()
+        assert res["ok"] is True
+
+        # Verify output queue is not empty (welcome banner)
+        out_res = get_zmux_output()
+        assert out_res["ok"] is True
+        assert len(out_res["output"]) > 0
+
+        # Test sending command
+        in_res = send_zmux_input("echo 'hello ZMUX'\n")
+        assert in_res["ok"] is True
+
+        # Stop session
+        stop_res = stop_zmux_session()
+        assert stop_res["ok"] is True
+
+    def test_zmux_shims_generation(self):
+        from zabacode.core.paths import APP_DIR
+        from zabacode.core.zmux import start_zmux_session
+        start_zmux_session()
+
+        zmux_bin = APP_DIR / "zmux_bin"
+        assert zmux_bin.exists()
+
+        # Check standard shims exist
+        for shim_name in ["pkg", "apt", "termux-vibrate", "termux-toast", "termux-battery-status", "termux-info"]:
+            shim_file = zmux_bin / shim_name
+            assert shim_file.exists()
+            assert shim_file.stat().st_size > 0
+
+    def test_clear_api_key(self):
+        from zabacode.core.security import save_key, load_keys
+        # Save a valid key
+        save_key("openrouter", "my-test-api-key")
+        assert load_keys().get("openrouter") == "my-test-api-key"
+
+        # Save empty key to clear/delete it
+        save_key("openrouter", "")
+        # Since empty key is treated as truthy fallback, verify it is empty/cleared
+        assert not load_keys().get("openrouter")

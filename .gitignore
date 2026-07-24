@@ -72,3 +72,4 @@ user_files/
 .zabacode_auth_token
 
 zabacode_crash.log
+zabacode/zmux_bin/

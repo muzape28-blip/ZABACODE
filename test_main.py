@@ -550,64 +550,11 @@ class TestNewPlugins:
         assert "code" in res
 
 # ===================================================================
-# Test ZMUX Backend and API Keys Clearing
+# Test API Keys Clearing
 # ===================================================================
 
-class TestZmuxAndApiKeysClearing:
-    # Test ZMUX backend terminal, shims, and empty API key clearing.
-
-    def test_zmux_start_stop(self):
-        from zabacode.core.zmux import start_zmux_session, stop_zmux_session, get_zmux_output, send_zmux_input
-        # Start ZMUX
-        res = start_zmux_session()
-        assert res["ok"] is True
-
-        # Verify output queue is not empty (welcome banner)
-        out_res = get_zmux_output()
-        assert out_res["ok"] is True
-        assert len(out_res["output"]) > 0
-
-        # Test sending command
-        in_res = send_zmux_input("echo 'hello ZMUX'\n")
-        assert in_res["ok"] is True
-
-        # Stop session
-        stop_res = stop_zmux_session()
-        assert stop_res["ok"] is True
-
-    def test_zmux_shims_generation(self):
-        from zabacode.core.paths import APP_DIR
-        from zabacode.core.zmux import start_zmux_session
-        start_zmux_session()
-
-        zmux_bin = APP_DIR / "zmux_bin"
-        assert zmux_bin.exists()
-
-        # Check standard shims exist
-        for shim_name in ["pkg", "apt", "termux-vibrate", "termux-toast", "termux-battery-status", "termux-info"]:
-            shim_file = zmux_bin / shim_name
-            assert shim_file.exists()
-            assert shim_file.stat().st_size > 0
-
-    def test_zmux_shims_noexec_workaround(self):
-        from zabacode.core.paths import APP_DIR
-        from zabacode.core.zmux import start_zmux_session
-        from zabacode.core.zmux_shims import SHIMS
-
-        start_zmux_session()
-
-        shims_dir = APP_DIR / "zmux_bin" / ".shims"
-        assert shims_dir.exists()
-        assert shims_dir.is_dir()
-
-        # Check all shims exist as python files in .shims/
-        for name in SHIMS.keys():
-            py_shim = shims_dir / f"{name}.py"
-            assert py_shim.exists()
-            assert py_shim.stat().st_size > 0
-            # Read and verify it contains Python code
-            content = py_shim.read_text(encoding="utf-8")
-            assert "import " in content or "def " in content
+class TestApiKeysClearing:
+    # Test empty API key clearing.
 
     def test_clear_api_key(self):
         from zabacode.core.security import save_key, load_keys

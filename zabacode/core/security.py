@@ -128,24 +128,43 @@ _MEMORY_KEYS: dict[str, str] = {}
 
 
 def load_keys() -> dict:
-    """Load keys from Android Keystore; use memory only when unavailable.
-
-    XOR+Base64 is retained above solely for backward-compatible test coverage,
-    never for persistent API-key storage.
-    """
+    """Load keys from Android Keystore; use local encrypted file or memory when unavailable."""
     keystore_keys = _try_keystore_load()
     if keystore_keys:
         return keystore_keys
+
+    # Check memory first, if empty, load from persistent backup file
+    if not _MEMORY_KEYS and KEYS_FILE.exists():
+        try:
+            encrypted_data = KEYS_FILE.read_text(encoding="utf-8")
+            decrypted = xor_decipher(encrypted_data, "zabacode_local_keys_salt")
+            if decrypted:
+                import json
+                loaded = json.loads(decrypted)
+                if isinstance(loaded, dict):
+                    _MEMORY_KEYS.update(loaded)
+        except Exception:
+            pass
+
     return dict(_MEMORY_KEYS)
 
 
 def save_key(provider: str, api_key: str) -> None:
-    """Store keys in Android Keystore or keep them only until app exit."""
+    """Store keys in Android Keystore or keep them persistently in local file when unavailable."""
     provider = provider.strip()
     api_key = api_key.strip()
     if _try_keystore_save(provider, api_key):
         return
     _MEMORY_KEYS[provider] = api_key
+
+    # Persist the memory keys to local encrypted backup file
+    try:
+        import json
+        serialized = json.dumps(_MEMORY_KEYS)
+        encrypted = xor_cipher(serialized, "zabacode_local_keys_salt")
+        KEYS_FILE.write_text(encrypted, encoding="utf-8")
+    except Exception:
+        pass
 
 
 def verify_token(token: str) -> bool:

@@ -482,6 +482,7 @@ print('Try running libraries or executing code here!')
         <button id="sidebar-open-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">📂 OPEN / MANAGE FILES</button>
         <button id="sidebar-save-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px;">💾 SAVE AS FILE (.py)</button>
         <button id="sidebar-settings-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.05); border-color: var(--border-bright);">🛠️ SETTINGS & PREFERENCES</button>
+        <button id="sidebar-zmux-btn" class="mini-btn" style="text-align: left; padding: 10px 12px; font-size: 12px; background: rgba(57,255,20,.1); border-color: var(--text-bright); font-weight: bold; text-shadow: 0 0 5px var(--text-bright);">📟 ZMUX TERMINAL</button>
       </div>
     </div>
     <div class="sidebar-section">
@@ -579,6 +580,65 @@ print('Try running libraries or executing code here!')
             <span id="label-settings-crt" style="font-family: var(--mono); font-size: 11px; background: rgba(57,255,20,0.1); color: var(--text-bright); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-bright);">ON</span>
           </div>
           <span style="color: var(--text-dim); font-size: 11px;">Toggle the retro scanline terminal overlay effect on/off.</span>
+        </div>
+
+        <!-- Setting Card 6: AI Assistant API Keys -->
+        <div class="settings-card" id="btn-settings-ai-keys" style="background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-weight: bold; color: var(--text-bright); font-size: 14px;">🔑 AI Assistant API Keys</span>
+            <span style="color: var(--text-dim); font-size: 11px;">&gt;&gt;</span>
+          </div>
+          <span style="color: var(--text-dim); font-size: 11px;">Configure manual API Keys for OpenRouter, Google Gemini, Groq, Mistral, and DeepSeek.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI KEYS CONFIG MODAL -->
+  <div id="ai-keys-modal-backdrop" class="full-modal-backdrop">
+    <div id="ai-keys-modal" class="full-modal">
+      <div class="full-modal-header">
+        <div class="full-modal-title">🔑 CONFIGURE AI API KEYS</div>
+        <button class="full-modal-close" id="ai-keys-modal-close">✕</button>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <p style="color: var(--text-dim); font-size: 12px; margin: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+          Saved securely on the device's Keystore or encrypted local memory. Ollama is run offline and does not require an API key.
+        </p>
+
+        <!-- Dynamic keys list populated via JS -->
+        <div id="ai-keys-list" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Items will be populated here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ZMUX TERMINAL MODAL -->
+  <div id="zmux-modal-backdrop" class="full-modal-backdrop">
+    <div id="zmux-modal" class="full-modal" style="background: #000000; border: 1px solid var(--text-bright); box-shadow: 0 0 20px rgba(57,255,20,0.35);">
+      <div class="full-modal-header" style="border-bottom: 1px solid var(--text-bright); padding: 12px 18px; background: #050806;">
+        <div class="full-modal-title" style="color: var(--text-bright); text-shadow: 0 0 5px var(--text-bright); font-family: var(--mono); font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+          <span>📟 ZMUX TERMINAL</span>
+          <span style="font-size: 10px; background: rgba(57,255,20,0.15); padding: 2px 6px; border: 1px solid var(--text-bright); border-radius: 4px; animation: pulse 2s infinite;">ACTIVE SESSION</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="mini-btn" id="zmux-clear-btn" style="padding: 4px 8px; font-size: 10px; border-color: var(--text-bright); color: var(--text-bright);">CLEAR</button>
+          <button class="mini-btn" id="zmux-kill-btn" style="padding: 4px 8px; font-size: 10px; border-color: var(--err); color: var(--err);">RESET</button>
+          <button class="full-modal-close" id="zmux-modal-close" style="color: var(--text-bright); margin-left: 6px;">✕</button>
+        </div>
+      </div>
+
+      <!-- ZMUX SCREEN CONTAINER -->
+      <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #000000; padding: 12px;">
+        <div id="zmux-terminal-output" style="flex: 1; overflow-y: auto; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--text-bright); background: #000000; padding: 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; word-break: break-all; white-space: pre-wrap; margin-bottom: 10px;"></div>
+
+        <!-- Interactive Prompt Row -->
+        <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px;">
+          <span style="color: var(--text-bright); font-weight: bold; font-family: var(--mono); font-size: 12px; white-space: nowrap;">zmux &gt;</span>
+          <input type="text" id="zmux-stdin-input" style="flex: 1; background: transparent; border: none; outline: none; color: var(--text-bright); font-family: var(--mono); font-size: 12px; padding: 4px 0;" placeholder="Type command here..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="ZMUX Shell Input">
+          <button class="mini-btn" id="zmux-stdin-send-btn" style="background: var(--text-bright); color: #00190A; border: none; font-weight: bold; font-size: 11px; padding: 4px 12px; border-radius: 2px;">SEND</button>
         </div>
       </div>
     </div>
@@ -713,9 +773,11 @@ print('Try running libraries or executing code here!')
 
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ace.js" type="text/javascript" charset="utf-8"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ext-settings_menu.js" type="text/javascript" charset="utf-8"></script>
+
+
 <script>
+window.ace = { edit: function() { return { resize: function() {} }; }, require: function() { return { init: function() {} }; } };
+
 
 function rgbaToCss(rgba) {
   if (!rgba || !Array.isArray(rgba)) return "";
@@ -1175,6 +1237,325 @@ if (btnSettingsCrt) {
     toggleCrt();
   };
 }
+
+// ---------- AI Assistant API Keys Settings ----------
+const btnSettingsAiKeys = document.getElementById('btn-settings-ai-keys');
+if (btnSettingsAiKeys) {
+  btnSettingsAiKeys.onclick = () => {
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('open');
+    openAiKeysConfig();
+  };
+}
+
+const aiKeysModalClose = document.getElementById('ai-keys-modal-close');
+if (aiKeysModalClose) {
+  aiKeysModalClose.onclick = () => {
+    const backdrop = document.getElementById('ai-keys-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('open');
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    if (settingsBackdrop) settingsBackdrop.classList.add('open');
+  };
+}
+
+async function openAiKeysConfig() {
+  const backdrop = document.getElementById('ai-keys-modal-backdrop');
+  if (backdrop) backdrop.classList.add('open');
+
+  let keysStatus = {};
+  try {
+    const res = await fetchApi('/api/keys/status');
+    keysStatus = await res.json();
+  } catch (err) {
+    console.error("Failed to fetch keys status", err);
+  }
+
+  const listContainer = document.getElementById('ai-keys-list');
+  if (!listContainer) return;
+  listContainer.innerHTML = '';
+
+  const onlineProviders = [
+    { id: 'openrouter', name: 'OpenRouter', icon: '🌐', desc: 'Qwen 2.5, Llama 3.3, Gemini 2.5 (free & paid)' },
+    { id: 'gemini', name: 'Google Gemini', icon: '✨', desc: 'Gemini 1.5 Flash' },
+    { id: 'groq', name: 'Groq', icon: '⚡', desc: 'Llama 3.1 8B (ultra-fast)' },
+    { id: 'mistral', name: 'Mistral', icon: '🌀', desc: 'Codestral' },
+    { id: 'deepseek', name: 'DeepSeek', icon: '🔍', desc: 'DeepSeek Coder' }
+  ];
+
+  onlineProviders.forEach(prov => {
+    const isSet = keysStatus[prov.id];
+    const statusText = isSet ? '✓ Saved' : 'Not Set';
+    const statusColor = isSet ? 'var(--text-bright)' : 'var(--text-dim)';
+
+    const item = document.createElement('div');
+    item.style.background = 'var(--bg-panel-2)';
+    item.style.border = '1px solid var(--border)';
+    item.style.borderRadius = '6px';
+    item.style.padding = '14px';
+    item.style.display = 'flex';
+    item.style.flexDirection = 'column';
+    item.style.gap = '8px';
+
+    item.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px;">${prov.icon}</span>
+          <div>
+            <span style="font-weight: bold; color: var(--text-bright);">${prov.name}</span>
+            <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">${prov.desc}</div>
+          </div>
+        </div>
+        <span id="key-status-label-${prov.id}" style="font-size: 11px; font-weight: bold; color: ${statusColor};">${statusText}</span>
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
+        <input id="key-input-${prov.id}" type="password" class="dialog-input" style="flex: 1; margin: 0; font-size: 12px; height: 34px; padding: 6px 10px;" placeholder="${isSet ? '••••••••••••••••' : 'Enter API Key...'}">
+        <button class="mini-btn btn-save-key" data-provider="${prov.id}" style="background: var(--text-bright); color: #00190a; border: none; font-weight: bold; height: 34px; font-size: 11px; padding: 0 12px;">SAVE</button>
+        <button class="mini-btn btn-clear-key" data-provider="${prov.id}" style="border-color: var(--err); color: var(--err); height: 34px; font-size: 11px; padding: 0 12px;">CLEAR</button>
+      </div>
+    `;
+
+    listContainer.appendChild(item);
+  });
+
+  listContainer.querySelectorAll('.btn-save-key').forEach(btn => {
+    btn.onclick = async () => {
+      const provider = btn.getAttribute('data-provider');
+      const input = document.getElementById(`key-input-${provider}`);
+      if (!input || !input.value) {
+        showToast('Please enter an API Key first', 'error');
+        return;
+      }
+      try {
+        const res = await fetchApi('/api/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, api_key: input.value })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(`API Key for ${provider} saved successfully`, 'success');
+          const label = document.getElementById(`key-status-label-${provider}`);
+          if (label) {
+            label.textContent = '✓ Saved';
+            label.style.color = 'var(--text-bright)';
+          }
+          input.value = '';
+          input.placeholder = '••••••••••••••••';
+        } else {
+          showToast(`Failed to save key: ${data.message}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Error saving key: ${err}`, 'error');
+      }
+    };
+  });
+
+  listContainer.querySelectorAll('.btn-clear-key').forEach(btn => {
+    btn.onclick = async () => {
+      const provider = btn.getAttribute('data-provider');
+      const input = document.getElementById(`key-input-${provider}`);
+      try {
+        const res = await fetchApi('/api/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, api_key: '' })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(`API Key for ${provider} cleared`, 'success');
+          const label = document.getElementById(`key-status-label-${provider}`);
+          if (label) {
+            label.textContent = 'Not Set';
+            label.style.color = 'var(--text-dim)';
+          }
+          if (input) {
+            input.value = '';
+            input.placeholder = 'Enter API Key...';
+          }
+        } else {
+          showToast(`Failed to clear key: ${data.message}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Error clearing key: ${err}`, 'error');
+      }
+    };
+  });
+}
+
+// ---------- ZMUX Terminal Controller ----------
+let zmuxPollTimer = null;
+let zmuxActive = false;
+let zmuxHistory = [];
+let zmuxHistoryIndex = -1;
+
+const sidebarZmuxBtn = document.getElementById('sidebar-zmux-btn');
+if (sidebarZmuxBtn) {
+  sidebarZmuxBtn.onclick = () => {
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+    openZmuxTerminal();
+  };
+}
+
+const zmuxModalClose = document.getElementById('zmux-modal-close');
+if (zmuxModalClose) {
+  zmuxModalClose.onclick = () => {
+    const backdrop = document.getElementById('zmux-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('open');
+    if (zmuxPollTimer) {
+      clearInterval(zmuxPollTimer);
+      zmuxPollTimer = null;
+    }
+  };
+}
+
+const zmuxClearBtn = document.getElementById('zmux-clear-btn');
+if (zmuxClearBtn) {
+  zmuxClearBtn.onclick = () => {
+    const output = document.getElementById('zmux-terminal-output');
+    if (output) output.innerHTML = '';
+  };
+}
+
+const zmuxKillBtn = document.getElementById('zmux-kill-btn');
+if (zmuxKillBtn) {
+  zmuxKillBtn.onclick = async () => {
+    showToast('Resetting ZMUX session...', 'loading');
+    await fetchApi('/api/zmux/stop', { method: 'POST' });
+    const output = document.getElementById('zmux-terminal-output');
+    if (output) output.innerHTML = '';
+    const res = await fetchApi('/api/zmux/start', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('✓ ZMUX Session Reset', 'success');
+    } else {
+      showToast('Failed to reset session', 'error');
+    }
+  };
+}
+
+async function openZmuxTerminal() {
+  const backdrop = document.getElementById('zmux-modal-backdrop');
+  if (backdrop) backdrop.classList.add('open');
+
+  if (!zmuxActive) {
+    const output = document.getElementById('zmux-terminal-output');
+    if (output) output.innerHTML = '';
+
+    try {
+      const res = await fetchApi('/api/zmux/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        zmuxActive = true;
+      }
+    } catch (err) {
+      console.error("Failed to start zmux", err);
+    }
+  }
+
+  const stdinInput = document.getElementById('zmux-stdin-input');
+  if (stdinInput) stdinInput.focus();
+
+  if (!zmuxPollTimer) {
+    zmuxPollTimer = setInterval(pollZmuxOutput, 50);
+  }
+}
+
+async function pollZmuxOutput() {
+  try {
+    const res = await fetchApi('/api/zmux/output');
+    const data = await res.json();
+    if (data.ok && data.output && data.output.length > 0) {
+      appendZmuxStream(data.output);
+    }
+    if (data.done) {
+      zmuxActive = false;
+      if (zmuxPollTimer) {
+        clearInterval(zmuxPollTimer);
+        zmuxPollTimer = null;
+      }
+      appendZmuxStream([['stdout', '\r\n[ZMUX Session Closed. Click RESET to start new session.]\r\n']]);
+    }
+  } catch (err) {
+    console.error("ZMUX polling error", err);
+  }
+}
+
+function appendZmuxStream(outputChars) {
+  const output = document.getElementById('zmux-terminal-output');
+  if (!output) return;
+
+  outputChars.forEach(([streamType, char]) => {
+    let escaped = char.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    if (escaped === '\n' || escaped === '\r') {
+      output.innerHTML += '<br>';
+    } else if (escaped === ' ') {
+      output.innerHTML += '&nbsp;';
+    } else {
+      output.innerHTML += escaped;
+    }
+  });
+
+  const maxChars = 50000;
+  if (output.innerHTML.length > maxChars) {
+    output.innerHTML = output.innerHTML.slice(output.innerHTML.length - maxChars);
+  }
+
+  output.scrollTop = output.scrollHeight;
+}
+
+async function sendZmuxCommand() {
+  const stdinInput = document.getElementById('zmux-stdin-input');
+  if (!stdinInput) return;
+  const cmd = stdinInput.value;
+  if (!cmd.trim()) return;
+
+  zmuxHistory.push(cmd);
+  zmuxHistoryIndex = zmuxHistory.length;
+
+  try {
+    await fetchApi('/api/zmux/input', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cmd + '\n' })
+    });
+    stdinInput.value = '';
+  } catch (err) {
+    console.error("Failed to send command", err);
+  }
+}
+
+const zmuxSendBtn = document.getElementById('zmux-stdin-send-btn');
+if (zmuxSendBtn) {
+  zmuxSendBtn.onclick = sendZmuxCommand;
+}
+
+const zmuxStdinInput = document.getElementById('zmux-stdin-input');
+if (zmuxStdinInput) {
+  zmuxStdinInput.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendZmuxCommand();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (zmuxHistory.length > 0 && zmuxHistoryIndex > 0) {
+        zmuxHistoryIndex--;
+        zmuxStdinInput.value = zmuxHistory[zmuxHistoryIndex];
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (zmuxHistory.length > 0 && zmuxHistoryIndex < zmuxHistory.length - 1) {
+        zmuxHistoryIndex++;
+        zmuxStdinInput.value = zmuxHistory[zmuxHistoryIndex];
+      } else {
+        zmuxHistoryIndex = zmuxHistory.length;
+        zmuxStdinInput.value = '';
+      }
+    }
+  };
+}
+
 
 const starterDialogCancel = document.getElementById('starter-dialog-cancel');
 if (starterDialogCancel) {
@@ -2065,6 +2446,57 @@ function addMsg(text, cls) {
   const div = document.createElement('div');
   div.className = `msg ${cls}`;
   div.textContent = text;
+
+  if (cls === 'ai') {
+    const commands = [];
+    const lines = text.split('\n');
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed) {
+        const parts = trimmed.split(' ');
+        const firstWord = parts[0].toLowerCase();
+        // Check if line starts with git, pip, pkg, python, or termux-*
+        if (['git', 'pip', 'pkg', 'python', 'python3', 'termux-vibrate', 'termux-toast', 'termux-battery-status', 'termux-clipboard-get', 'termux-clipboard-set', 'termux-info', 'termux-setup-storage'].includes(firstWord)) {
+          commands.push(trimmed);
+        }
+      }
+    });
+
+    const uniqueCommands = [...new Set(commands)].slice(0, 3);
+
+    if (uniqueCommands.length > 0) {
+      const actionContainer = document.createElement('div');
+      actionContainer.style.marginTop = '10px';
+      actionContainer.style.display = 'flex';
+      actionContainer.style.flexDirection = 'column';
+      actionContainer.style.gap = '6px';
+
+      uniqueCommands.forEach(cmd => {
+        const btn = document.createElement('button');
+        btn.className = 'mini-btn';
+        btn.style.borderColor = 'var(--text-bright)';
+        btn.style.color = 'var(--text-bright)';
+        btn.style.background = 'rgba(57,255,20,0.08)';
+        btn.style.fontSize = '10px';
+        btn.style.padding = '6px 8px';
+        btn.style.textAlign = 'left';
+        btn.style.fontFamily = 'var(--mono)';
+        btn.innerHTML = `⚡ RUN IN ZMUX: <code style="color:var(--text); font-weight:bold;">${cmd}</code>`;
+
+        btn.onclick = async () => {
+          await openZmuxTerminal();
+          const stdinInput = document.getElementById('zmux-stdin-input');
+          if (stdinInput) {
+            stdinInput.value = cmd;
+            sendZmuxCommand();
+          }
+        };
+        actionContainer.appendChild(btn);
+      });
+      div.appendChild(actionContainer);
+    }
+  }
+
   aiMessages.appendChild(div);
   aiMessages.scrollTop = aiMessages.scrollHeight;
 }

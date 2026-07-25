@@ -38,6 +38,11 @@ builtins.input = _safe_input
 
 """
 
+# Lines the SAFE_INPUT_PATCH prelude prepends, so tracebacks can be mapped
+# back to the line numbers the user sees in the editor.
+PRELUDE_LINE_COUNT = SAFE_INPUT_PATCH.count("\n")
+
+
 def normalize_code(code: str) -> str:
     """
     Normalize Python code to prevent EOF/syntax errors.
@@ -182,6 +187,11 @@ class InteractiveSession:
 
 _session = InteractiveSession()
 
+# waitress serves with threads=4, so concurrent requests can touch _session
+# simultaneously. Without this lock a second /start can kill a process the
+# first request is still wiring up, leaking the child and corrupting state.
+_session_lock = threading.RLock()
+
 
 def _read_stream_char(stream, q, stream_type):
     """Asynchronously read characters from subprocess output streams."""
@@ -197,108 +207,112 @@ def _read_stream_char(stream, q, stream_type):
 
 def start_interactive_session(code: str) -> dict:
     """Spawns an interactive unbuffered subprocess and starts listener threads."""
-    global _session
-    stop_interactive_session()
+    with _session_lock:
+        global _session
+        stop_interactive_session()
 
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    temp_script = FILES_DIR / "_active_run.py"
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        temp_script = FILES_DIR / "_active_run.py"
 
-    try:
-        # Do not include safe input patch so input() acts interactively
-        code_normalized = code.replace('\r\n', '\n').replace('\r', '\n')
-        if code_normalized.startswith('\ufeff'):
-            code_normalized = code_normalized[1:]
+        try:
+            # Do not include safe input patch so input() acts interactively
+            code_normalized = code.replace('\r\n', '\n').replace('\r', '\n')
+            if code_normalized.startswith('\ufeff'):
+                code_normalized = code_normalized[1:]
 
-        temp_script.write_text(code_normalized, encoding="utf-8")
+            temp_script.write_text(code_normalized, encoding="utf-8")
 
-        env = os.environ.copy()
-        python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
-        env["PYTHONPATH"] = python_path
-        env["PYTHONNOUSERSITE"] = "1"
-        env["TMPDIR"] = str(CACHE_DIR)
-        env["TEMP"] = str(CACHE_DIR)
-        env["TMP"] = str(CACHE_DIR)
-        env["PYTHONUNBUFFERED"] = "1"
+            env = os.environ.copy()
+            python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
+            env["PYTHONPATH"] = python_path
+            env["PYTHONNOUSERSITE"] = "1"
+            env["TMPDIR"] = str(CACHE_DIR)
+            env["TEMP"] = str(CACHE_DIR)
+            env["TMP"] = str(CACHE_DIR)
+            env["PYTHONUNBUFFERED"] = "1"
 
-        _session.proc = subprocess.Popen(
-            [sys.executable, "-u", "_active_run.py"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            errors="replace",
-            cwd=str(FILES_DIR),
-            env=env,
-            start_new_session=os.name != "nt",
-        )
-        _session.active = True
-        _session.output_queue = queue.Queue()
+            _session.proc = subprocess.Popen(
+                [sys.executable, "-u", "_active_run.py"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                cwd=str(FILES_DIR),
+                env=env,
+                start_new_session=os.name != "nt",
+            )
+            _session.active = True
+            _session.output_queue = queue.Queue()
 
-        t_out = threading.Thread(target=_read_stream_char, args=(_session.proc.stdout, _session.output_queue, "stdout"), daemon=True)
-        t_err = threading.Thread(target=_read_stream_char, args=(_session.proc.stderr, _session.output_queue, "stderr"), daemon=True)
-        t_out.start()
-        t_err.start()
-        _session.threads = [t_out, t_err]
+            t_out = threading.Thread(target=_read_stream_char, args=(_session.proc.stdout, _session.output_queue, "stdout"), daemon=True)
+            t_err = threading.Thread(target=_read_stream_char, args=(_session.proc.stderr, _session.output_queue, "stderr"), daemon=True)
+            t_out.start()
+            t_err.start()
+            _session.threads = [t_out, t_err]
 
-        return {"ok": True, "message": "Interactive process started"}
-    except Exception as e:
-        return {"ok": False, "message": f"Failed to start interactive session: {e}"}
+            return {"ok": True, "message": "Interactive process started"}
+        except Exception as e:
+            return {"ok": False, "message": f"Failed to start interactive session: {e}"}
 
 
 def send_interactive_input(text: str) -> dict:
     """Send interactive input to the running subprocess's stdin."""
-    global _session
-    if not _session.active or not _session.proc:
-        return {"ok": False, "message": "No active interactive session found."}
+    with _session_lock:
+        global _session
+        if not _session.active or not _session.proc:
+            return {"ok": False, "message": "No active interactive session found."}
 
-    try:
-        _session.proc.stdin.write(text)
-        _session.proc.stdin.flush()
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "message": f"Failed to send input: {e}"}
+        try:
+            _session.proc.stdin.write(text)
+            _session.proc.stdin.flush()
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "message": f"Failed to send input: {e}"}
 
 
 def get_interactive_output() -> dict:
     """Collect all pending outputs from the unbuffered subprocess streams."""
-    global _session
-    if not _session.active or not _session.proc:
-        return {"ok": False, "done": True, "output": []}
+    with _session_lock:
+        global _session
+        if not _session.active or not _session.proc:
+            return {"ok": False, "done": True, "output": []}
 
-    output_chars = []
-    while not _session.output_queue.empty():
-        try:
-            item = _session.output_queue.get_nowait()
-            output_chars.append(item)
-        except queue.Empty:
-            break
+        output_chars = []
+        while not _session.output_queue.empty():
+            try:
+                item = _session.output_queue.get_nowait()
+                output_chars.append(item)
+            except queue.Empty:
+                break
 
-    done = _session.proc.poll() is not None
-    if done:
-        _session.active = False
-        exit_code = _session.proc.returncode
-        return {"ok": True, "done": True, "output": output_chars, "exit_code": exit_code}
+        done = _session.proc.poll() is not None
+        if done:
+            _session.active = False
+            exit_code = _session.proc.returncode
+            return {"ok": True, "done": True, "output": output_chars, "exit_code": exit_code}
 
-    return {"ok": True, "done": False, "output": output_chars}
+        return {"ok": True, "done": False, "output": output_chars}
 
 
 def stop_interactive_session() -> dict:
     """Forcefully kills the active interactive subprocess and releases resources."""
-    global _session
-    if not _session.proc:
-        return {"ok": False, "message": "No running process found."}
+    with _session_lock:
+        global _session
+        if not _session.proc:
+            return {"ok": False, "message": "No running process found."}
 
-    try:
-        if _session.proc.poll() is None:
-            if os.name != "nt":
-                try:
-                    os.killpg(_session.proc.pid, signal.SIGKILL)
-                except OSError:
+        try:
+            if _session.proc.poll() is None:
+                if os.name != "nt":
+                    try:
+                        os.killpg(_session.proc.pid, signal.SIGKILL)
+                    except OSError:
+                        _session.proc.kill()
+                else:
                     _session.proc.kill()
-            else:
-                _session.proc.kill()
-        _session.active = False
-        _session.proc = None
-        return {"ok": True, "message": "Process successfully stopped."}
-    except Exception as e:
-        return {"ok": False, "message": f"Failed to stop process: {e}"}
+            _session.active = False
+            _session.proc = None
+            return {"ok": True, "message": "Process successfully stopped."}
+        except Exception as e:
+            return {"ok": False, "message": f"Failed to stop process: {e}"}

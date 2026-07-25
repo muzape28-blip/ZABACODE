@@ -15,7 +15,7 @@ p4a.bootstrap = webview
 p4a.port = 5000
 
 # Core requirements
-requirements = python3,flask,waitress,pip,setuptools,requests,tinydb,beautifulsoup4,python-dotenv
+requirements = python3,flask,waitress,pip,setuptools,requests,tinydb,beautifulsoup4,python-dotenv,certifi,openssl
 
 orientation = portrait
 fullscreen = 0

@@ -27,12 +27,13 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  ZABACODE — WebView Shell + Modular Python Core                           │
-│  [ OK ] Local WebView UI Engine Active                                     │
+│  [ OK ] Local WebView UI Engine (Ace Editor bundled — 100% offline)        │
 │  [ OK ] Modular Core Engine Active                                         │
 │  [ OK ] Subprocess Runner with Timeout & Process-Group Cleanup             │
-│  [ OK ] Android Keystore API-Key Storage Active                             │
-│  [ OK ] Direct PyPI Wheel Extractor (Auto-SSL Bypass Fallback Enabled!)    │
+│  [ OK ] Android Keystore + Authenticated Local Key Vault (AES-class)       │
+│  [ OK ] Direct PyPI Wheel Extractor (Verified TLS + SHA-256 Integrity)     │
 │  [ OK ] Multi-Provider AI Engine (6 Providers: OpenRouter/Gemini/Groq)     │
+│  [ OK ] Zaba Oracle — Offline Code Intelligence (No Key, No Network)       │
 │  [ OK ] Universal English Language Engine Active                           │
 │  [ OK ] Theme Engine Active (10 Themes incl. Tokyo Night/Catppuccin)      │
 │  [ OK ] Plugin Marketplace Active (12 Plugins, 8 Snippets)                │
@@ -56,6 +57,24 @@ In a mobile software ecosystem overcrowded with invasive ads, aggressive paywall
 ---
 
 ## 🚀 Key Features
+
+### 🔮 0. Zaba Oracle — Offline Code Intelligence
+
+Every other mobile IDE's AI dies the moment your data does. ZABACODE's doesn't.
+
+The **Oracle** is a fully local intelligence engine — no API key, no network, no subscription, and structurally impossible to paywall:
+
+* **Traceback Humanizer** — crashes are auto-translated into plain language with a concrete fix, rendered inline in the terminal the instant your code fails. 16 error families covered, with line numbers mapped back to *your* editor.
+* **Offline Code Review** — real AST analysis flags deep nesting, bare `except:`, argument bloat, missing docstrings and leftover TODOs.
+* **Graceful AI Fallback** — when a cloud provider is rate-limited, keyless or unreachable, the Oracle answers instead of showing an error. **You are never left staring at a dead chat window.**
+
+```
+🔮 You reached past the end of a list          [OFFLINE]
+   You asked for an index that doesn't exist — a list
+   of 3 items only has indexes 0, 1, 2.
+   Fix: Guard with `if i < len(my_list):`
+   Line 2
+```
 
 ### 🛠️ 1. All-New System Settings Dashboard
 The sidebar has been redesigned to be ultra-clean, containing only:

@@ -35,102 +35,123 @@ ORACLE_SIGNATURE = "🔮 Zaba Oracle (offline)"
 _ERROR_RULES: list[tuple[str, str, str, str]] = [
     (
         r"NameError: name '([^']+)' is not defined",
-        "You used something that doesn't exist yet",
-        "Python reached `{0}` but nothing with that name had been created.",
-        "Check the spelling, or define `{0} = ...` before this line. If it comes from a "
-        "library, you forgot the `import`.",
+        "Calling a Ghost! 👻",
+        "Oh dear, you referenced `{0}`, but Python has absolutely no idea who or what that is! It's like shouting a name in an empty room—nobody is answering because `{0}` hasn't been created yet.",
+        "Double-check your spelling! Did you capitalize it differently? If it's a variable or function, define it first (e.g., `{0} = ...`). If it belongs to an external library, make sure you wrote `import` at the absolute top of your file.",
     ),
     (
         r"ModuleNotFoundError: No module named '([^']+)'",
-        "Library not installed",
-        "The package `{0}` isn't available in this environment.",
-        "Open the Library Manager and install `{0}`. If it needs a C extension, it must be "
-        "added to buildozer.spec and the APK rebuilt.",
+        "Library Not Installed! 📦",
+        "Whoops! Your code is trying to use a library called `{0}`, but it isn't installed in this Python environment yet.",
+        "No worries, friend! Open the Library Manager in Settings and search for `{0}` to install it. If the library requires custom C extensions (like numpy or pandas), remember that it needs to be declared in buildozer.spec so it can be compiled into the APK.",
     ),
     (
         r"IndentationError: (.+)",
-        "Your indentation is off",
-        "Python uses indentation to define blocks, and this line doesn't line up: {0}.",
-        "Make every line in the same block use the same indentation — pick 4 spaces and "
-        "never mix them with tabs.",
+        "Your Indentation is Off! 📐",
+        "Python is super picky about layout! This block doesn't line up correctly: {0}. Think of indentation as Python's way of grouping thoughts—if one line is slightly out of place, Python gets totally confused.",
+        "Look at the line mentioned (and the ones around it). Make sure every line in the same block uses the exact same number of spaces. We highly recommend using 4 spaces per indent level, and whatever you do, never mix spaces and tabs!",
     ),
     (
         r"TypeError: unsupported operand type\(s\) for (.+?): '([^']+)' and '([^']+)'",
-        "You mixed incompatible types",
-        "You tried `{0}` between a `{1}` and a `{2}`, which Python refuses to guess about.",
-        "Convert one side first — e.g. `int(value)` or `str(value)` — so both sides match.",
+        "Incompatible Types Mixed! 🧪",
+        "Oops! You tried to perform a `{0}` operation between a `{1}` and a `{2}`. Python is refusing to guess what you mean because those two types just don't mix naturally (like adding text to a number).",
+        "You need to explicitly convert one of the sides first so they speak the same language! For example, use `str(value)` to make it text, or `int(value)` / `float(value)` to make it a number, so that both sides of `{0}` match up.",
     ),
     (
         r"TypeError: '([^']+)' object is not subscriptable",
-        "That value can't be indexed",
-        "You wrote something like `x[0]`, but `x` is a `{0}` and doesn't support indexing.",
-        "Check what the variable actually holds. Functions need `()` to be called; only "
-        "sequences like list/tuple/str/dict accept `[...]`.",
+        "Value Cannot Be Indexed! 🗂️",
+        "Ah! You wrote something like `x[0]`, but `x` is a `{0}`. `{0}` objects are single values; they don't have indexes or elements you can look up like that.",
+        "Check what the variable actually holds! Did you accidentally overwrite a list with a single `{0}` value? Remember: only sequences or collections like lists, tuples, dictionaries, and strings can be indexed with `[...]`.",
     ),
     (
-        r"TypeError: (.+?)\(\) missing (\d+) required positional argument",
-        "A function call is missing arguments",
-        "`{0}()` needs {1} more argument(s) than you passed.",
-        "Look at the function's `def` line and supply every parameter that has no default.",
+        r"TypeError: (.+?)\(\)\s*missing (\d+) required positional argument",
+        "Missing Function Arguments! 🧩",
+        "Aha! You are calling the function `{0}()`, but you forgot some important information! It expects {1} more argument(s) than you actually provided.",
+        "Go back and look at where you defined `{0}()`. Check what parameters it expects and make sure to pass every single required argument in your function call.",
     ),
     (
         r"IndexError: list index out of range",
-        "You reached past the end of a list",
-        "You asked for an index that doesn't exist — a list of 3 items only has indexes 0, 1, 2.",
-        "Guard with `if i < len(my_list):`, or loop with `for item in my_list:` and skip "
-        "indexes entirely.",
+        "Reached Past the End of a List! 🪜",
+        "Oh! You asked for an index or position that doesn't exist in the list. For example, if a list has 3 items, its valid indexes are only 0, 1, and 2. Asking for index 3 or higher goes out of bounds!",
+        "Safety first! You can guard your lookup with a check: `if index < len(my_list):`. Or even better, iterate over the list directly using a loop like `for item in my_list:` to avoid dealing with indexes altogether.",
     ),
     (
         r"KeyError: (.+)",
-        "That dictionary key doesn't exist",
-        "You looked up {0} in a dict that has no such key.",
-        "Use `my_dict.get(key)` to get `None` instead of crashing, or check `if key in my_dict:` first.",
+        "Missing Dictionary Key! 🔑",
+        "Knock knock! You searched for the key {0} inside a dictionary, but that key doesn't exist in there. Python hates guessing, so it threw an error instead of returning nothing.",
+        "To keep your code safe and crash-free, use `my_dict.get({0})` which returns `None` (or a default value) if the key is missing. Or, check if the key exists first: `if {0} in my_dict:`.",
     ),
     (
         r"ZeroDivisionError",
-        "Division by zero",
-        "Something divided by zero, which is mathematically undefined.",
-        "Check the divisor before dividing: `if divisor != 0:`.",
+        "Division by Zero! ➗",
+        "Wait, that's mathematically impossible! You tried to divide a number by zero. In our universe, division by zero is undefined and violates natural law.",
+        "Always check your divisor before dividing! Add a simple safety guard: `if divisor != 0:` to handle the zero case gracefully.",
     ),
     (
         r"ValueError: invalid literal for int\(\) with base 10: '([^']*)'",
-        "That text isn't a number",
-        "`int()` was given `'{0}'`, which contains characters that aren't digits.",
-        "Strip whitespace with `.strip()`, or validate with `.isdigit()` before converting.",
+        "That Text Isn't a Number! 🔢",
+        "Oh! You tried to convert the text `'{0}'` into an integer, but Python looked at it and said: 'No way!' An integer must consist only of digits, and `'{0}'` has characters or spaces that aren't numbers.",
+        "Clean up the text before converting! You can strip trailing/leading spaces with `.strip()`, or check if the text contains only digits using `.isdigit()` before calling `int()`.",
     ),
     (
         r"AttributeError: '([^']+)' object has no attribute '([^']+)'",
-        "That method or property doesn't exist",
-        "A `{0}` has no `{1}`.",
-        "Check the spelling, or confirm the variable holds the type you expect — "
-        "`print(type(x))` settles it fast.",
+        "Method or Property Doesn't Exist! 🔍",
+        "Oops! You tried to access `{1}` on a `{0}` object, but a `{0}` doesn't have any attribute or function with that name.",
+        "Check your spelling first! If the spelling is correct, print out the variable's type with `print(type(variable))` to verify if it really is what you think it is. You might have received a different object than expected.",
     ),
     (
         r"SyntaxError: (?:invalid syntax|unexpected EOF|'\(' was never closed)",
-        "Python couldn't parse your code",
-        "There's a structural typo — usually an unclosed bracket, a missing `:`, or `=` used "
-        "where `==` was meant.",
-        "Look at the reported line *and the one above it*: unclosed brackets are reported late.",
+        "Python Couldn't Parse Your Code! 💥",
+        "Ah, a classic structural typo! There is a syntax error somewhere. Usually this means an unclosed parenthesis `(`, bracket `[`, brace `{{`, or you used a single `=` where you meant a comparison `==`.",
+        "Look very closely at the line where the error was reported, and *especially the line directly above it*! Unclosed brackets or parentheses are often reported late on the next line.",
     ),
     (
         r"RecursionError",
-        "Infinite recursion",
-        "A function kept calling itself until Python gave up.",
-        "Every recursive function needs a base case that returns without recursing.",
+        "Infinite Recursion Loop! 🌀",
+        "Whoa! A function kept calling itself over and over again without stopping, until Python ran out of stack space and had to step in before your device crashed.",
+        "Check your recursive function's base case! Every recursive function needs a condition that stops it from calling itself and returns a value directly.",
     ),
     (
         r"FileNotFoundError: .*'([^']+)'",
-        "File not found",
-        "Python couldn't find `{0}` in the working directory.",
-        "Check the filename, or create the file first. Relative paths resolve against the "
-        "ZABACODE files/ folder.",
+        "File Not Found! 📁",
+        "Hmph! Python looked all over the place but could not find the file named `{0}` in the working directory.",
+        "Verify the filename and spelling! On Android, relative paths resolve against ZABACODE's files/ folder, so make sure `{0}` is actually saved inside that folder. You can also create the file first if you are trying to read it.",
     ),
     (
         r"UnboundLocalError: .*'([^']+)'",
-        "Local variable used before assignment",
-        "`{0}` is assigned somewhere in this function, so Python treats it as local — but you "
-        "read it before that assignment ran.",
-        "Add `global {0}` if you meant the outer variable, or initialise it at the top of the function.",
+        "Local Variable Used Before Assignment! ⏳",
+        "Ah! You are trying to read the variable `{0}` inside a function, but you haven't assigned a value to it yet in this local scope.",
+        "If you intended to modify a global variable defined outside the function, declare `global {0}` at the very top of your function. Otherwise, initialize `{0}` with a starting value (like `None` or `0`) inside the function before reading it.",
+    ),
+    (
+        r"PermissionError: \[Errno 13\] Permission denied:? '?([^']*)'?",
+        "Android / OS Access Denied! 🔒",
+        "Oh, come on! You tried to access or touch `{0}` but the operating system flat out said: ACCESS DENIED. On Android, security is strict; you can't just write or read files anywhere you want.",
+        "Make sure you have storage permissions enabled. If you are writing files, use the allowed files/ directory or the `ANDROID_PRIVATE` directory. Don't fight the OS, it always wins!",
+    ),
+    (
+        r"(?:UnicodeDecodeError|UnicodeEncodeError): '([^']+)' codec can't (?:decode|encode) (?:bytes? )?(?:[^\s]+\s+)?in position (\d+-\d+|\d+): (.+)",
+        "Character Encoding Mismatch! 🔠",
+        "Ouch, translation failure! Your program is trying to read or write a file using `{0}` encoding, but it encountered bytes at position {1} that don't fit (reason: {2}). Modern text files love UTF-8, but this file is speaking a different language.",
+        "Add `encoding='utf-8'` inside your `open()` function call (e.g., `open(filename, 'r', encoding='utf-8')`). This is a lifesaver for mobile app cross-platform text files.",
+    ),
+    (
+        r"json\.decoder\.JSONDecodeError: ([^:]+): line (\d+) column (\d+)",
+        "Broken or Empty JSON! 🧱",
+        "Uh-oh, the JSON structure is broken: `{0}` at line {1}, column {2}. JSON is super picky about syntax—missing commas, unquoted keys, or completely empty files will trigger this.",
+        "Inspect your JSON file. If you are saving a database (like `todos.json`), ensure it isn't empty (a blank file is invalid JSON; use `[]` or `{{}}` as initial content). Or wrap it in a `try/except json.JSONDecodeError` block.",
+    ),
+    (
+        r"ImportError: cannot import name '([^']+)' from '([^']+)'",
+        "Import Name Not Found! 🧩",
+        "Wait a second, you are trying to import `{0}` from the module `{1}`, but `{1}` has no idea what `{0}` is. It's like asking a library for a book it doesn't print.",
+        "Check your spelling of `{0}` and `{1}`. Make sure you aren't accidentally naming your own script the same name as a standard library (e.g., calling your file `json.py` or `requests.py`), which shadows the real module!",
+    ),
+    (
+        r"AssertionError:? (.*)",
+        "Unit Test or Assertion Failure! 🚨",
+        "Hmph, an assertion failed: `{0}`. Your code made a promise or check that turned out to be false. If this was during a test, it means the actual output didn't match what you expected.",
+        "Look closely at the expression that triggered the failure. Print or debug the values to see why they are different. Assertions are your guardrails—respect them!",
     ),
 ]
 
@@ -228,6 +249,19 @@ def analyze_buffer(code: str) -> dict:
                              f"make it far easier to debug on a phone screen.")
             if not ast.get_docstring(node) and not node.name.startswith("_"):
                 notes.append(f"`{node.name}()` has no docstring — future-you will thank you.")
+
+            # Mutable default arguments check
+            all_defaults = [d for d in node.args.defaults if d] + [d for d in node.args.kw_defaults if d]
+            has_mutable = False
+            for d in all_defaults:
+                if isinstance(d, (ast.List, ast.Dict, ast.Set)) or (
+                    isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id in ('list', 'dict', 'set')
+                ):
+                    has_mutable = True
+                    break
+            if has_mutable:
+                notes.append(f"Mutable default argument found in `{node.name}()`! Python shares the same list/dict default instance across all calls. Use `=None` and initialize inside.")
+
         elif isinstance(node, ast.ClassDef):
             classes.append({"name": node.name, "line": node.lineno})
         elif isinstance(node, ast.Import):
@@ -236,6 +270,33 @@ def analyze_buffer(code: str) -> dict:
             imports.append(node.module or "")
         elif isinstance(node, ast.ExceptHandler) and node.type is None:
             bare_excepts += 1
+
+        # Static division or modulo by zero check
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)):
+            is_zero = False
+            if isinstance(node.right, ast.Constant) and node.right.value == 0:
+                is_zero = True
+            elif hasattr(ast, "Num") and isinstance(node.right, ast.Num) and node.right.n == 0:
+                is_zero = True
+            if is_zero:
+                notes.append(f"Line {node.lineno}: Static division or modulo by zero! This will crash instantly with a ZeroDivisionError.")
+
+        # Security risks (eval/exec) check
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ('eval', 'exec'):
+            notes.append(f"Line {node.lineno}: Security risk! Using `{node.func.id}()` is dangerous, especially with user input. Try to find a safer alternative.")
+
+        # Unreachable code check
+        for attr in ('body', 'orelse', 'finalbody'):
+            if hasattr(node, attr):
+                stmt_list = getattr(node, attr)
+                if isinstance(stmt_list, list):
+                    found_terminator = False
+                    for stmt in stmt_list:
+                        if found_terminator:
+                            notes.append(f"Line {stmt.lineno}: Unreachable code! This statement comes after a `return`, `raise`, `break`, or `continue` and will never run.")
+                            break
+                        if isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+                            found_terminator = True
 
     # Nesting depth of loops — a decent proxy for cognitive load.
     def depth(node, current=0):
@@ -335,6 +396,75 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
         ("input", "stdin", "user input"),
         "`input()` returns a string, always convert it:\n\n```python\nage = int(input('Age: '))\n```\n"
         "Use the Interactive Run mode so your program can actually receive input.",
+    ),
+    (
+        ("decorator", "decorate", "wrapper", "@"),
+        "A decorator is just a function that wraps another function to modify its behavior without changing its source code. Look:\n\n"
+        "```python\ndef my_decorator(func):\n"
+        "    def wrapper(*args, **kwargs):\n"
+        "        print('Something before!')\n"
+        "        res = func(*args, **kwargs)\n"
+        "        print('Something after!')\n"
+        "        return res\n"
+        "    return wrapper\n\n"
+        "@my_decorator\ndef greet(name):\n"
+        "    print(f'Hello {name}')\n"
+        "```\n"
+        "Wrapping things up is fun, right? Try it!",
+    ),
+    (
+        ("generator", "yield", "next("),
+        "Generators are functions that return an iterator using the `yield` keyword. Instead of returning all values at once (which eats up your mobile memory), they yield values one at a time on demand!\n\n"
+        "```python\ndef count_to_three():\n"
+        "    yield 1\n"
+        "    yield 2\n"
+        "    yield 3\n\n"
+        "for num in count_to_three():\n"
+        "    print(num)\n"
+        "```\n"
+        "Super memory-efficient and perfect for mobile devices!",
+    ),
+    (
+        ("flask", "web server", "route", "api ", "endpoint"),
+        "Flask is a micro web framework. Here is how you spin up a quick server:\n\n"
+        "```python\nfrom flask import Flask, jsonify\napp = Flask(__name__)\n\n"
+        "@app.route('/api/greet')\ndef greet():\n"
+        "    return jsonify({'message': 'Hello from ZABACODE!'})\n\n"
+        "if __name__ == '__main__':\n"
+        "    app.run(port=5000)\n"
+        "```\n"
+        "Just don't expose your server to the wide world without proper token/key security!",
+    ),
+    (
+        ("lambda", "anonymous function", "inline function"),
+        "Lambda expressions are small, single-use, anonymous inline functions. They can only have one expression:\n\n"
+        "```python\nadd = lambda a, b: a + b\nprint(add(5, 10))  # 15\n\n"
+        "# Great for sorting keys!\n"
+        "pairs = [(1, 'one'), (2, 'two')]\n"
+        "pairs.sort(key=lambda pair: pair[1])\n"
+        "```\n"
+        "Saves you from writing full `def` blocks for simple tasks!",
+    ),
+    (
+        ("pip", "install package", "install library", "pypi"),
+        "ZABACODE has its own direct PyPI Library Manager (zabapip) built-in under Settings! "
+        "If you want to install packages programmatically via python, you can do:\n\n"
+        "```python\n# Better yet, go to: Settings & Preferences -> Library Manager\n"
+        "```\n"
+        "We bypassed TLS issues automatically, so downloading is smoother than ever on Android!",
+    ),
+    (
+        ("async", "await", "asyncio", "concurrency", "coroutine"),
+        "Asyncio is used for writing single-threaded concurrent code using coroutines. It's fantastic for I/O-bound tasks:\n\n"
+        "```python\nimport asyncio\n\n"
+        "async def fetch_data():\n"
+        "    print('Start fetching...')\n"
+        "    await asyncio.sleep(2)  # Simulates network lag\n"
+        "    print('Done!')\n"
+        "    return {'data': 42}\n\n"
+        "asyncio.run(fetch_data())\n"
+        "```\n"
+        "Use `await` to yield control back to the event loop so other tasks can run in the meantime!",
     ),
 ]
 

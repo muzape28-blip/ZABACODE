@@ -4,10 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ZABACODE</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ace.js" type="text/javascript" charset="utf-8"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/ext-settings_menu.js" type="text/javascript" charset="utf-8"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/mode-python.js" type="text/javascript" charset="utf-8"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/theme-tomorrow_night_eighties.js" type="text/javascript" charset="utf-8"></script>
+<!-- Ace Editor 1.32.4 — bundled locally: the IDE must work with zero network access. -->
+<script src="/static/vendor/ace/ace.js" type="text/javascript" charset="utf-8"></script>
+<script src="/static/vendor/ace/ext-settings_menu.js" type="text/javascript" charset="utf-8"></script>
+<script src="/static/vendor/ace/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>
+<script src="/static/vendor/ace/ext-searchbox.js" type="text/javascript" charset="utf-8"></script>
+<script src="/static/vendor/ace/mode-python.js" type="text/javascript" charset="utf-8"></script>
+<script src="/static/vendor/ace/theme-tomorrow_night_eighties.js" type="text/javascript" charset="utf-8"></script>
 
 <style>
   :root {
@@ -257,6 +260,19 @@
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
   #output-terminal .stderr-block { color: var(--err); border-left: 2px solid var(--err); padding-left: 8px; margin-top: 6px; }
+  /* Zaba Oracle — offline error explanation */
+  .oracle-card { margin-top: 10px; border: 1px solid var(--ai); border-left: 3px solid var(--ai);
+                 background: rgba(255,176,0,0.06); padding: 10px 12px; border-radius: 4px;
+                 animation: oracleIn .28s ease-out; }
+  @keyframes oracleIn { from { opacity:0; transform: translateY(-6px);} to {opacity:1; transform:none;} }
+  .oracle-head { color: var(--ai); font-weight: bold; font-size: 12px; letter-spacing:.5px;
+                 display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .oracle-badge { font-size:9px; border:1px solid var(--ai); border-radius:3px; padding:1px 5px;
+                  opacity:.85; font-weight:normal; }
+  .oracle-what { color: var(--fg); font-size: 12.5px; line-height:1.55; margin-bottom:6px; }
+  .oracle-fix  { color: var(--ok); font-size: 12.5px; line-height:1.55; }
+  .oracle-fix b { color: var(--ok); }
+  .oracle-line { color: var(--dim); font-size: 11px; margin-top:6px; }
   #output-terminal .exit-line { margin-top: 10px; color: var(--text-dim); }
   #output-terminal .exit-line.ok { color: var(--text-bright); }
   #output-terminal .exit-line.err { color: var(--err); }
@@ -1479,7 +1495,7 @@ function registerCustomMonacoTheme(themeData) {
 // ---------- Ace Initialization ----------
 try {
   editor = ace.edit("code-editor");
-  ace.config.set("basePath", "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.4/");
+  ace.config.set("basePath", "/static/vendor/ace/");
   editor.session.setMode("ace/mode/python");
 
   // Hook showSettingsMenu dynamically to style and add Close/Back button safely
@@ -1724,18 +1740,23 @@ function finishInteractiveSession(exitCode, note) {
     stdinSendBtn.disabled = true;
   }
 
+  // --- Zaba Oracle: explain the crash locally, before any network call ---
+  if (interactiveStderrBuffer.trim() && outputTerminal) {
+    renderOracleExplanation(interactiveStderrBuffer, outputTerminal);
+  }
+
   if (interactiveStderrBuffer.trim() && outputTerminal) {
     const fixBtn = document.createElement('button');
     fixBtn.className = 'mini-btn';
     fixBtn.style.cssText = 'background:var(--ai);color:#1A0F00;border:none;font-weight:bold;margin-top:8px;padding:6px 12px;cursor:pointer;';
-    fixBtn.innerHTML = '\u26A1 ZABA AI: BENERIN ERROR INI!';
+    fixBtn.innerHTML = '\u26A1 ASK ZABA AI TO FIX THIS';
     const stderrSnapshot = interactiveStderrBuffer;
     fixBtn.onclick = () => {
       const aiPanelEl = document.getElementById('ai-panel');
       if (aiPanelEl) aiPanelEl.classList.add('open');
       const input = document.getElementById('ai-input');
       if (input) {
-        input.value = 'Kode saya mengalami error berikut, tolong analisis dan berikan solusinya:\n' + stderrSnapshot;
+        input.value = 'My code raised the following error. Analyse it and give me a fix:\n' + stderrSnapshot;
       }
       sendAiMessage();
     };
@@ -2415,6 +2436,33 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
     addMsg(`Error: Connection to ${provider} failed. ${err.message || err}`, "system-hint");
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Zaba Oracle — offline traceback explanation (no API key, no network)
+// ---------------------------------------------------------------------------
+function renderOracleCard(exp, container) {
+  if (!exp || !exp.ok || !container) return;
+  const card = document.createElement('div');
+  card.className = 'oracle-card';
+  const where = exp.line ? ('<div class="oracle-line">Line ' + exp.line + '</div>') : '';
+  card.innerHTML =
+    '<div class="oracle-head">\uD83D\uDD2E ' + escapeHtml(exp.title) +
+      '<span class="oracle-badge">OFFLINE</span></div>' +
+    '<div class="oracle-what">' + escapeHtml(exp.what) + '</div>' +
+    '<div class="oracle-fix"><b>Fix:</b> ' + escapeHtml(exp.fix) + '</div>' + where;
+  container.appendChild(card);
+}
+
+async function renderOracleExplanation(stderrText, container) {
+  try {
+    const res = await apiFetch('/api/oracle/explain', {
+      method: 'POST',
+      body: JSON.stringify({ stderr: stderrText })
+    });
+    const data = await res.json();
+    renderOracleCard(data, container);
+  } catch (e) { /* offline explanation is best-effort; never block the terminal */ }
 }
 
 async function sendAiMessage() {

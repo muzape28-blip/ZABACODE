@@ -45,10 +45,14 @@ jobs:
     - name: Run Ruff Linter
       run: |
         ruff check . --select=E9,F821
+        # Non-blocking broader lint (unused imports, dead vars, import order)
+        ruff check . --select=E,F,W,I --exit-zero
 
     - name: Run Mypy Type Checking on Core Modules
       run: |
-        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py
+        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py zabacode/core/net.py zabacode/core/keystore.py
+        # Wider sweep, non-blocking until the 5 pre-existing errors are cleared
+        mypy --ignore-missing-imports zabacode/ --exclude 'zabacode/(files|cache|logs|user_packages)/' || true
 
     - name: Run Unit Tests with Pytest
       run: |

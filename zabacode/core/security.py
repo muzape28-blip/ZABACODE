@@ -8,6 +8,7 @@ import json
 import secrets
 import sys
 
+from zabacode.core.keystore import decrypt_payload, encrypt_payload
 from zabacode.core.paths import KEYS_FILE, TOKEN_FILE, USER_PACKAGES_DIR
 
 # ---------------------------------------------------------------------------  
@@ -40,7 +41,11 @@ if str(USER_PACKAGES_DIR) not in sys.path:
 
 
 # ---------------------------------------------------------------------------
-# XOR-Base64 Encryption (Dev Mode Fallback)
+# XOR-Base64 Encoding (legacy helper — NOT used for API-key storage anymore)
+#
+# Retained only for backwards compatibility with older callers. This is
+# obfuscation, not encryption: never use it for secrets. API keys now go
+# through zabacode.core.keystore (authenticated, per-install random key).
 # ---------------------------------------------------------------------------
 
 def xor_cipher(data_str: str, key_str: str) -> str:
@@ -133,16 +138,12 @@ def load_keys() -> dict:
     if keystore_keys:
         return keystore_keys
 
-    # Check memory first, if empty, load from persistent backup file
+    # Check memory first, if empty, load from the authenticated encrypted file
     if not _MEMORY_KEYS and KEYS_FILE.exists():
         try:
-            encrypted_data = KEYS_FILE.read_text(encoding="utf-8")
-            decrypted = xor_decipher(encrypted_data, "zabacode_local_keys_salt")
-            if decrypted:
-                import json
-                loaded = json.loads(decrypted)
-                if isinstance(loaded, dict):
-                    _MEMORY_KEYS.update(loaded)
+            loaded = decrypt_payload(KEYS_FILE.read_text(encoding="utf-8"))
+            if loaded:
+                _MEMORY_KEYS.update(loaded)
         except Exception:
             pass
 
@@ -157,12 +158,14 @@ def save_key(provider: str, api_key: str) -> None:
         return
     _MEMORY_KEYS[provider] = api_key
 
-    # Persist the memory keys to local encrypted backup file
+    # Persist keys encrypted under this installation's random master secret
     try:
-        import json
-        serialized = json.dumps(_MEMORY_KEYS)
-        encrypted = xor_cipher(serialized, "zabacode_local_keys_salt")
-        KEYS_FILE.write_text(encrypted, encoding="utf-8")
+        KEYS_FILE.write_text(encrypt_payload(_MEMORY_KEYS), encoding="utf-8")
+        try:
+            import os, stat
+            os.chmod(KEYS_FILE, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
     except Exception:
         pass
 

@@ -16,10 +16,12 @@ import re
 import subprocess
 import sys
 import urllib.request
+import ssl
 import zipfile
 from pathlib import Path
 
 from zabacode.core.paths import USER_PACKAGES_DIR, CACHE_DIR
+from zabacode.core.net import TLS_HELP_MESSAGE, get_ssl_context
 
 _PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
@@ -391,43 +393,41 @@ def is_package_installed(package_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _fallback_pypi_download(name: str) -> tuple[bool, str]:
-    """Install a pure-Python wheel after TLS and archive-path validation.
-    Falls back to unverified SSL context if standard certificate verification fails.
+    """Install a pure-Python wheel with verified TLS, SHA-256 and archive-path checks.
+
+    Certificate verification is never bypassed: a MITM could otherwise swap the
+    wheel for arbitrary code that we would extract and import.
     """
-    import ssl
+    import hashlib
+
     try:
+        ctx = get_ssl_context()
         pypi_url = f"https://pypi.org/pypi/{name}/json"
         req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/1.0.0"})
-        
-        try:
-            resp = urllib.request.urlopen(req, timeout=20)
-        except Exception:
-            ctx = ssl._create_unverified_context()
-            resp = urllib.request.urlopen(req, timeout=20, context=ctx)
 
-        with resp:
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-        
-        urls = data.get("urls", [])
+
         target_wheel_url = None
-        for item in urls:
-            fn = item.get("filename", "").lower()
-            if fn.endswith("none-any.whl"):
+        expected_sha256 = ""
+        for item in data.get("urls", []):
+            if item.get("filename", "").lower().endswith("none-any.whl"):
                 target_wheel_url = item.get("url")
+                expected_sha256 = (item.get("digests") or {}).get("sha256", "")
                 break
-        
+
         if not target_wheel_url:
             return False, f"'{name}' requires a compiled C-extension. Please add it to buildozer.spec and rebuild the APK."
 
         wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/1.0.0"})
-        try:
-            resp_wheel = urllib.request.urlopen(wheel_req, timeout=60)
-        except Exception:
-            ctx = ssl._create_unverified_context()
-            resp_wheel = urllib.request.urlopen(wheel_req, timeout=60, context=ctx)
-
-        with resp_wheel:
+        with urllib.request.urlopen(wheel_req, timeout=60, context=ctx) as resp_wheel:
             wheel_bytes = resp_wheel.read()
+
+        # Integrity: the wheel must match the hash PyPI advertised.
+        if expected_sha256:
+            actual = hashlib.sha256(wheel_bytes).hexdigest()
+            if actual != expected_sha256:
+                return False, f"Integrity check failed for '{name}': the downloaded wheel does not match the SHA-256 published by PyPI. Installation aborted."
 
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as z:
             base = USER_PACKAGES_DIR.resolve()
@@ -438,7 +438,11 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
             z.extractall(base)
 
         return True, f"'{name}' installed successfully via Direct PyPI Extractor!"
+    except ssl.SSLCertVerificationError:
+        return False, f"Cannot install '{name}': {TLS_HELP_MESSAGE}"
     except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            return False, f"Cannot install '{name}': {TLS_HELP_MESSAGE}"
         return False, f"Direct Extractor Error: {e}"
 
 

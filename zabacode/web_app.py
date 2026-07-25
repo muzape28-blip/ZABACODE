@@ -8,6 +8,7 @@ from waitress import serve
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.executor import (
+    PRELUDE_LINE_COUNT,
     execute_code_isolated,
     start_interactive_session,
     send_interactive_input,
@@ -15,6 +16,8 @@ from zabacode.core.executor import (
     stop_interactive_session
 )
 from zabacode.core.checker import check_code
+from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
+from zabacode.core.oracle import analyze_buffer, humanize_traceback, offline_reply
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
@@ -27,8 +30,33 @@ MAX_AI_FIELD_CHARS = 100_000
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "assets"))
+app = Flask(
+    __name__,
+    template_folder=str(BASE_DIR / "templates"),
+    static_folder=str(BASE_DIR / "assets"),
+    static_url_path="/static",
+)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+
+
+@app.after_request
+def _security_headers(resp):
+    """Lock the WebView down: no third-party origins, no framing, no sniffing."""
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "font-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'",
+    )
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    return resp
 
 
 def require_auth(func):
@@ -58,7 +86,15 @@ def run_code():
     stdin_data = payload.get("stdin_data", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
-    return jsonify(execute_code_isolated(code, stdin_data=stdin_data))
+
+    result = execute_code_isolated(code, stdin_data=stdin_data)
+
+    # Offline Oracle: explain the crash in plain language, no network needed.
+    if not result.get("ok") and result.get("stderr"):
+        explanation = humanize_traceback(result["stderr"], line_offset=PRELUDE_LINE_COUNT)
+        if explanation.get("ok"):
+            result["explain"] = explanation
+    return jsonify(result)
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +123,7 @@ def run_interactive_input():
     payload = request.get_json(silent=True) or {}
     text = payload.get("text", "")
     if not isinstance(text, str):
-        return jsonify({"ok": False, "message": "Field text harus berupa string."}), 400
+        return jsonify({"ok": False, "message": "Field 'text' must be a string."}), 400
     return jsonify(send_interactive_input(text))
 
 
@@ -158,10 +194,11 @@ def theme(name):
     return jsonify({"ok": True, "theme": result})
 
 
-@app.get("/api/translations")
-def get_translations():
-    from zabacode.i18n.translations import TRANSLATIONS, LANGUAGES
-    return jsonify({"ok": True, "translations": TRANSLATIONS, "languages": LANGUAGES})
+@app.get("/api/tls/status")
+def tls_status():
+    """Report whether outbound HTTPS can verify certificates on this device."""
+    ok = ca_bundle_available()
+    return jsonify({"ok": ok, "message": "" if ok else TLS_HELP_MESSAGE})
 
 
 @app.get("/api/marketplace/plugins")
@@ -216,10 +253,49 @@ def ai_chat():
         return jsonify({"ok": False, "message": "Invalid AI request."}), 400
     if len(message) > MAX_AI_FIELD_CHARS or len(code) > MAX_AI_FIELD_CHARS:
         return jsonify({"ok": False, "message": "AI context is too large."}), 413
+    allow_offline = payload.get("allow_offline", True)
+
     api_key = load_keys().get(provider)
     if not api_key:
+        if allow_offline:
+            fallback = offline_reply(message, code)
+            fallback["fallback_reason"] = "no_api_key"
+            return jsonify(fallback)
         return jsonify({"ok": False, "needs_key": True, "provider": provider}), 401
-    return jsonify(PROVIDER_HANDLERS[provider](api_key, message, code, model=model))
+
+    result = PROVIDER_HANDLERS[provider](api_key, message, code, model=model)
+
+    # Cloud unreachable (TLS, rate limit, airplane mode)? The Oracle still answers.
+    if not result.get("ok") and allow_offline:
+        fallback = offline_reply(message, code)
+        fallback["fallback_reason"] = result.get("message", "provider_error")
+        fallback["reply"] = (
+            f"_{provider} unavailable — answering locally._\n\n" + fallback["reply"]
+        )
+        return jsonify(fallback)
+    return jsonify(result)
+
+
+@app.post("/api/oracle/explain")
+@require_auth
+def oracle_explain():
+    """Explain a traceback in plain language. Works with zero network."""
+    payload = request.get_json(silent=True) or {}
+    stderr = payload.get("stderr", "")
+    if not isinstance(stderr, str):
+        return jsonify({"ok": False, "message": "Field 'stderr' must be a string."}), 400
+    return jsonify(humanize_traceback(stderr))
+
+
+@app.post("/api/oracle/analyze")
+@require_auth
+def oracle_analyze():
+    """Static AST analysis of the editor buffer. Works with zero network."""
+    payload = request.get_json(silent=True) or {}
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    return jsonify(analyze_buffer(code))
 
 
 def run_webview_server():

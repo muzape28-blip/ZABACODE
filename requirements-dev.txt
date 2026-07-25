@@ -1,10 +1,11 @@
-# Zabacode Development Requirements (v1.0.0 — Kivy Native Edition)
+# Zabacode Development Requirements (v1.0.0 — WebView Edition)
 
 # WebView shell
 Flask>=2.3.3
 waitress>=2.1.2
 
 # Core Dependencies
+certifi>=2024.2.2
 requests>=2.31.0
 tinydb>=4.8.0
 beautifulsoup4>=4.12.0

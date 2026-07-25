@@ -4,8 +4,11 @@ Supports: OpenRouter, Gemini, Groq, Mistral, DeepSeek, Ollama (local)
 """
 
 import json
+import ssl
 import urllib.request
 import urllib.error
+
+from zabacode.core.net import TLS_HELP_MESSAGE, get_ssl_context
 
 ALLOWED_PROVIDERS = {"openrouter", "gemini", "groq", "mistral", "deepseek", "ollama"}
 
@@ -39,6 +42,9 @@ def _handle_url_error(e: Exception, provider_name: str) -> dict:
         except Exception:
             return {"ok": False, "message": f"{provider_name} error ({e.code})", "is_rate_limit": is_rate_limit}
             
+    if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
+        return {"ok": False, "message": f"{provider_name}: {TLS_HELP_MESSAGE}", "is_rate_limit": False, "tls_error": True}
+
     err_str = str(e)
     lower_err = err_str.lower()
     if any(w in lower_err for w in ("rate limit", "quota", "credit", "billing", "balance", "insufficient", "exhausted")):
@@ -68,7 +74,7 @@ def call_openrouter(api_key: str, message: str, code_context: str = "", model: s
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data["choices"][0]["message"]["content"]}
     except Exception as e:
@@ -88,7 +94,7 @@ def call_gemini(api_key: str, message: str, code_context: str = "", model: str =
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         reply = data["candidates"][0]["content"]["parts"][0]["text"]
         return {"ok": True, "reply": reply}
@@ -113,7 +119,7 @@ def call_groq(api_key: str, message: str, code_context: str = "", model: str = "
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data["choices"][0]["message"]["content"]}
     except Exception as e:
@@ -137,7 +143,7 @@ def call_mistral(api_key: str, message: str, code_context: str = "", model: str 
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data["choices"][0]["message"]["content"]}
     except Exception as e:
@@ -161,7 +167,7 @@ def call_deepseek(api_key: str, message: str, code_context: str = "", model: str
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data["choices"][0]["message"]["content"]}
     except Exception as e:
@@ -186,7 +192,7 @@ def call_ollama(api_key: str, message: str, code_context: str = "", model: str =
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=120, context=get_ssl_context()) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data.get("message", {}).get("content", "")}
     except Exception as e:

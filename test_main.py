@@ -1,5 +1,5 @@
 """
-ZABACODE v1.0.0 — Comprehensive Unit Tests (Kivy Native Edition)
+ZABACODE v1.0.0 — Comprehensive Unit Tests (WebView Edition)
 
 Run: pytest test_main.py -v
 """
@@ -566,3 +566,376 @@ class TestApiKeysClearing:
         save_key("openrouter", "")
         # Since empty key is treated as truthy fallback, verify it is empty/cleared
         assert not load_keys().get("openrouter")
+
+
+# ---------------------------------------------------------------------------
+# TLS / SSL Regression Tests (fix: CERTIFICATE_VERIFY_FAILED on all providers)
+# ---------------------------------------------------------------------------
+
+class TestTLSHardening:
+    """Guards the Android CA-bundle fix and forbids unverified SSL fallbacks."""
+
+    def test_ssl_context_verifies_certificates(self):
+        from zabacode.core.net import get_ssl_context
+        import ssl as _ssl
+        ctx = get_ssl_context()
+        assert ctx.verify_mode == _ssl.CERT_REQUIRED
+        assert ctx.check_hostname is True
+
+    def test_no_unverified_ssl_context_in_codebase(self):
+        """_create_unverified_context() would reopen the MITM/RCE hole."""
+        import pathlib
+        root = pathlib.Path(__file__).parent / "zabacode"
+        offenders = [
+            str(f) for f in root.rglob("*.py")
+            if "_create_unverified_context" in f.read_text(encoding="utf-8")
+        ]
+        assert offenders == [], f"Unverified SSL context found in: {offenders}"
+
+    def test_all_ai_providers_use_shared_context(self):
+        """Every urlopen must pass context= or Android fails to verify certs."""
+        import pathlib, re
+        src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "ai_provider.py").read_text()
+        calls = re.findall(r"urllib\.request\.urlopen\([^)]*\)", src)
+        assert len(calls) == 6, f"expected 6 provider calls, found {len(calls)}"
+        for call in calls:
+            assert "context=get_ssl_context()" in call, f"missing context: {call}"
+
+    def test_tls_error_returns_actionable_message(self):
+        import ssl as _ssl
+        from zabacode.core.ai_provider import _handle_url_error
+        res = _handle_url_error(_ssl.SSLCertVerificationError("certificate verify failed"), "OpenRouter")
+        assert res["ok"] is False
+        assert res.get("tls_error") is True
+        assert "certifi" in res["message"]
+
+    def test_certifi_declared_for_apk_build(self):
+        import pathlib
+        spec = (pathlib.Path(__file__).parent / "buildozer.spec").read_text()
+        req_line = next(l for l in spec.splitlines() if l.startswith("requirements ="))
+        assert "certifi" in req_line, "certifi missing from buildozer.spec -> APK will fail TLS"
+
+
+class TestNoServerErrors:
+    """Every route must respond without a 5xx (regression: /api/translations)."""
+
+    def test_no_route_returns_5xx(self):
+        from zabacode.web_app import app
+        from zabacode.core.security import AUTH_TOKEN
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+        failures = []
+        for rule in app.url_map.iter_rules():
+            if "static" in rule.endpoint or "<" in str(rule):
+                continue
+            for method in (rule.methods & {"GET", "POST", "DELETE"}):
+                resp = client.open(str(rule), method=method, json={}, headers=headers)
+                if resp.status_code >= 500:
+                    failures.append(f"{method} {rule} -> {resp.status_code}")
+        assert failures == [], f"5xx responses: {failures}"
+
+
+# ---------------------------------------------------------------------------
+# Offline-First / Asset Bundling (C-2)
+# ---------------------------------------------------------------------------
+
+class TestOfflineFirst:
+    """The IDE must be fully usable with zero network access."""
+
+    def test_no_cdn_references_in_template(self):
+        import pathlib
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        for cdn in ("cdnjs.cloudflare.com", "unpkg.com", "jsdelivr.net", "googleapis.com"):
+            assert cdn not in html, f"External CDN '{cdn}' breaks offline-first"
+
+    def test_ace_bundled_on_disk(self):
+        import pathlib
+        vendor = pathlib.Path(__file__).parent / "assets" / "vendor" / "ace"
+        for f in ("ace.js", "mode-python.js", "theme-tomorrow_night_eighties.js",
+                  "ext-settings_menu.js", "ext-language_tools.js", "ext-searchbox.js"):
+            path = vendor / f
+            assert path.exists() and path.stat().st_size > 1000, f"missing/empty: {f}"
+
+    def test_ace_served_by_flask(self):
+        from zabacode.web_app import app
+        client = app.test_client()
+        for f in ("ace.js", "mode-python.js", "ext-language_tools.js"):
+            resp = client.get(f"/static/vendor/ace/{f}")
+            assert resp.status_code == 200, f"/static/vendor/ace/{f} -> {resp.status_code}"
+
+    def test_security_headers_present(self):
+        from zabacode.web_app import app
+        resp = app.test_client().get("/")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        assert "default-src 'self'" in csp and "frame-ancestors 'none'" in csp
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+
+
+# ---------------------------------------------------------------------------
+# Encrypted Key Storage (H-1)
+# ---------------------------------------------------------------------------
+
+class TestKeystoreEncryption:
+    """API keys must not be recoverable from a hardcoded source-code key."""
+
+    def test_roundtrip(self):
+        from zabacode.core.keystore import decrypt_payload, encrypt_payload
+        data = {"openrouter": "sk-or-v1-secret", "groq": "gsk_abc123"}
+        assert decrypt_payload(encrypt_payload(data)) == data
+
+    def test_plaintext_never_appears_in_ciphertext(self):
+        from zabacode.core.keystore import encrypt_payload
+        blob = encrypt_payload({"openrouter": "sk-or-v1-SUPERSECRET"})
+        assert "SUPERSECRET" not in blob
+
+    def test_nonce_makes_output_unique(self):
+        from zabacode.core.keystore import encrypt_payload
+        data = {"gemini": "same-key"}
+        assert encrypt_payload(data) != encrypt_payload(data)
+
+    def test_tampered_payload_rejected(self):
+        import json
+        from zabacode.core.keystore import decrypt_payload, encrypt_payload
+        env = json.loads(encrypt_payload({"groq": "gsk_real"}))
+        flipped = bytearray(bytes.fromhex(env["data"]))
+        flipped[0] ^= 0xFF
+        env["data"] = flipped.hex()
+        assert decrypt_payload(json.dumps(env)) == {}, "tampered ciphertext must be rejected"
+
+    def test_no_hardcoded_encryption_key(self):
+        import pathlib
+        src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "security.py").read_text()
+        assert "zabacode_local_keys_salt" not in src
+
+    def test_master_key_not_tracked_by_git(self):
+        import pathlib
+        gitignore = (pathlib.Path(__file__).parent / ".gitignore").read_text()
+        assert ".zabacode_master_key" in gitignore
+
+
+# ---------------------------------------------------------------------------
+# Dead Code Removal (C-3) & Concurrency (M-1)
+# ---------------------------------------------------------------------------
+
+class TestCleanupAndConcurrency:
+
+    def test_kivy_ui_package_removed(self):
+        import pathlib
+        assert not (pathlib.Path(__file__).parent / "zabacode" / "ui").exists()
+
+    def test_interactive_session_is_lock_guarded(self):
+        import pathlib
+        src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "executor.py").read_text()
+        assert "_session_lock" in src
+        assert src.count("with _session_lock:") >= 4
+
+    def test_concurrent_stop_calls_are_safe(self):
+        import threading
+        from zabacode.core.executor import stop_interactive_session
+        errors = []
+
+        def worker():
+            try:
+                stop_interactive_session()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        assert errors == [], f"concurrency errors: {errors}"
+
+
+# ---------------------------------------------------------------------------
+# ZABA ORACLE — Offline Code Intelligence
+# ---------------------------------------------------------------------------
+
+class TestOracleTracebackHumanizer:
+    """Plain-language error explanations must work with zero network."""
+
+    def test_name_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback('File "main.py", line 7\nNameError: name \'qty\' is not defined')
+        assert r["ok"] and "qty" in r["what"] and r["line"] == 7
+
+    def test_module_not_found(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("ModuleNotFoundError: No module named 'pandas'")
+        assert r["ok"] and "pandas" in r["what"]
+        assert "Library Manager" in r["fix"]
+
+    def test_type_error_captures_both_types(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("TypeError: unsupported operand type(s) for +: 'int' and 'str'")
+        assert r["ok"] and "int" in r["what"] and "str" in r["what"]
+
+    def test_unknown_error_still_helpful(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("WeirdCustomError: something exploded")
+        assert r["ok"] and r["fix"]
+
+    def test_empty_input_is_not_ok(self):
+        from zabacode.core.oracle import humanize_traceback
+        assert humanize_traceback("")["ok"] is False
+
+    def test_every_rule_is_a_valid_regex_and_formats(self):
+        import re
+        from zabacode.core.oracle import _ERROR_RULES
+        for pattern, title, what, fix in _ERROR_RULES:
+            re.compile(pattern)          # must not raise
+            assert title and what and fix
+
+
+class TestOracleBufferAnalysis:
+
+    def test_detects_smells(self):
+        from zabacode.core.oracle import analyze_buffer
+        code = (
+            "def f(a, b, c, d, e, g):\n"
+            "    for i in range(3):\n"
+            "        for j in range(3):\n"
+            "            for k in range(3):\n"
+            "                try:\n"
+            "                    pass\n"
+            "                except:\n"
+            "                    pass\n"
+        )
+        r = analyze_buffer(code)
+        assert r["ok"] and r["loop_depth"] == 3
+        joined = " ".join(r["notes"])
+        assert "6 arguments" in joined and "bare `except:`" in joined
+
+    def test_reports_syntax_error_with_line(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer("def broken(:\n    pass")
+        assert r["ok"] is False and r["syntax_error"] is True and r["line"]
+
+    def test_clean_code_has_no_notes(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer('def add(a, b):\n    """Add two numbers."""\n    return a + b\n')
+        assert r["ok"] and r["notes"] == []
+
+    def test_empty_buffer(self):
+        from zabacode.core.oracle import analyze_buffer
+        assert analyze_buffer("   ")["ok"] is False
+
+
+class TestOracleOfflineAssistant:
+
+    def test_never_fails(self):
+        from zabacode.core.oracle import offline_reply
+        for q in ["", "asdkjhasd", "how do I loop?", "review my code", "explain classes"]:
+            r = offline_reply(q, "x = 1")
+            assert r["ok"] is True and r["reply"] and r["offline"] is True
+
+    def test_knowledge_lookup(self):
+        from zabacode.core.oracle import offline_reply
+        assert "savefig" in offline_reply("how do I plot a chart?")["reply"]
+        assert "with open" in offline_reply("how to read a file?")["reply"]
+
+    def test_review_uses_real_analysis(self):
+        from zabacode.core.oracle import offline_reply
+        reply = offline_reply("review my code", "def f(a,b,c,d,e,g):\n    pass\n")["reply"]
+        assert "6 arguments" in reply
+
+    def test_requires_no_network(self, monkeypatch):
+        """Hard guarantee: the Oracle must not open a socket."""
+        import socket
+        def boom(*a, **k):
+            raise AssertionError("Oracle attempted a network connection")
+        monkeypatch.setattr(socket.socket, "connect", boom)
+        from zabacode.core.oracle import humanize_traceback, offline_reply, analyze_buffer
+        assert offline_reply("review my code", "x=1")["ok"]
+        assert humanize_traceback("KeyError: 'a'")["ok"]
+        assert analyze_buffer("x = 1")["ok"]
+
+
+class TestOracleEndpoints:
+
+    def _client(self):
+        from zabacode.web_app import app
+        from zabacode.core.security import AUTH_TOKEN
+        return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def test_explain_endpoint(self):
+        c, h = self._client()
+        r = c.post("/api/oracle/explain",
+                   json={"stderr": "NameError: name 'foo' is not defined"}, headers=h)
+        assert r.status_code == 200 and r.get_json()["ok"] and "foo" in r.get_json()["what"]
+
+    def test_analyze_endpoint(self):
+        c, h = self._client()
+        r = c.post("/api/oracle/analyze", json={"code": "def f():\n    pass\n"}, headers=h)
+        assert r.status_code == 200 and r.get_json()["ok"]
+
+    def test_endpoints_require_auth(self):
+        from zabacode.web_app import app
+        c = app.test_client()
+        for ep in ("/api/oracle/explain", "/api/oracle/analyze"):
+            assert c.post(ep, json={}).status_code == 401
+
+    def test_run_attaches_explanation_on_crash(self):
+        c, h = self._client()
+        r = c.post("/api/run", json={"code": "print(undefined_thing)"}, headers=h)
+        body = r.get_json()
+        assert body["ok"] is False
+        assert body["explain"]["ok"] and "undefined_thing" in body["explain"]["what"]
+
+    def test_successful_run_has_no_explanation(self):
+        c, h = self._client()
+        body = c.post("/api/run", json={"code": "print('hi')"}, headers=h).get_json()
+        assert body["ok"] is True and "explain" not in body
+
+    def test_ai_chat_falls_back_to_oracle_without_key(self):
+        """Regression for the screenshot: user must never hit a dead end."""
+        c, h = self._client()
+        r = c.post("/api/ai/chat",
+                   json={"provider": "openrouter", "message": "review my code",
+                         "code": "def f(a,b,c,d,e,g): pass"}, headers=h)
+        body = r.get_json()
+        assert r.status_code == 200 and body["ok"] is True
+        assert body["offline"] is True and body["fallback_reason"] == "no_api_key"
+
+    def test_ai_chat_can_opt_out_of_fallback(self):
+        c, h = self._client()
+        r = c.post("/api/ai/chat",
+                   json={"provider": "groq", "message": "hi", "allow_offline": False}, headers=h)
+        assert r.status_code == 401 and r.get_json()["needs_key"] is True
+
+
+class TestOracleUI:
+
+    def test_oracle_card_rendered_in_frontend(self):
+        import pathlib
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "renderOracleCard" in html and ".oracle-card" in html
+        assert "/api/oracle/explain" in html
+
+    def test_ui_is_english_only(self):
+        import pathlib
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        for word in ("BENERIN", "Kode saya mengalami"):
+            assert word not in html
+
+
+class TestOracleLineMapping:
+    """Reported line numbers must match the editor, not the injected prelude."""
+
+    def test_line_number_matches_user_editor(self):
+        from zabacode.web_app import app
+        from zabacode.core.security import AUTH_TOKEN
+        c = app.test_client()
+        body = c.post("/api/run", json={"code": "prices = [1, 2]\nprint(prices[9])"},
+                      headers={"X-Zabacode-Token": AUTH_TOKEN}).get_json()
+        assert body["explain"]["line"] == 2, "line must map to the editor, not the prelude"
+
+    def test_offset_never_goes_below_one(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback('File "m.py", line 2\nKeyError: 1', line_offset=99)
+        assert r["line"] == 1
+
+    def test_prelude_count_matches_actual_patch(self):
+        from zabacode.core.executor import PRELUDE_LINE_COUNT, SAFE_INPUT_PATCH
+        assert PRELUDE_LINE_COUNT == SAFE_INPUT_PATCH.count("\n")

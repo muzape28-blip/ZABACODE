@@ -32,3 +32,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zero API Dependency:** All 5 new plugins run completely local/offline utilizing Python's built-in AST library.
 - **Fail-Safe Processing:** AST parsers wrap around robust `try-except` blocks with safe fallbacks ensuring the IDE never crashes or hangs even when parsing malformed scripts.
 - **Sub-100ms Execution:** Ultra-fast optimization time meets all performance constraints.
+
+## [1.1.0] — 2026-07-25 — Hardening & Zaba Oracle
+
+### Added
+- **Zaba Oracle** (`zabacode/core/oracle.py`): offline code intelligence — traceback
+  humanizer (16 error families), AST-based code review, and a rule-based assistant.
+  Requires no API key and no network. New endpoints `/api/oracle/explain`,
+  `/api/oracle/analyze`; crash explanations render inline in the terminal.
+- AI chat now falls back to the Oracle when a provider is keyless or unreachable
+  (opt out with `allow_offline: false`).
+- `zabacode/core/net.py`: shared, certificate-verifying TLS context.
+- `zabacode/core/keystore.py`: authenticated at-rest encryption for API keys.
+- `/api/tls/status` diagnostic endpoint.
+- Ace Editor 1.32.4 bundled in `assets/vendor/ace/` — the IDE is now genuinely offline.
+- CSP, `X-Content-Type-Options` and `Referrer-Policy` headers.
+
+### Fixed
+- **All six AI providers failed with `CERTIFICATE_VERIFY_FAILED`** on Android: p4a
+  ships no readable CA store. Added `certifi`/`openssl` to `buildozer.spec` and routed
+  every request through a verified SSL context.
+- `/api/translations` returned HTTP 500 (missing `zabacode.i18n`); replaced.
+- Traceback line numbers were offset by the injected `SAFE_INPUT_PATCH` prelude.
+- Race condition: `InteractiveSession` is now guarded by an `RLock` under `threads=4`.
+- Flask served `assets/` at `/assets`, 404-ing every bundled asset; `static_url_path` pinned.
+
+### Security
+- Removed `ssl._create_unverified_context()` fallback in the PyPI installer (MITM → RCE);
+  wheels are now verified against PyPI's published SHA-256.
+- API keys no longer encrypted with a hardcoded source-code key.
+
+### Removed
+- `zabacode/ui/` — 1,492 lines of unreachable Kivy code superseded by the WebView shell.
+
+### Notes
+- Test suite: 77 → **122 passing**. Requires an APK rebuild.

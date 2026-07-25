@@ -760,6 +760,31 @@ class TestOracleTracebackHumanizer:
         r = humanize_traceback('File "main.py", line 7\nNameError: name \'qty\' is not defined')
         assert r["ok"] and "qty" in r["what"] and r["line"] == 7
 
+    def test_permission_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("PermissionError: [Errno 13] Permission denied: '/root/secret.txt'")
+        assert r["ok"] and "Access Denied" in r["title"]
+
+    def test_unicode_decode_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte")
+        assert r["ok"] and "Encoding Mismatch" in r["title"]
+
+    def test_json_decode_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)")
+        assert r["ok"] and "JSON" in r["title"]
+
+    def test_import_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("ImportError: cannot import name 'nonexistent' from 'math'")
+        assert r["ok"] and "Import" in r["title"]
+
+    def test_assertion_error(self):
+        from zabacode.core.oracle import humanize_traceback
+        r = humanize_traceback("AssertionError: 2 == 3")
+        assert r["ok"] and "Assertion" in r["title"]
+
     def test_module_not_found(self):
         from zabacode.core.oracle import humanize_traceback
         r = humanize_traceback("ModuleNotFoundError: No module named 'pandas'")
@@ -807,6 +832,30 @@ class TestOracleBufferAnalysis:
         joined = " ".join(r["notes"])
         assert "6 arguments" in joined and "bare `except:`" in joined
 
+    def test_detects_mutable_defaults(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer("def f(x=[]):\n    pass")
+        assert r["ok"]
+        assert any("Mutable default" in note for note in r["notes"])
+
+    def test_detects_unreachable_code(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer("def f():\n    return 42\n    print('hello')")
+        assert r["ok"]
+        assert any("Unreachable code" in note for note in r["notes"])
+
+    def test_detects_static_division_by_zero(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer("x = 10 / 0")
+        assert r["ok"]
+        assert any("division or modulo by zero" in note for note in r["notes"])
+
+    def test_detects_security_risk(self):
+        from zabacode.core.oracle import analyze_buffer
+        r = analyze_buffer("eval('1+1')")
+        assert r["ok"]
+        assert any("Security risk" in note for note in r["notes"])
+
     def test_reports_syntax_error_with_line(self):
         from zabacode.core.oracle import analyze_buffer
         r = analyze_buffer("def broken(:\n    pass")
@@ -834,6 +883,15 @@ class TestOracleOfflineAssistant:
         from zabacode.core.oracle import offline_reply
         assert "savefig" in offline_reply("how do I plot a chart?")["reply"]
         assert "with open" in offline_reply("how to read a file?")["reply"]
+
+    def test_new_knowledge_lookup(self):
+        from zabacode.core.oracle import offline_reply
+        assert "decorator" in offline_reply("what is a decorator?")["reply"].lower()
+        assert "yield" in offline_reply("explain generator")["reply"].lower()
+        assert "flask" in offline_reply("how to use flask?")["reply"].lower()
+        assert "lambda" in offline_reply("how to write lambda?")["reply"].lower()
+        assert "pypi" in offline_reply("how to install library using pip")["reply"].lower()
+        assert "asyncio" in offline_reply("tell me about async await")["reply"].lower()
 
     def test_review_uses_real_analysis(self):
         from zabacode.core.oracle import offline_reply

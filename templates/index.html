@@ -407,6 +407,60 @@
   .ace_optionsMenuEntry td {
     padding: 8px 4px !important;
   }
+
+  /* ---------- Floating Touch Context Menu ---------- */
+  #editor-floating-trigger {
+    position: absolute;
+    z-index: 1000;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    color: var(--text-bright);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.1s, transform 0.1s;
+  }
+  #editor-floating-trigger:active {
+    background: var(--border-bright);
+    color: var(--bg);
+    transform: scale(0.95);
+  }
+  #editor-floating-menu {
+    position: absolute;
+    z-index: 1001;
+    background: var(--bg-panel-2);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    gap: 4px;
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .floating-menu-btn {
+    background: var(--bg-panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    font-weight: bold;
+    border-radius: 3px;
+    transition: background 0.1s;
+  }
+  .floating-menu-btn:active {
+    background: var(--border-bright);
+    color: var(--bg);
+  }
 </style>
 </head>
 <body>
@@ -439,6 +493,17 @@
       </div>
 
       <div id="code-editor-container">
+        <!-- Floating touch context menu trigger -->
+        <button id="editor-floating-trigger" style="display: none;" aria-label="Coding Helper Menu">•••</button>
+
+        <!-- Floating touch context menu -->
+        <div id="editor-floating-menu" style="display: none;">
+          <button class="floating-menu-btn" id="floating-undo-btn">Undo</button>
+          <button class="floating-menu-btn" id="floating-redo-btn">Redo</button>
+          <button class="floating-menu-btn" id="floating-find-btn">Find</button>
+          <button class="floating-menu-btn" id="floating-palette-btn">Palette</button>
+        </div>
+
         <div id="code-editor" tabindex="0"></div>
         <div id="native-editor-wrapper">
           <div id="native-gutter">1</div>
@@ -469,14 +534,14 @@ print('Try running libraries or executing code here!')
 
       <div id="editor-controls">
         <button id="run-btn" class="action">▶ EXECUTE</button>
-        <button id="clear-btn" class="action" title="Bersihkan Editor / Terminal">CLEAR</button>
+        <button id="clear-btn" class="action" title="Clear Editor / Terminal">CLEAR</button>
       </div>
     </div>
 
     <!-- VIEW OUTPUT TERMINAL -->
     <div id="view-output" class="view">
       <div class="topbar">
-        <button id="back-to-editor" class="icon-btn" aria-label="Kembali">◂ EDIT</button>
+        <button id="back-to-editor" class="icon-btn" aria-label="Back">◂ EDIT</button>
         <div id="app-title-output" style="font-weight:bold;color:var(--text-bright);">output terminal</div>
         <button id="clear-output-btn" class="mini-btn" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);">CLEAR</button>
         <div id="output-status-dot" style="margin-left:8px;width:8px;height:8px;border-radius:50%;"></div>
@@ -643,13 +708,13 @@ print('Try running libraries or executing code here!')
       </div>
       
       <div class="lib-search-bar" style="display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--border);">
-        <input type="text" id="lib-search" class="dialog-input" style="margin:0;" placeholder="Cari nama library (misal: requests, pandas, fastapi)...">
+        <input type="text" id="lib-search" class="dialog-input" style="margin:0;" placeholder="Search library name (e.g. requests, pandas, fastapi)...">
       </div>
 
       <div class="lib-categories" id="lib-cat-container" style="display:flex;gap:6px;padding:10px 18px;overflow-x:auto;border-bottom:1px solid var(--border);background:var(--bg-panel-2);">
-        <div class="lib-cat-pill active" data-cat="all">🌟 Semua</div>
+        <div class="lib-cat-pill active" data-cat="all">🌟 All</div>
         <div class="lib-cat-pill" data-cat="Web & API">🌐 Web & API</div>
-        <div class="lib-cat-pill" data-cat="Data & Math">📊 Data & Sains</div>
+        <div class="lib-cat-pill" data-cat="Data & Math">📊 Data & Science</div>
         <div class="lib-cat-pill" data-cat="Database">🤖 AI & Database</div>
         <div class="lib-cat-pill" data-cat="Utilities">🎨 Media & Utils</div>
       </div>
@@ -721,7 +786,7 @@ print('Try running libraries or executing code here!')
     <div class="dialog-box" style="max-width:420px;">
       <h4>&gt; File Manager _</h4>
       <div id="file-list-container" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
-      <input id="file-save-input" class="dialog-input" type="text" placeholder="nama file (tanpa .py)...">
+      <input id="file-save-input" class="dialog-input" type="text" placeholder="filename (without .py)...">
       <div class="dialog-actions">
         <button class="mini-btn" id="file-dialog-cancel">close</button>
         <button class="mini-btn" id="file-dialog-save" style="background:var(--text-bright);color:#00190A;border:none;">save file</button>
@@ -962,7 +1027,7 @@ const BOOT_MESSAGES = [
   { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
   { text: '[ OK ] Direct PyPI Wheel Extractor (SSL Bypass) siap', cls: 'ok' },
   { text: '[ OK ] Dual Language Engine: English Ready', cls: 'ok' },
-  { text: '> Theme Custom Tanpa Garis Putih & Fix Caret Alignment Aktif', cls: 'ok' },
+  { text: '> Custom Theme Without White Lines & Caret Alignment Fix Active', cls: 'ok' },
   { text: '> Workspace Siap.', cls: 'ok' }
 ];
 
@@ -1124,7 +1189,7 @@ function switchTab(id) {
 
 function closeTab(id) {
   if (tabs.length <= 1) {
-    alert('Minimal harus ada 1 tab aktif!');
+    alert('At least one tab must remain active!');
     return;
   }
 
@@ -1605,6 +1670,153 @@ try {
   activateNativeFallback('Failed to load Ace');
 }
 
+// ---------- Touch-Friendly Floating Context Menu Helper ----------
+(function() {
+  const trigger = document.getElementById('editor-floating-trigger');
+  const menu = document.getElementById('editor-floating-menu');
+  const container = document.getElementById('code-editor-container');
+
+  if (!trigger || !menu || !container) return;
+
+  function hideFloatingMenu() {
+    trigger.style.display = 'none';
+    menu.style.display = 'none';
+  }
+
+  function updateMenuPosition() {
+    if (activeEditorMode !== 'ace' || !editor) {
+      hideFloatingMenu();
+      return;
+    }
+
+    // Only show if editor is focused
+    if (!editor.isFocused()) {
+      hideFloatingMenu();
+      return;
+    }
+
+    const cursor = editor.getCursorPosition();
+    const coords = editor.renderer.textToScreenCoordinates(cursor.row, cursor.column);
+    const containerRect = container.getBoundingClientRect();
+
+    // Check if coordinates are valid inside the viewport
+    if (coords.pageX === 0 && coords.pageY === 0) {
+      hideFloatingMenu();
+      return;
+    }
+
+    // Convert screen coordinates to parent container relative
+    const x = coords.pageX - containerRect.left;
+    const y = coords.pageY - containerRect.top;
+
+    // Position trigger slightly above the active cursor position
+    trigger.style.left = `${Math.max(5, Math.min(containerRect.width - 50, x - 15))}px`;
+    trigger.style.top = `${Math.max(5, y - 28)}px`;
+    trigger.style.display = 'block';
+  }
+
+  // Handle trigger button click
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (activeEditorMode !== 'ace' || !editor) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const triggerLeft = parseFloat(trigger.style.left);
+    const triggerTop = parseFloat(trigger.style.top);
+
+    // Show menu exactly where the trigger was, but offset slightly
+    menu.style.left = `${Math.max(5, Math.min(containerRect.width - 210, triggerLeft - 40))}px`;
+    menu.style.top = `${triggerTop}px`;
+    menu.style.display = 'flex';
+
+    // Hide the small trigger once the menu is opened
+    trigger.style.display = 'none';
+  });
+
+  // Action listeners for menu buttons
+  document.getElementById('floating-undo-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (editor) {
+      editor.undo();
+      editor.focus();
+    }
+    hideFloatingMenu();
+  });
+
+  document.getElementById('floating-redo-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (editor) {
+      editor.redo();
+      editor.focus();
+    }
+    hideFloatingMenu();
+  });
+
+  document.getElementById('floating-find-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (editor) {
+      editor.execCommand("find");
+    }
+    hideFloatingMenu();
+  });
+
+  document.getElementById('floating-palette-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (editor) {
+      editor.showSettingsMenu();
+    }
+    hideFloatingMenu();
+  });
+
+  // Show trigger with debounced delay after cursor moves or click
+  let touchTimeout = null;
+  function triggerMenuWithDelay() {
+    if (touchTimeout) clearTimeout(touchTimeout);
+    touchTimeout = setTimeout(() => {
+      // Don't show menu if currently selecting text (dragging) to avoid clutter
+      if (editor && editor.selection.isEmpty()) {
+        updateMenuPosition();
+      } else {
+        hideFloatingMenu();
+      }
+    }, 150);
+  }
+
+  // Hook into Ace Editor events to update or hide menus
+  setTimeout(() => {
+    if (!editor) return;
+
+    // Listen to click and cursor changes
+    editor.on('click', () => {
+      triggerMenuWithDelay();
+    });
+
+    editor.selection.on('changeCursor', () => {
+      // Hide active menu immediately on cursor move
+      hideFloatingMenu();
+    });
+
+    // Hide menu during typing/editing
+    editor.session.on('change', () => {
+      hideFloatingMenu();
+    });
+
+    // Hide during scrolling
+    editor.session.on('changeScrollTop', () => hideFloatingMenu());
+    editor.session.on('changeScrollLeft', () => hideFloatingMenu());
+  }, 500);
+
+  // Hide when tapping outside
+  document.addEventListener('pointerdown', (e) => {
+    if (!container.contains(e.target)) {
+      hideFloatingMenu();
+    }
+  });
+})();
+
+
 // ---------- Mobile Symbol Toolbar Handlers ----------
 const symbolBar = document.getElementById('mobile-symbol-bar');
 document.querySelectorAll('.symbol-btn').forEach(btn => {
@@ -1653,10 +1865,10 @@ if (backToEditorBtn) backToEditorBtn.onclick = goToEditor;
 const clearBtn = document.getElementById('clear-btn');
 if (clearBtn) {
   clearBtn.onclick = () => {
-    if (confirm('Bersihkan isi editor & terminal output?')) {
+    if (confirm('Clear editor content & terminal output?')) {
       setEditorValue('');
       if (outputTerminal) outputTerminal.innerHTML = '';
-      showToast('✓ Editor & terminal dibersihkan', 'success');
+      showToast('✓ Editor & terminal cleared', 'success');
     }
   };
 }
@@ -1665,7 +1877,7 @@ const clearOutputBtn = document.getElementById('clear-output-btn');
 if (clearOutputBtn) {
   clearOutputBtn.onclick = () => {
     if (outputTerminal) outputTerminal.innerHTML = '';
-    showToast('✓ Output terminal dibersihkan', 'success');
+    showToast('✓ Output terminal cleared', 'success');
   };
 }
 
@@ -2128,7 +2340,7 @@ async function loadMarketplace() {
             <div style="font-size:11px;color:var(--text);line-height:1.4;margin-bottom:10px;">${escapeHtml(plugin.description)}</div>
           </div>
           <button class="mini-btn toggle-plugin-btn" style="${isActive ? 'background:var(--border-bright);color:#00190A;border:none;' : 'background:var(--text-bright);color:#00190A;border:none;'}font-weight:bold;">
-            ${isActive ? 'NONAKTIFKAN ✕' : 'AKTIFKAN ADDON ✓'}
+            ${isActive ? 'DEACTIVATE ✕' : 'ACTIVATE ADDON ✓'}
           </button>
         `;
 
@@ -2137,7 +2349,7 @@ async function loadMarketplace() {
 
           if (installedPlugins[plugin.id]) {
             delete installedPlugins[plugin.id];
-            showToast(`Plugin ${plugin.name} dinonaktifkan.`, 'error');
+            showToast(`Plugin ${plugin.name} deactivated.`, 'error');
           } else {
             installedPlugins[plugin.id] = true;
             showToast(`✓ Plugin ${plugin.name} successfully activated!`, 'success');
@@ -2456,7 +2668,7 @@ function renderOracleCard(exp, container) {
 
 async function renderOracleExplanation(stderrText, container) {
   try {
-    const res = await apiFetch('/api/oracle/explain', {
+    const res = await fetchApi('/api/oracle/explain', {
       method: 'POST',
       body: JSON.stringify({ stderr: stderrText })
     });
@@ -2556,12 +2768,12 @@ async function loadFileList() {
       const actionsDiv = document.createElement('div');
       const openBtn = document.createElement('button');
       openBtn.className = 'mini-btn';
-      openBtn.textContent = 'Buka';
+      openBtn.textContent = 'Open';
       
       const delBtn = document.createElement('button');
       delBtn.className = 'mini-btn';
       delBtn.style.cssText = 'border-color:var(--err-dim);color:var(--err);margin-left:4px;';
-      delBtn.textContent = 'Hapus';
+      delBtn.textContent = 'Delete';
 
       actionsDiv.appendChild(openBtn);
       actionsDiv.appendChild(delBtn);
@@ -2586,7 +2798,7 @@ async function loadFileList() {
       };
 
       delBtn.onclick = async () => {
-        if (confirm(`Hapus file ${f.name}?`)) {
+        if (confirm(`Delete file ${f.name}?`)) {
           await fetchApi(`/api/files/${f.name}`, { method: 'DELETE' });
           loadFileList();
         }

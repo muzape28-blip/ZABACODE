@@ -1020,16 +1020,17 @@ function stopMatrixRain() {
   if (canvas) canvas.remove();
 }
 
-// ---------- Boot Sequence Animation ----------
+// ---------- Boot Sequence Animation — Updated v1.2.0 (No SSL Bypass, No ZMUX, Clean) ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE Mobile IDE Engine Inisialisasi...', cls: 'dim' },
-  { text: '[ OK ] Local Session Auth Token Security Active', cls: 'ok' },
-  { text: '[ OK ] Android Keystore Encrypted Key Storage Active', cls: 'ok' },
-  { text: '[ OK ] Python 3 Subprocess Sandbox + __file__ Resolver siap', cls: 'ok' },
-  { text: '[ OK ] Direct PyPI Wheel Extractor (SSL Bypass) siap', cls: 'ok' },
-  { text: '[ OK ] Dual Language Engine: English Ready', cls: 'ok' },
-  { text: '> Custom Theme Without White Lines & Caret Alignment Fix Active', cls: 'ok' },
-  { text: '> Workspace Siap.', cls: 'ok' }
+  { text: 'ZABACODE v1.2.0 Engine Initializing...', cls: 'dim' },
+  { text: '[ OK ] Local Session Token Security Active', cls: 'ok' },
+  { text: '[ OK ] Android Keystore + AES-GCM Vault', cls: 'ok' },
+  { text: '[ OK ] Python 3 Subprocess Sandbox (PGID)', cls: 'ok' },
+  { text: '[ OK ] PyPI Extractor (Verified TLS+SHA256)', cls: 'ok' },
+  { text: '[ OK ] 7 Providers + Custom Endpoint Ready', cls: 'ok' },
+  { text: '[ OK ] Zaba Oracle — Offline Intelligence', cls: 'ok' },
+  { text: '[ OK ] Ace 1.32.4 Bundled (Offline 60 FPS)', cls: 'ok' },
+  { text: '> Workspace Ready. Happy Coding!_', cls: 'ok' }
 ];
 
 const bootLines = document.getElementById('boot-lines');

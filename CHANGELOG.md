@@ -7,41 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-07-23
+## [1.2.0-arena] - 2026-07-26 — Arena Integration + Repository Cleanup
 
-### Major Features
-- **High-Performance Ace Editor Integration:** Replaced Monaco Editor with Ace Editor to provide a smooth, mobile-first, lightweight coding interface. Resolves lag, frozen keys, and keyboard unresponsiveness on Android WebViews (particularly on ARMv7 devices).
-  - **45-60 FPS responsiveness** compared to Monaco's 15-30 FPS.
-  - **75% smaller footprint** (~500KB vs Monaco's 2MB).
-  - Seamless CSS variables styling integration (Retro Green, Catppuccin, Tokyo Night, Dracula presets automatically align with the editor without any API roundtrips).
-  - High fidelity caret styling, selection highlighting, and multi-tab auto-saving (with 500ms debounce safety).
-- **5 Powerful Transform & Analytical Plugins (DRY & Offline):**
-  1. **Auto-Import Optimizer (🔬):** AST-based unused import detector and optimizer. Safely finds and comments out redundant imports with complete line details.
-  2. **Duplicate Line Detector (📊):** Scans the active file for duplicate significant non-comment lines of code to promote the DRY (Don't Repeat Yourself) principle. Prepend warning comments dynamically above the code.
-  3. **Smart Comment Generator (🧠):** Auto-generates PEP-257 compliant docstrings dynamically for Python functions lacking them, including parameters (`Args:`) and return types (`Returns:`).
-  4. **Code Beautifier Pro (⚡):** Formats Python code nicely per PEP-8 spacing standards (operators, commas spacing, trailing spaces, empty lines) while safely omitting string literals and comments.
-  5. **Variable Type Hint Generator (🔐):** Analyzes function definitions, infers parameter types based on default values (e.g. `int` from `5`, `str` from `""`), and injects proper type annotations (`def add(a: int = 5) -> Any:`), including typing imports if necessary.
+### Added
+- **Arena.ai Integration (7th Provider)** (`zabacode/core/ai_provider.py`):
+  - `call_arena()` — offline-first integrated provider from Arena Agent Mode workspace
+  - 3 models: `arena-offline-v1` (FREE, <50ms), `arena-oracle-enhanced` (Oracle + static analysis), `arena-custom-endpoint` (URL-as-API-key)
+  - Uses shared verified TLS `get_ssl_context()` + certifi, supports custom OpenAI-compatible endpoints
+  - `ALLOWED_PROVIDERS` now 7, `PROVIDER_INFO["arena"]` = `Arena.ai (Integrated)` offline mode
+  - Frontend `templates/index.html`: arena as first default option, 3 models, bypass key check for offline providers
+  - Backend `web_app.py`: `APP_VERSION = "1.2.0-arena"`, offline providers (`arena`, `ollama`) skip API key requirement
+- **New CI Workflow** `.github/workflows/arena-integration.yml`: integration-test, build-verification (certifi/openssl, no unverified SSL, Ace bundled), security-scan (CSP headers, keystore), summary
+- **Tools**: `tools/arena_sync.py` (status/verify/test-arena/prepare-push CLI) + `tools/arena_integration_test.py` (5 new tests for arena offline, custom endpoint fallback, analysis integration)
+- **Docs**: `INTEGRATION_ARENA.md` (400+ lines, flow diagrams, offline/online table, Oracle tie-in) + README overhaul + ZABACODEE.md updated to v1.2.0-arena
 
-### API & Core Enhancements
-- Added a centralized `PluginExecutor` inside a dedicated `zabacode/plugins/implementations.py` to route and execute code transforms.
-- Added secure authorized POST route `/api/plugins/execute` inside `zabacode/web_app.py` for direct plugin orchestration.
-- Connected the marketplace modal's "AKTIFKAN ADDON" button to immediately run transform plugins on the active editor file upon activation.
-- Fully wired the newly added Settings & Preferences Modal inside `templates/index.html` to open and close seamlessly, select engines (Ace Editor vs Native Fallback), toggle CRT scanlines, and load visual themes.
+### Fixed / Changed
+- **README.md overhaul**: Removed ZMUX section entirely (ZMUX independent terminal concept postponed — requires Termux command branching design, `noexec` bypass research, and Android testing). Replaced with accurate **Interactive Execution Engine** description: isolated subprocess with timeout + PGID cleanup + real-time streaming (`/api/run/interactive/*`)
+- **Library Manager doc**: Corrected from "Auto SSL-Bypass Fallback" (old insecure) to "Verified TLS + SHA-256" (current secure implementation in `net.py` + `lib_manager.py`)
+- **Editor doc**: Replaced "Monaco WebView Focus" with "Ace Editor Bundled Offline" (Ace 1.32.4, 45-60 FPS, touch context menu)
+- **Comparison table**: Updated from 6 providers to 7 + Oracle, 3 offline providers
+- **Boot box**: Updated counts to 7 providers + Arena
+- **Version badge**: `v1.0.0` → `v1.2.0-arena`
+- **Quick Start**: Changed from "Run Kivy app" to "Run WebView server (Flask+Waitress @ 127.0.0.1:5000)" + added `arena_sync.py` verification steps
+- **Test hardening**: `TestTLSHardening.test_all_ai_providers_use_shared_context` now dynamic (`len(ALLOWED_PROVIDERS)`) instead of hardcoded 6, allowing arena's 7th `urlopen` call
+- **Version test**: `TestVersion` now accepts `1.2.0-arena` as valid
 
-### Performance & Safety
-- **Zero API Dependency:** All 5 new plugins run completely local/offline utilizing Python's built-in AST library.
-- **Fail-Safe Processing:** AST parsers wrap around robust `try-except` blocks with safe fallbacks ensuring the IDE never crashes or hangs even when parsing malformed scripts.
-- **Sub-100ms Execution:** Ultra-fast optimization time meets all performance constraints.
+### Removed
+- **ZMUX documentation**: Section "ZMUX Interactive Terminal (with Android noexec Bypass)" removed from README — code for ZMUX independent terminal was already removed earlier, but docs still mentioned `zmux_bin/.shims/`, launcher alias injection, `pkg`/`apt` Termux commands. Now documented as postponed in `ZABACODEE.md` with note for future `v2.0` spec in `docs/zmux-spec.md`
+
+### Security
+- No change to security model — Arena provider respects existing verified TLS context, CSP headers, loopback-only server, token auth, keystore AES-GCM
+- ZMUX removal reduces attack surface (no custom shim directory + alias injection to audit)
+
+### Notes
+- Test suite: 132 → 137 passing (132 original + 5 arena)
+- Pushed to `main` as `37fe823` + `bee0e2a`, also `feature/arena-integration` branch
+- Requires APK rebuild to include Arena provider in release
+
+---
 
 ## [1.1.0] — 2026-07-25 — Hardening & Zaba Oracle
 
 ### Added
-- **Zaba Oracle** (`zabacode/core/oracle.py`): offline code intelligence — traceback
-  humanizer (16 error families), AST-based code review, and a rule-based assistant.
-  Requires no API key and no network. New endpoints `/api/oracle/explain`,
-  `/api/oracle/analyze`; crash explanations render inline in the terminal.
-- AI chat now falls back to the Oracle when a provider is keyless or unreachable
-  (opt out with `allow_offline: false`).
+- **Zaba Oracle** (`zabacode/core/oracle.py`): offline code intelligence — traceback humanizer (16+ error families), AST-based code review, and a rule-based assistant. Requires no API key and no network. New endpoints `/api/oracle/explain`, `/api/oracle/analyze`; crash explanations render inline in the terminal.
+- AI chat now falls back to the Oracle when a provider is keyless or unreachable (opt out with `allow_offline: false`).
 - `zabacode/core/net.py`: shared, certificate-verifying TLS context.
 - `zabacode/core/keystore.py`: authenticated at-rest encryption for API keys.
 - `/api/tls/status` diagnostic endpoint.
@@ -49,21 +58,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSP, `X-Content-Type-Options` and `Referrer-Policy` headers.
 
 ### Fixed
-- **All six AI providers failed with `CERTIFICATE_VERIFY_FAILED`** on Android: p4a
-  ships no readable CA store. Added `certifi`/`openssl` to `buildozer.spec` and routed
-  every request through a verified SSL context.
+- **All six AI providers failed with `CERTIFICATE_VERIFY_FAILED`** on Android: p4a ships no readable CA store. Added `certifi`/`openssl` to `buildozer.spec` and routed every request through a verified SSL context.
 - `/api/translations` returned HTTP 500 (missing `zabacode.i18n`); replaced.
 - Traceback line numbers were offset by the injected `SAFE_INPUT_PATCH` prelude.
 - Race condition: `InteractiveSession` is now guarded by an `RLock` under `threads=4`.
 - Flask served `assets/` at `/assets`, 404-ing every bundled asset; `static_url_path` pinned.
 
 ### Security
-- Removed `ssl._create_unverified_context()` fallback in the PyPI installer (MITM → RCE);
-  wheels are now verified against PyPI's published SHA-256.
+- Removed `ssl._create_unverified_context()` fallback in the PyPI installer (MITM → RCE); wheels are now verified against PyPI's published SHA-256.
 - API keys no longer encrypted with a hardcoded source-code key.
 
 ### Removed
 - `zabacode/ui/` — 1,492 lines of unreachable Kivy code superseded by the WebView shell.
 
 ### Notes
-- Test suite: 77 → **122 passing**. Requires an APK rebuild.
+- Test suite: 77 → 122 passing. Requires an APK rebuild.
+
+## [1.0.0] — 2026-07-21 — WebView Shell + Modular Core
+
+### Added
+- WebView Shell (Flask + Waitress @ 127.0.0.1:5000) + Ace Editor bundled offline
+- Interactive Execution: `/api/run/interactive/start|output|input|stop` with real-time streaming, STDIN, EXECUTE as STOP
+- Multi-Tab Editor with auto-save debounce 500ms, native fallback
+- Touch Context Menu floating trigger `•••`
+- Theme Engine (10 themes), Plugin Marketplace (12+ plugins, 8 snippets, 5 transform)
+- Library Manager (50+ libs, tier/mode, verified TLS + SHA-256)
+- 6 AI Providers + Oracle fallback
+- Security: X-Zabacode-Token, Keystore, CSP, path validation, subprocess timeout
+- Tests: 132 passing

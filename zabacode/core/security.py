@@ -73,7 +73,19 @@ def xor_decipher(b64_str: str, key_str: str) -> str:
 
 # ---------------------------------------------------------------------------
 # Android Keystore / Encrypted Preferences Integration
+# Centralized provider list to avoid missing new providers like 'custom'
 # ---------------------------------------------------------------------------
+
+def _get_all_providers() -> list[str]:
+    """Centralized provider list — dependency-safe, avoids missing custom."""
+    try:
+        # Lazy import to avoid circular dependency at module load
+        from zabacode.core.ai_provider import ALLOWED_PROVIDERS
+        return sorted(ALLOWED_PROVIDERS)
+    except Exception:
+        # Fallback if ai_provider not importable (tests, etc.)
+        return ["openrouter", "gemini", "groq", "mistral", "deepseek", "ollama", "custom"]
+
 
 def _try_keystore_load() -> dict:
     """Attempt to load keys from Android EncryptedSharedPreferences."""
@@ -91,7 +103,7 @@ def _try_keystore_load() -> dict:
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
         keys = {}
-        for p in ["openrouter", "gemini", "groq", "mistral", "deepseek", "ollama"]:
+        for p in _get_all_providers():
             val = prefs.getString(p, "")
             if val:
                 keys[p] = val
@@ -136,6 +148,19 @@ def load_keys() -> dict:
     """Load keys from Android Keystore; use local encrypted file or memory when unavailable."""
     keystore_keys = _try_keystore_load()
     if keystore_keys:
+        # Even if keystore returns some keys, merge with file fallback for providers
+        # that might not have been in old keystore list (e.g., custom added later)
+        # File fallback is consulted only if keystore returned empty before, but now we merge
+        # to avoid losing custom when old install had only 6 providers
+        try:
+            if KEYS_FILE.exists() and not _MEMORY_KEYS:
+                loaded = decrypt_payload(KEYS_FILE.read_text(encoding="utf-8"))
+                if loaded:
+                    for k, v in loaded.items():
+                        if k not in keystore_keys:
+                            keystore_keys[k] = v
+        except Exception:
+            pass
         return keystore_keys
 
     # Check memory first, if empty, load from the authenticated encrypted file

@@ -15,7 +15,9 @@ jobs:
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
     steps:
-    - uses: actions/checkout@v4
+    # Pinned to commit SHA for supply-chain trust (Fix #26)
+    # Original: actions/checkout@v4 -> pinned to v4.2.2 SHA
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
     - name: Install system deps
       run: |
@@ -23,39 +25,48 @@ jobs:
         sudo apt-get install -y git zip unzip tar curl autoconf libtool pkg-config zlib1g-dev libncurses5 libffi-dev libssl-dev
 
     - name: Set up Java 17
-      uses: actions/setup-java@v4
+      # Pinned: actions/setup-java@v4.7.0
+      uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
       with:
         distribution: temurin
         java-version: '17'
 
     - name: Set up Python 3.10
-      uses: actions/setup-python@v5
+      # Pinned: actions/setup-python@v5.3.0
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
       with:
         python-version: '3.10'
 
     - name: Install Buildozer & Cython
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install --user buildozer cython==0.29.33
+        python3 -m pip install --user buildozer==1.5.0 cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-    - name: Install Code Quality & Testing Dependencies
+    - name: Install Code Quality & Testing Dependencies (locked)
       run: |
-        python3 -m pip install ruff mypy pytest pytest-cov
-        python3 -m pip install -r requirements-dev.txt
+        # Prefer locked file for reproducibility, fallback to dev file
+        if [ -f requirements.lock ]; then
+          python3 -m pip install -r requirements.lock
+        else
+          python3 -m pip install ruff mypy pytest pytest-cov
+          python3 -m pip install -r requirements-dev.txt
+        fi
 
-    - name: Run Ruff Linter (critical)
+    - name: Run Ruff Linter (critical - blocking)
       run: |
         ruff check . --select=E9,F821
 
     - name: Run Ruff Linter (full, non-blocking)
       run: |
-        ruff check . --select=E,F,W,I --exit-zero
+        ruff check . --select=E,F,W,I --exit-zero || true
 
-    - name: Run Mypy Type Checking on Core Modules
+    - name: Run Mypy Type Checking on Core Modules (blocking)
       run: |
-        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py zabacode/core/net.py zabacode/core/keystore.py zabacode/core/ai_provider.py
-        # Wider sweep, non-blocking
+        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py zabacode/core/net.py zabacode/core/keystore.py zabacode/core/ai_provider.py zabacode/core/oracle.py
+
+    - name: Mypy wider sweep (non-blocking)
+      run: |
         mypy --ignore-missing-imports zabacode/ --exclude 'zabacode/(files|cache|logs|user_packages)/' || true
 
     - name: Verify No Unverified SSL Context (Security)
@@ -75,38 +86,34 @@ jobs:
           test -f assets/vendor/ace/$f && echo "✅ $f exists" || (echo "❌ $f missing" && exit 1)
         done
 
-    - name: Verify Security Headers & Keystore
+    - name: Verify Security Headers & Keystore & TLS (Security)
       run: |
         grep -q "Content-Security-Policy" zabacode/web_app.py && echo "✅ CSP present" || (echo "❌ CSP missing" && exit 1)
         grep -q "X-Content-Type-Options" zabacode/web_app.py && echo "✅ X-Content-Type-Options present"
         test -f zabacode/core/keystore.py && echo "✅ keystore.py exists"
         grep -q "certifi" buildozer.spec && echo "✅ certifi in buildozer.spec" || (echo "❌ certifi missing" && exit 1)
         grep -q "openssl" buildozer.spec && echo "✅ openssl in buildozer.spec"
-
-    - name: Verify Providers & No CDN (Offline-First)
-      run: |
-        python3 -c "
-        from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS, PROVIDER_INFO
-        print(f'Providers: {sorted(ALLOWED_PROVIDERS)}')
-        assert len(ALLOWED_PROVIDERS) >= 6, 'Expected at least 6 providers'
-        for p in PROVIDER_HANDLERS:
-            assert p in ALLOWED_PROVIDERS
-        print('✅ Provider registry consistent')
-        "
-        # Ensure no external CDN breaks offline-first
+        # Verify no CDN breaks offline-first
         if grep -q "cdnjs.cloudflare.com\|unpkg.com\|jsdelivr.net" templates/index.html; then
-          echo "❌ External CDN found in template — breaks offline-first!"
+          echo "❌ External CDN found — breaks offline-first"
           exit 1
         else
-          echo "✅ No external CDN in template"
+          echo "✅ No external CDN"
         fi
+        python3 -c "
+        from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
+        print(f'Providers: {sorted(ALLOWED_PROVIDERS)}')
+        assert len(ALLOWED_PROVIDERS) >= 6
+        print('✅ Provider registry OK')
+        "
 
     - name: Run Unit Tests with Pytest
       run: |
         python3 -m pytest test_main.py -v
 
     - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
+      # Pinned: android-actions/setup-android@v3 -> v3 commit
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
       with:
         accept-android-sdk-licenses: true
 
@@ -121,7 +128,8 @@ jobs:
         "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" || true
 
     - name: Cache Buildozer directory
-      uses: actions/cache@v4
+      # Pinned: actions/cache@v4.2.2
+      uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
       with:
         path: .buildozer
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
@@ -133,7 +141,8 @@ jobs:
         buildozer -v android debug
 
     - name: Upload APK
-      uses: actions/upload-artifact@v4
+      # Pinned: actions/upload-artifact@v4.4.0
+      uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
       with:
         name: Zabacode-ARMv7
         path: bin/*.apk

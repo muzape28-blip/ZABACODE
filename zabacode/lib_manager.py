@@ -481,13 +481,14 @@ def install_library(name: str) -> dict:
         env["PIP_NO_CACHE_DIR"] = "1"
         env["PYTHONKEYRINGBACKEND"] = "keyring.backends.null.Keyring"
         
+        # Fix #22: Preserve TLS verification — no --trusted-host bypass
+        # Previously: --trusted-host pypi.org + files.pythonhosted.org disabled TLS verification for those hosts
+        # Now: Verified TLS retained, with actionable CA-bundle error via TLS_HELP_MESSAGE
         cmd = [
             sys.executable, "-m", "pip", "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
             "--prefer-binary",
-            "--trusted-host", "pypi.org",
-            "--trusted-host", "files.pythonhosted.org",
             "--target", str(USER_PACKAGES_DIR),
             name
         ]
@@ -499,7 +500,17 @@ def install_library(name: str) -> dict:
         if res.returncode == 0:
             return {"ok": True, "message": f"'{name}' installed via Pip!"}
         else:
-            friendly_err = f"Installation of '{name}' failed.\n\nDirect Extractor Log:\n{msg}\n\nPip Subprocess Log:\n{res.stderr or res.stdout}"
+            # Include TLS help if pip failed due to certificate issues
+            stderr_lower = (res.stderr or "").lower()
+            if "certificate" in stderr_lower or "ssl" in stderr_lower or "tls" in stderr_lower:
+                friendly_err = (
+                    f"Installation of '{name}' failed due to TLS/certificate issue.\n\n"
+                    f"{TLS_HELP_MESSAGE}\n\n"
+                    f"Direct Extractor Log:\n{msg}\n\n"
+                    f"Pip Subprocess Log:\n{res.stderr or res.stdout}"
+                )
+            else:
+                friendly_err = f"Installation of '{name}' failed.\n\nDirect Extractor Log:\n{msg}\n\nPip Subprocess Log:\n{res.stderr or res.stdout}"
             return {"ok": False, "message": friendly_err}
     except Exception as e:
         friendly_err = f"Installation of '{name}' failed.\n\nDirect Extractor Log:\n{msg}\n\nPip Exception Log:\n{e}"

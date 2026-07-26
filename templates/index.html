@@ -675,6 +675,25 @@ print('Try running libraries or executing code here!')
           </div>
           <span style="color: var(--text-dim); font-size: 11px;">Configure manual API Keys for OpenRouter, Google Gemini, Groq, Mistral, and DeepSeek.</span>
         </div>
+
+        <!-- Setting Card 7: Privacy — Local Drafts (Fix #21) -->
+        <div class="settings-card" id="btn-settings-privacy" style="background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-weight: bold; color: var(--text-bright); font-size: 14px;">🔒 Privacy: Local Drafts</span>
+            <span id="label-settings-privacy" style="font-family: var(--mono); font-size: 11px; background: rgba(57,255,20,0.1); color: var(--text-bright); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-bright);">ON</span>
+          </div>
+          <span style="color: var(--text-dim); font-size: 11px;">
+            Unsaved tabs are saved in WebView <b>localStorage</b> (device-only, not server). On shared/unlocked devices, this can expose credentials or proprietary code. Disable persistence or clear drafts with one click. No encryption — localStorage is plain text.
+          </span>
+          <div style="display:flex; gap:8px; margin-top:4px; flex-wrap:wrap;">
+            <button id="privacy-clear-btn" class="mini-btn" style="border-color: var(--err); color: var(--err);">🗑️ Clear Local Drafts</button>
+            <button id="privacy-toggle-btn" class="mini-btn" style="border-color: var(--border-bright);">Toggle Persistence (Opt-in/Opt-out)</button>
+          </div>
+          <span style="color: var(--text-dim); font-size: 10px; margin-top:4px;">
+            Current: <span id="privacy-status-text">Checking...</span><br>
+            Docs: SECURITY.md → Privacy section
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -1101,13 +1120,59 @@ window.addEventListener('pageshow', (e) => {
   }
 })();
 
-// ---------- Multi-Tab File System Manager ----------
+// ---------- Multi-Tab File System Manager + Privacy Controls (Fix #21) ----------
+function isPersistEnabled() {
+  // Default: true for backward compat, but user can opt-out via toggle
+  // Explicitly check for 'false' string, everything else means enabled
+  return localStorage.getItem('zabacode-persist-drafts') !== 'false';
+}
+
+function updatePrivacyUI() {
+  const enabled = isPersistEnabled();
+  const label = document.getElementById('label-settings-privacy');
+  const statusText = document.getElementById('privacy-status-text');
+  if (label) {
+    label.textContent = enabled ? 'ON' : 'OFF';
+    label.style.background = enabled ? 'rgba(57,255,20,0.1)' : 'rgba(255,75,75,0.1)';
+    label.style.color = enabled ? 'var(--text-bright)' : 'var(--err)';
+    label.style.borderColor = enabled ? 'var(--border-bright)' : 'var(--err-dim)';
+  }
+  if (statusText) {
+    const tabsData = localStorage.getItem('zabacode-tabs');
+    const size = tabsData ? `${tabsData.length} chars / ${Math.round(tabsData.length/1024)}KB` : 'empty';
+    statusText.innerHTML = `${enabled ? 'Persistence <b>ON</b> (opt-in, device-only, plain-text localStorage)' : '<b>OFF</b> — Private/No-Persistence Mode (tabs only in memory)'}<br>`
+      + `Drafts: ${size}<br>`
+      + `Stored in: localStorage keys zabacode-tabs + zabacode-active-tab-id<br>`
+      + `Not encrypted, not sent to server, device-only. See SECURITY.md → Privacy section.`;
+  }
+}
+
 function saveTabsToStorage() {
-  localStorage.setItem('zabacode-tabs', JSON.stringify(tabs));
-  localStorage.setItem('zabacode-active-tab-id', activeTabId);
+  if (!isPersistEnabled()) {
+    console.log('Draft persistence disabled — not saving to localStorage (private mode)');
+    return;
+  }
+  try {
+    localStorage.setItem('zabacode-tabs', JSON.stringify(tabs));
+    localStorage.setItem('zabacode-active-tab-id', activeTabId);
+  } catch (e) {
+    console.warn('Failed to save tabs to localStorage', e);
+    // If quota exceeded, try clearing old drafts
+    if (e.name === 'QuotaExceededError') {
+      showToast('LocalStorage full — clearing oldest drafts', 'error');
+      try {
+        localStorage.removeItem('zabacode-tabs');
+      } catch {}
+    }
+  }
+  updatePrivacyUI();
 }
 
 function loadTabsFromStorage() {
+  if (!isPersistEnabled()) {
+    console.log('Draft persistence disabled — loading disabled (private mode)');
+    return false;
+  }
   const savedTabs = localStorage.getItem('zabacode-tabs');
   const savedActiveTabId = localStorage.getItem('zabacode-active-tab-id');
   if (savedTabs) {
@@ -1125,8 +1190,40 @@ function loadTabsFromStorage() {
   return false;
 }
 
+function clearLocalDrafts() {
+  if (confirm('Clear all locally persisted drafts from localStorage?\n\nThis will delete zabacode-tabs and active tab id from this device only. Editor content in memory will stay until reload.')) {
+    localStorage.removeItem('zabacode-tabs');
+    localStorage.removeItem('zabacode-active-tab-id');
+    showToast('✓ Local drafts cleared from device (localStorage)', 'success');
+    updatePrivacyUI();
+  }
+}
+
+function togglePersistence() {
+  const currentlyEnabled = isPersistEnabled();
+  const newValue = !currentlyEnabled;
+  localStorage.setItem('zabacode-persist-drafts', newValue ? 'true' : 'false');
+  if (!newValue) {
+    // When disabling, offer to clear existing drafts
+    if (confirm('Persistence disabled — Private/No-Persistence Mode.\n\nDo you also want to clear existing drafts from this device now?\n\n(Recommended on shared devices)')) {
+      localStorage.removeItem('zabacode-tabs');
+      localStorage.removeItem('zabacode-active-tab-id');
+      showToast('✓ Persistence OFF & drafts cleared — private mode', 'success');
+    } else {
+      showToast('Persistence OFF — new edits will not be saved to localStorage (private mode)', 'success');
+    }
+  } else {
+    showToast('Persistence ON — tabs will be saved to localStorage (device-only, plain text, opt-in)', 'success');
+    // Save current tabs now that it's enabled
+    saveTabsToStorage();
+  }
+  updatePrivacyUI();
+}
+
 // Load tabs from storage immediately on startup
 loadTabsFromStorage();
+// Initialize privacy UI after DOM ready (will be called again when settings opened)
+setTimeout(updatePrivacyUI, 500);
 
 let saveTimeout = null;
 function triggerAutoSave() {

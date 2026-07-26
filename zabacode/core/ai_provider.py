@@ -7,6 +7,7 @@ import json
 import ssl
 import urllib.request
 import urllib.error
+from typing import Any, Dict
 
 from zabacode.core.net import TLS_HELP_MESSAGE, get_ssl_context
 
@@ -199,7 +200,7 @@ def call_ollama(api_key: str, message: str, code_context: str = "", model: str =
         return _handle_url_error(e, "Ollama")
 
 
-def call_arena(api_key: str, message: str, code_context: str = "", model: str = "") -> dict:
+def call_arena(api_key: str, message: str, code_context: str = "", model: str = "") -> Dict[str, Any]:
     """
     Call Arena.ai Integration Provider — 7th provider.
     Integrated in this workspace: Arena Agent Mode.
@@ -207,14 +208,26 @@ def call_arena(api_key: str, message: str, code_context: str = "", model: str = 
     Behavior:
     - Offline-first by default (no API key needed): uses Zaba Oracle + Arena branding
     - If api_key is a URL (http...), treat as custom OpenAI-compatible endpoint
-    - If api_key is provided as token + model points to OpenRouter-style, route via TLS-verified context
-    - Always returns ok=True in offline mode to preserve ZABACODE's promise: \"You are never left staring at a dead chat window\"
+    - Always returns ok=True in offline mode to preserve ZABACODE's promise:
+      \"You are never left staring at a dead chat window\"
     """
+    # --- Local Oracle import (mypy-clean, no None assignment) ---
     try:
-        from zabacode.core.oracle import offline_reply, analyze_buffer
+        from zabacode.core.oracle import offline_reply as oracle_offline_reply
+        from zabacode.core.oracle import analyze_buffer as oracle_analyze_buffer
+        has_oracle = True
     except Exception:
-        offline_reply = None
-        analyze_buffer = None
+        has_oracle = False
+
+        def oracle_offline_reply(message: str, code: str = "") -> dict:  # type: ignore[no-redef,misc]
+            return {
+                "ok": True,
+                "reply": f"⚡ Arena (fallback): {message[:500]} | code chars={len(code)}",
+                "offline": True,
+            }
+
+        def oracle_analyze_buffer(code: str) -> dict:  # type: ignore[no-redef,misc]
+            return {"ok": True, "issues": [], "hints": [], "analysis": {}}
 
     user_content = f"Active code editor content:\n```python\n{code_context}\n```\n\nQuestion: {message}" if code_context else message
 
@@ -227,13 +240,18 @@ def call_arena(api_key: str, message: str, code_context: str = "", model: str = 
             else:
                 endpoint = endpoint + "/v1/chat/completions"
         actual_model = model if (model and model.strip()) else "arena-default"
-        body = json.dumps({
-            "model": actual_model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT + " You are also Arena Integration, running inside ZABACODE."},
-                {"role": "user", "content": user_content},
-            ],
-        }).encode()
+        body = json.dumps(
+            {
+                "model": actual_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT + " You are also Arena Integration, running inside ZABACODE.",
+                    },
+                    {"role": "user", "content": user_content},
+                ],
+            }
+        ).encode()
         req = urllib.request.Request(
             endpoint,
             data=body,
@@ -242,46 +260,67 @@ def call_arena(api_key: str, message: str, code_context: str = "", model: str = 
         try:
             with urllib.request.urlopen(req, timeout=60, context=get_ssl_context()) as resp:
                 data = json.loads(resp.read())
-            if "choices" in data and data["choices"]:
-                return {"ok": True, "reply": data["choices"][0]["message"]["content"], "provider": "arena"}
-            if "message" in data:
-                return {"ok": True, "reply": data.get("message", {}).get("content", ""), "provider": "arena"}
-            return {"ok": True, "reply": json.dumps(data)[:4000], "provider": "arena"}
+            choices = data.get("choices") if isinstance(data, dict) else None
+            if isinstance(choices, list) and len(choices) > 0:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg_obj = first.get("message")
+                    if isinstance(msg_obj, dict):
+                        content = msg_obj.get("content")
+                        if isinstance(content, str):
+                            return {"ok": True, "reply": content, "provider": "arena"}
+            # Ollama-ish shape fallback
+            if isinstance(data, dict):
+                msg_field = data.get("message")
+                if isinstance(msg_field, dict):
+                    c = msg_field.get("content")
+                    if isinstance(c, str):
+                        return {"ok": True, "reply": c, "provider": "arena"}
+                # generic dump fallback
+                return {"ok": True, "reply": json.dumps(data)[:4000], "provider": "arena"}
         except Exception:
             pass  # fall through to offline
 
-    # 2) Offline integrated mode — primary integration path
-    if offline_reply and analyze_buffer:
-        try:
-            base = offline_reply(message, code_context)
-            analysis = analyze_buffer(code_context) if code_context else {"ok": True, "issues": [], "hints": [], "analysis": {}}
-            arena_header = "⚡ ARENA INTEGRATION ACTIVE — ZABACODE x Arena.ai Agent Mode\n"
-            arena_header += "This response was generated OFFLINE inside the integrated workspace. "
-            arena_header += "No API key needed. Fully local, zero telemetry.\n\n"
-            extra = ""
-            if analysis and analysis.get("issues"):
-                extra += "\n\n🔍 **Arena Static Analysis:**\n"
-                for iss in analysis["issues"][:5]:
-                    extra += f"- {iss}\n"
-            final_reply = arena_header + base.get("reply", "") + extra
-            return {
-                "ok": True,
-                "reply": final_reply,
-                "provider": "arena",
-                "offline": True,
-                "integrated": True,
-                "workspace": "/home/user/ZABACODE",
-                "model": model or "arena-offline-v1"
-            }
-        except Exception:
-            return {
-                "ok": True,
-                "reply": f"⚡ Arena Integration: Offline assistant ready. You asked: {message[:500]}\n\nZABACODE workspace is integrated at /home/user/ZABACODE. Code context length: {len(code_context)} chars. Offline analysis via /api/oracle/analyze.",
-                "provider": "arena",
-                "offline": True
-            }
+    # 2) Offline integrated mode — primary integration path (always available)
+    try:
+        base: Dict[str, Any] = oracle_offline_reply(message, code_context)
+        if has_oracle and code_context:
+            analysis: Dict[str, Any] = oracle_analyze_buffer(code_context)
+        else:
+            analysis = {"ok": True, "issues": [], "hints": [], "analysis": {}}
 
-    return {"ok": True, "reply": f"[Arena Integration] {message} :: code_context chars={len(code_context)} :: offline mode active.", "provider": "arena"}
+        arena_header = "⚡ ARENA INTEGRATION ACTIVE — ZABACODE x Arena.ai Agent Mode\n"
+        arena_header += "This response was generated OFFLINE inside the integrated workspace. "
+        arena_header += "No API key needed. Fully local, zero telemetry.\n\n"
+
+        extra = ""
+        issues = analysis.get("issues") if isinstance(analysis, dict) else None
+        if isinstance(issues, list) and len(issues) > 0:
+            extra += "\n\n🔍 **Arena Static Analysis:**\n"
+            for iss in issues[:5]:
+                extra += f"- {iss}\n"
+
+        reply_text = base.get("reply", "") if isinstance(base, dict) else ""
+        if not isinstance(reply_text, str):
+            reply_text = str(reply_text)
+
+        final_reply = arena_header + reply_text + extra
+        return {
+            "ok": True,
+            "reply": final_reply,
+            "provider": "arena",
+            "offline": True,
+            "integrated": True,
+            "workspace": "/home/user/ZABACODE",
+            "model": model or "arena-offline-v1",
+        }
+    except Exception:
+        return {
+            "ok": True,
+            "reply": f"⚡ Arena Integration: Offline assistant ready. You asked: {message[:500]}\n\nZABACODE workspace is integrated at /home/user/ZABACODE. Code context length: {len(code_context)} chars. Offline analysis via /api/oracle/analyze.",
+            "provider": "arena",
+            "offline": True,
+        }
 
 
 # Provider registry

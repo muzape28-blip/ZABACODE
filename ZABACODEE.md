@@ -1,119 +1,94 @@
 # ZABACODE Roadmap & Progress Tracker
 
-**Current Version:** `v1.2.0-arena` (WebView + Arena Integrated Edition)  
+**Current Version:** `v1.2.0` (WebView + Oracle + Custom Endpoint)  
 **License:** GPL v3  
-**Lead:** Zaqi (`muzape28-blip`) + Arena.ai Agent + Contributors
+**Lead:** Zaqi (`muzape28-blip`) & Contributors
 
 ---
 
 ## 🟩 Progress Log
 
-### ⚡ v1.2.0-arena — Arena.ai Integration Edition (2026-07-26)
+### 🔧 v1.2.0 — Custom Endpoint + Cleanup (2026-07-26)
 
-**New Provider: Arena (7th) — Offline-first, Zero Telemetry, Integrated from Arena Workspace**
+**Philosophy fix: Keep useful tool, remove permanent branding**
 
-* [x] **Arena Provider** (`zabacode/core/ai_provider.py`):
-  - `ALLOWED_PROVIDERS` now 7: `openrouter, gemini, groq, mistral, deepseek, ollama, arena`
-  - `call_arena()` — offline-first by default (no key, no network), uses `offline_reply()` + `analyze_buffer()` + Arena branding
-  - Support custom endpoint: if API key is URL (`https://.../v1/chat/completions`), routes via verified TLS `get_ssl_context()`
-  - `PROVIDER_INFO["arena"]` = `Arena.ai (Integrated)` — mode offline
-* [x] **Frontend** (`templates/index.html`):
-  - Dropdown `#ai-provider` now arena first: `⚡ arena (integrated)`
-  - `PROVIDER_MODELS` adds 3 arena models: offline-v1, oracle-enhanced, custom-endpoint
-  - `callAiWithFallback()` excludes `arena` & `ollama` from key requirement
-  - Settings modal includes arena as FREE offline
-* [x] **Backend** (`zabacode/web_app.py`):
-  - `APP_VERSION = "1.2.0-arena"`
-  - Offline providers bypass key check (`is_offline_provider`)
-  - Health endpoint returns 7 providers
-* [x] **CI** — New workflow `.github/workflows/arena-integration.yml`: integration-test, build-verification, security-scan
-* [x] **Tools**: `tools/arena_sync.py` (status/verify/test-arena/prepare-push) + `tools/arena_integration_test.py` (5 tests)
-* [x] **Docs**: `INTEGRATION_ARENA.md` + README overhaul
-* [x] **Tests**: Fixed `TestTLSHardening` to be dynamic (counts providers), `TestVersion` allows 1.2.0-arena — 137 tests passing
-* [x] **Pushed to main**: commits `37fe823` + `bee0e2a` on `origin/main`
-* [x] **Removed ZMUX references** from README — ZMUX terminal independent concept postponed, not active in this version
+Based on community feedback (Claude review pointing out permanent branding pattern):
+
+* [x] **Version cleanup**: `1.2.0-arena` → `1.2.0`, removed `__integration__ = "Arena.ai Agent Mode"` from `__init__.py` — version is project identity, not tool credit
+* [x] **Provider refactor**: `arena` (offline re-branding of Oracle) → `custom` (neutral)
+  - Removed redundant offline mode (was just `oracle_offline_reply()` + label "⚡ Arena")
+  - Kept genuinely useful part: custom endpoint mode (URL as API key) → renamed `call_custom_endpoint()`, provider key `custom`, label neutral "🔧 Custom Endpoint (OpenAI-compatible)"
+  - `ALLOWED_PROVIDERS` now: `openrouter, gemini, groq, mistral, deepseek, ollama, custom` (7 total)
+  - `PROVIDER_INFO["custom"]` = Custom Endpoint, mode online, icon 🔧
+* [x] **Frontend**: `templates/index.html` → dropdown `custom` instead of `arena`, `PROVIDER_MODELS` = custom-default, openai-compatible, ollama-compatible, settings modal neutral
+* [x] **Backend**: `web_app.py` version 1.2.0, offline-only `ollama` (arena removed from offline list)
+* [x] **CI**: Deleted `.github/workflows/arena-integration.yml` which gated build on word "arena" — moved useful security checks (no unverified SSL, Ace bundled, CSP, certifi, no CDN) into `build_apk.yml` as general checks without branding gate
+* [x] **Docs**: Deleted `INTEGRATION_ARENA.md` (contained branding + credits), deleted `tools/arena_sync.py` + `tools/arena_integration_test.py` (arena-specific)
+* [x] **README overhaul**: Removed Arena Integrated badge, Arena CI badge, removed Arena from boot box, removed `INTEGRATION_ARENA.md` references, removed Arena from Core Team credits — now only Zaqi + Contributors (community-owned)
+* [x] **Philosophy preserved**: Tools help debug/review, identity stays with community — added explicit note in CONTRIBUTING: "cuma cek/fix bug, jangan nambahin fitur/branding/identitas baru tanpa nanya dulu"
+* [x] **Mypy fix**: `ai_provider.py` mypy-clean (no None assignment to Callable, safe isinstance checks) — `Success: no issues found`
+* [x] **Tests**: 132 passing (neutral)
+
+**Note:** Original Arena offline mode was Oracle re-branded — Oracle remains true offline brain, custom endpoint is optional online extension for self-hosting.
+
+### ⚡ v1.2.0-arena — Arena Integration Attempt (2026-07-26) — SUPERSEDED by v1.2.0 cleanup
+
+*History kept for transparency — this version had permanent branding that conflicted with anti-capitalist philosophy:*
+
+* [x] Added `arena` provider with offline re-branding (later identified as duplicate of Oracle)
+* [x] Added CI gate that failed if branding word "arena" removed
+* [x] Added `__integration__` field and `-arena` suffix to version
+* [x] Added `INTEGRATION_ARENA.md` with Arena in Credits
+
+**→ All reverted/cleaned in v1.2.0 final**
 
 ### 🔒 v1.1.0 — Hardening & Zaba Oracle (2026-07-25)
 
-**Major Security & Offline Intelligence Release**
-
-* [x] **Zaba Oracle** (`zabacode/core/oracle.py`): offline code intelligence
-  - `humanize_traceback()` — 20+ error families to plain English + fix
-  - `analyze_buffer()` — AST review: deep nesting, mutable defaults, unreachable, static 10/0, security risk
-  - `offline_reply()` — rule-based tsundere assistant, no key, no network
-  - Endpoints: `/api/oracle/explain`, `/api/oracle/analyze`, auto fallback in `/api/ai/chat`
-* [x] **TLS Hardening** — Fixed `CERTIFICATE_VERIFY_FAILED` across all 6 providers:
-  - Added `certifi` + `openssl` to `buildozer.spec`
-  - `zabacode/core/net.py` shared verified SSL context
-  - Every `urlopen` passes `context=get_ssl_context()`
-* [x] **Keystore** — `zabacode/core/keystore.py`: authenticated AES-GCM at-rest encryption, no hardcoded key
-* [x] **Ace Bundled** — Ace 1.32.4 in `assets/vendor/ace/` — genuinely offline, no CDN
-* [x] **Security Headers** — CSP `default-src 'self'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`
-* [x] **Fixes**: `/api/translations` 500, traceback line offset via `PRELUDE_LINE_COUNT`, `InteractiveSession` RLock guarded, Flask `static_url_path` pinned
-* [x] **Cleanup**: Removed `zabacode/ui/` (1492 lines unreachable Kivy code)
-* [x] **Tests**: 77 → 122 passing
+* [x] **Zaba Oracle**: `humanize_traceback()` 20+ families, `analyze_buffer()` AST review, `offline_reply()` tsundere assistant, endpoints `/api/oracle/explain|analyze`
+* [x] **TLS Hardening**: Fixed `CERTIFICATE_VERIFY_FAILED` — added `certifi`+`openssl` to spec, `net.py` shared verified context
+* [x] **Keystore**: AES-GCM at-rest encryption, no hardcoded key
+* [x] **Ace Bundled**: 1.32.4 genuinely offline
+* [x] **Security Headers**: CSP, X-Content-Type-Options, Referrer-Policy
+* [x] **Cleanup**: Removed `zabacode/ui/` Kivy
+* [x] **Tests**: 77→122
 
 ### 🎨 v1.0.0 — WebView Shell + Modular Core (2026-07-21)
 
-* [x] **WebView Shell Restoration** — Flask + Waitress on `127.0.0.1:5000`, Ace Editor
-* [x] **Interactive Execution** — `/api/run/interactive/start|output|input|stop` with real-time streaming, STDIN via Enter, EXECUTE doubles as STOP
-* [x] **Multi-Tab Editor** — auto-save debounce 500ms, native fallback
-* [x] **Touch Context Menu** — floating trigger `•••` with Undo, Redo, Find, Palette
-* [x] **Multi-Tab FS Manager** — secure filename, no traversal
-* [x] **Theme Engine** — 10 themes (Retro, Dracula, Tokyo Night, Catppuccin Mocha, etc.)
-* [x] **Plugin Marketplace** — 12+ plugins + 8 snippets + 5 transform plugins (v1.1.0)
-* [x] **Library Manager** — 50+ libs with tier/mode, verified TLS + SHA-256
-* [x] **AI Providers** — 6 providers (OpenRouter, Gemini, Groq, Mistral, DeepSeek, Ollama offline)
-* [x] **Security**: `X-Zabacode-Token` auth, Android Keystore, CSP, path validation, subprocess timeout
-* [x] **Dev Tooling**: ruff, mypy, pytest — 132 tests
+* [x] WebView shell, Ace Editor, multi-tab, touch context menu, interactive exec, theme engine, plugin marketplace, library manager, 6 providers + Oracle fallback, 132 tests
+* [x] Hotfix: restored `templates/index.html` 0 bytes
 
-### 🩹 Hotfix — WebView UI Restoration (2026-07-21)
+### 📦 v0.3.5 and earlier
 
-* [x] Restored `templates/index.html` (was 0 bytes in PR #4)
-* [x] Removed stale `zabacode_crash.log`, fixed `.gitignore`
-
-### 📦 v0.3.5 and earlier (Pre v1.0)
-
-* [x] Local Session Auth Token (`X-Zabacode-Token`)
-* [x] Real Android Keystore Integration
-* [x] Plugin & Theme Marketplace
-* [x] PyPI direct extractor (now verified TLS, not bypass)
-* [x] Monaco Mobile Soft Keyboard Focus → replaced by Ace touch handling
-* [x] XSS HTML Sanitization
+* [x] Auth token, Keystore, Marketplace, PyPI extractor (now verified TLS)
 
 ---
 
-## 🚧 Postponed / Not Active (Removed from README)
+## 🚧 Postponed / Not Active
 
-* **ZMUX Independent Terminal**: The concept of a full Termux-like independent terminal with `zmux_bin/.shims/`, launcher alias injection, `noexec` bypass, and integrated Termux commands (`pkg`, `apt`, etc.) is **postponed**. It was documented in README v1.0 but removed now because:
-  - Requires more Android-specific testing
-  - Needs command branching design (Termux command tree) + POSIX compliance research
-  - Current execution model is isolated subprocess sandbox — simpler, more secure, sufficient for Python IDE
-
-  If/when ZMUX returns, it will be as `v2.0` major feature with its own spec in `docs/zmux-spec.md`, not mixed in main README.
+* **ZMUX Independent Terminal**: Postponed — needs Termux command branching + `noexec` bypass research. Doc removed from README, future spec in `docs/zmux-spec.md` if revived.
+* **Arena offline re-branding**: Removed — Oracle is true offline intelligence, no need duplicate labeling
 
 ---
 
 ## 📊 Version Map
 
-| Version | Nickname | Core | AI Providers | Key Milestone |
-| :--- | :--- | :--- | :--- | :--- |
-| v0.3.5 | WebView Early | Flask + Monaco | 4 | Auth token, Keystore, Marketplace |
-| v1.0.0 | WebView Modular | Flask + Ace Bundled | 6 + Oracle fallback | Multi-tab, Interactive exec, 10 themes |
-| v1.1.0 | Hardening + Oracle | Flask + Ace + Oracle | 6 + Oracle offline | TLS fix, Keystore AES-GCM, CSP, Oracle full |
-| **v1.2.0-arena** | **Arena Integrated** | **Flask + Ace + Oracle + Arena** | **7 + Oracle** | **Arena 7th provider offline-first, Arena CI, tools/arena_sync.py, README overhaul, ZMUX removed** |
+| Version | Nickname | Providers | Key Milestone |
+| :--- | :--- | :--- | :--- |
+| v0.3.5 | WebView Early | 4 | Auth, Keystore, Marketplace |
+| v1.0.0 | WebView Modular | 6+Oracle | Ace bundled, Interactive exec, 10 themes |
+| v1.1.0 | Hardening+Oracle | 6+Oracle | TLS fix, Keystore AES-GCM, Oracle full |
+| v1.2.0-arena | Arena Attempt | 7+Oracle (with branding) | Superseded — branding conflict |
+| **v1.2.0** | **Custom Endpoint** | **7 (6+custom)+Oracle** | **Neutral custom endpoint, cleanup, mypy fix, philosophy-aligned** |
 
 ---
 
-## 🎯 Next (Ideas)
+## 🎯 Next
 
-* [ ] Arena push-notify endpoint (`/api/arena/notify`) for workspace → Android
-* [ ] Voice TTS for Oracle explanations
-* [ ] File manager sync with Arena workspace FS
-* [ ] More offline starter kits (argparse CLI, Flask mini, SQLite Todo)
-* [ ] APK size optimization (Ace tree-shaking)
-* [ ] Optional ZMUX v2 spec (when ready)
+* [ ] Custom endpoint docs in `docs/custom-endpoint.md` (how to use with Ollama, vLLM, LocalAI)
+* [ ] Voice TTS for Oracle
+* [ ] More offline starter kits
+* [ ] Optional ZMUX v2 spec
 
 ---
 
-<p align="center"><b>v1.2.0-arena — ZABACODE x Arena.ai — Offline First, Fully Integrated</b></p>
+<p align="center"><b>v1.2.0 — Community-owned, Tools as Tools</b></p>

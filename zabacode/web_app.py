@@ -1,4 +1,4 @@
-"""WebView shell for the ZABACODE v1.2.0-arena core — Arena.ai integrated."""
+"""WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle."""
 
 import functools
 from pathlib import Path
@@ -25,7 +25,7 @@ from zabacode.plugins.registry import get_all_plugins
 from zabacode.plugins.implementations import PluginExecutor
 from zabacode.themes.definitions import get_theme, list_themes
 
-APP_VERSION = "1.2.0-arena"
+APP_VERSION = "1.2.0"
 MAX_AI_FIELD_CHARS = 100_000
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -256,8 +256,8 @@ def ai_chat():
     allow_offline = payload.get("allow_offline", True)
 
     api_key = load_keys().get(provider)
-    # Arena & Ollama are offline-first integrated providers — no key required
-    is_offline_provider = provider in ("arena", "ollama")
+    # Ollama is offline-first (no key required), custom requires URL as key
+    is_offline_provider = provider in ("ollama",)
     if not api_key and not is_offline_provider:
         if allow_offline:
             fallback = offline_reply(message, code)

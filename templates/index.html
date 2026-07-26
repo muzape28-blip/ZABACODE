@@ -583,13 +583,13 @@ print('Try running libraries or executing code here!')
     <div id="ai-panel-header">
       zabacode ai
       <select id="ai-provider">
-        <option value="arena">⚡ arena (integrated)</option>
         <option value="openrouter">openrouter</option>
         <option value="gemini">gemini</option>
         <option value="groq">groq</option>
         <option value="mistral">mistral</option>
         <option value="deepseek">deepseek</option>
         <option value="ollama">ollama</option>
+        <option value="custom">🔧 custom endpoint</option>
       </select>
       <button id="ai-close">✕</button>
     </div>
@@ -1333,12 +1333,13 @@ async function openAiKeysConfig() {
   listContainer.innerHTML = '';
 
   const onlineProviders = [
-    { id: 'arena', name: 'Arena.ai (Integrated)', icon: '⚡', desc: 'Arena Offline v1 + Custom Endpoint [FREE, No Key]' },
     { id: 'openrouter', name: 'OpenRouter', icon: '🌐', desc: 'Qwen 2.5, Llama 3.3, Gemini 2.5 (free & paid)' },
     { id: 'gemini', name: 'Google Gemini', icon: '✨', desc: 'Gemini 1.5 Flash' },
     { id: 'groq', name: 'Groq', icon: '⚡', desc: 'Llama 3.1 8B (ultra-fast)' },
     { id: 'mistral', name: 'Mistral', icon: '🌀', desc: 'Codestral' },
-    { id: 'deepseek', name: 'DeepSeek', icon: '🔍', desc: 'DeepSeek Coder' }
+    { id: 'deepseek', name: 'DeepSeek', icon: '🔍', desc: 'DeepSeek Coder' },
+    { id: 'custom', name: 'Custom Endpoint', icon: '🔧', desc: 'OpenAI-compatible URL (e.g. http://192.168.1.10:11434/v1)' },
+    { id: 'ollama', name: 'Ollama (Local)', icon: '🖥️', desc: 'Local Ollama - No Key Required' }
   ];
 
   onlineProviders.forEach(prov => {
@@ -2511,10 +2512,10 @@ if (keyDialogSave) {
 }
 
 const PROVIDER_MODELS = {
-  arena: [
-    { id: "arena-offline-v1", name: "⚡ Arena Offline v1 [INTEGRATED + FREE]" },
-    { id: "arena-oracle-enhanced", name: "Arena + Zaba Oracle [OFFLINE]" },
-    { id: "arena-custom-endpoint", name: "Arena Custom Endpoint [URL as API Key]" }
+  custom: [
+    { id: "custom-default", name: "🔧 Custom Endpoint — Default" },
+    { id: "custom-openai-compatible", name: "OpenAI Compatible (e.g. /v1/chat/completions)" },
+    { id: "custom-ollama-compatible", name: "Ollama Compatible (e.g. http://192.168.1.10:11434/v1)" }
   ],
   openrouter: [
     { id: "qwen/qwen-2.5-coder-32b-instruct:free", name: "Qwen 2.5 Coder 32B [FREE]" },
@@ -2594,8 +2595,9 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
 
   const provider = originalProvider;
 
-  // arena & ollama are offline-first, no key required — they are integrated in Arena workspace
-  if (provider !== 'ollama' && provider !== 'arena' && !keysStatus[provider]) {
+  // ollama is offline-first, no key required
+  if (provider !== 'ollama' && !keysStatus[provider]) {
+    // custom requires URL as key, still needs key
     openKeyDialog(provider);
     return null;
   }

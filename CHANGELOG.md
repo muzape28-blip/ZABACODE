@@ -7,7 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.0-arena] - 2026-07-26 — Arena Integration + Repository Cleanup
+## [1.2.0] - 2026-07-26 — Custom Endpoint + Philosophy Cleanup (final)
+
+### Philosophy
+- **Goal:** Tools as tools, identity stays with community — per Claude review feedback
+- **Problem in 1.2.0-arena:** Arena branding was permanently embedded: `__version__ = "1.2.0-arena"`, `__integration__` field, CI workflow `arena-integration.yml` that FAILED build if word "arena" removed, credits listing tool as co-author, roadmap toward deeper integration (push notify, FS sync)
+- **Solution in 1.2.0 final:** Keep genuinely useful feature (custom endpoint), remove permanent branding
+
+### Changed
+- `zabacode/__init__.py`: `1.2.0-arena` → `1.2.0`, removed `__integration__ = "Arena.ai Agent Mode"`
+- `zabacode/core/ai_provider.py`: `arena` → `custom`
+  - Removed redundant offline mode (was just `oracle_offline_reply()` + label "⚡ Arena" — duplicate of Oracle, no new capability)
+  - Kept useful: custom endpoint mode (URL as API key) → `call_custom_endpoint()`, provider `custom`, neutral label "🔧 Custom Endpoint (OpenAI-compatible)", verified TLS
+  - `ALLOWED_PROVIDERS` still 7: openrouter, gemini, groq, mistral, deepseek, ollama, custom
+  - `PROVIDER_INFO["custom"]` neutral, no branding
+- `templates/index.html`: dropdown `arena` → `custom`, `PROVIDER_MODELS` neutral (custom-default, openai-compatible, ollama-compatible), offline check only `ollama` (not arena)
+- `zabacode/web_app.py`: `1.2.0-arena` → `1.2.0`, offline provider only ollama
+- `README.md`: Removed Arena Integrated badge + Arena CI badge, boot box now "7 AI Providers: .../Custom", Key Features 1 now "Custom Endpoint — Bring Your Own LLM" (neutral, no Arena branding), Core Team only Zaqi + Contributors, removed INTEGRATION_ARENA.md references, philosophy note "Community-owned — no single tool permanently branded"
+- `ZABACODEE.md`: Rewrote to v1.2.0 neutral, added philosophy fix section, added Postponed section for ZMUX and arena offline re-branding, version map includes 1.2.0-arena superseded
+- CI: Merged useful security checks from `arena-integration.yml` (no unverified SSL, Ace bundled, CSP, certifi, no CDN) into `build_apk.yml` as general checks without branding gate
+
+### Removed
+- `.github/workflows/arena-integration.yml` — deleted (was gating build on word "arena")
+- `INTEGRATION_ARENA.md` — deleted (contained branding + credits)
+- `tools/arena_sync.py` + `tools/arena_integration_test.py` — deleted (arena-specific)
+- ZMUX docs already removed in previous commit, kept postponed note
+
+### Fixed
+- Mypy errors in previous `call_arena`: `Incompatible types in assignment (None vs Callable)`, `Function could always be true in boolean context`, `Any | object not indexable` — fixed by fallback function definitions matching exact oracle signatures, safe isinstance checks — now `Success: no issues found in 5 source files`
+- Tests: 132 passing (neutral)
+
+### Security
+- Custom endpoint uses shared verified `get_ssl_context()` + certifi — no new attack surface
+- Removal of arena CI gate reduces coupling, philosophy-aligned
+
+### Notes
+- This is the clean, philosophy-aligned final for v1.2.0 — useful tool kept, permanent branding removed
+
+---
+
+## [1.2.0-arena] - 2026-07-26 — Arena Integration + Repository Cleanup (SUPERSEDED)
 
 ### Added
 - **Arena.ai Integration (7th Provider)** (`zabacode/core/ai_provider.py`):

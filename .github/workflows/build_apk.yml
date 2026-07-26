@@ -3,6 +3,8 @@ name: Build ZABACODE APK
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -42,17 +44,62 @@ jobs:
         python3 -m pip install ruff mypy pytest pytest-cov
         python3 -m pip install -r requirements-dev.txt
 
-    - name: Run Ruff Linter
+    - name: Run Ruff Linter (critical)
       run: |
         ruff check . --select=E9,F821
-        # Non-blocking broader lint (unused imports, dead vars, import order)
+
+    - name: Run Ruff Linter (full, non-blocking)
+      run: |
         ruff check . --select=E,F,W,I --exit-zero
 
     - name: Run Mypy Type Checking on Core Modules
       run: |
-        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py zabacode/core/net.py zabacode/core/keystore.py
-        # Wider sweep, non-blocking until the 5 pre-existing errors are cleared
+        mypy --ignore-missing-imports zabacode/core/security.py zabacode/core/executor.py zabacode/core/net.py zabacode/core/keystore.py zabacode/core/ai_provider.py
+        # Wider sweep, non-blocking
         mypy --ignore-missing-imports zabacode/ --exclude 'zabacode/(files|cache|logs|user_packages)/' || true
+
+    - name: Verify No Unverified SSL Context (Security)
+      run: |
+        if grep -R "ssl._create_unverified_context" zabacode/ --exclude-dir=user_packages; then
+          echo "❌ Found unverified SSL context — this reopens MITM/RCE hole!"
+          exit 1
+        else
+          echo "✅ No unverified SSL context"
+        fi
+
+    - name: Verify Ace Editor Bundled (Offline-First)
+      run: |
+        ls -lh assets/vendor/ace/ace.js
+        test -f assets/vendor/ace/ace.js && echo "✅ Ace bundled" || (echo "❌ Ace missing" && exit 1)
+        for f in mode-python.js theme-tomorrow_night_eighties.js ext-settings_menu.js ext-language_tools.js ext-searchbox.js; do
+          test -f assets/vendor/ace/$f && echo "✅ $f exists" || (echo "❌ $f missing" && exit 1)
+        done
+
+    - name: Verify Security Headers & Keystore
+      run: |
+        grep -q "Content-Security-Policy" zabacode/web_app.py && echo "✅ CSP present" || (echo "❌ CSP missing" && exit 1)
+        grep -q "X-Content-Type-Options" zabacode/web_app.py && echo "✅ X-Content-Type-Options present"
+        test -f zabacode/core/keystore.py && echo "✅ keystore.py exists"
+        grep -q "certifi" buildozer.spec && echo "✅ certifi in buildozer.spec" || (echo "❌ certifi missing" && exit 1)
+        grep -q "openssl" buildozer.spec && echo "✅ openssl in buildozer.spec"
+
+    - name: Verify Providers & No CDN (Offline-First)
+      run: |
+        python3 -c "
+        from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS, PROVIDER_INFO
+        print(f'Providers: {sorted(ALLOWED_PROVIDERS)}')
+        assert len(ALLOWED_PROVIDERS) >= 6, 'Expected at least 6 providers'
+        for p in PROVIDER_HANDLERS:
+            assert p in ALLOWED_PROVIDERS
+        print('✅ Provider registry consistent')
+        "
+        # Ensure no external CDN breaks offline-first
+        if grep -q "cdnjs.cloudflare.com\|unpkg.com\|jsdelivr.net" templates/index.html; then
+          echo "❌ External CDN found in template — breaks offline-first!"
+          exit 1
+        else
+          echo "✅ No external CDN in template"
+        fi
 
     - name: Run Unit Tests with Pytest
       run: |
@@ -73,7 +120,6 @@ jobs:
         yes | "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" --licenses || true
         "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" || true
 
-    # TAMBAHAN CACHE DI SINI: Biar build selanjutnya ngebut dan nggak dari nol!
     - name: Cache Buildozer directory
       uses: actions/cache@v4
       with:

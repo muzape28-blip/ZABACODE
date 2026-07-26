@@ -2596,11 +2596,22 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
 
   const provider = originalProvider;
 
-  // ollama is offline-first, no key required
-  if (provider !== 'ollama' && !keysStatus[provider]) {
-    // custom requires URL as key, still needs key
-    openKeyDialog(provider);
-    return null;
+  // Track if key missing — we still want Oracle fallback as savior for boncos users
+  const hasNoKey = (provider !== 'ollama' && !keysStatus[provider]);
+  if (hasNoKey) {
+    console.log(`No key for ${provider}, will try Oracle fallback first`);
+    // Don't return null — let server try Oracle fallback
+    // Show hint toast instead of blocking dialog
+    // We open key dialog as non-blocking hint after a short delay
+    setTimeout(() => {
+      // Only open dialog if user is on an online provider that truly needs key
+      // Custom endpoint needs URL, but Oracle fallback still works
+      if (provider !== 'custom' || !keysStatus[provider]) {
+        // Optional: show dialog as hint, but don't block Oracle
+        // openKeyDialog(provider);
+        showToast(`No key for ${provider} — using Oracle fallback (savior for boncos)`, 'loading');
+      }
+    }, 100);
   }
 
   const model = originalModel;
@@ -2634,7 +2645,7 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
     );
 
     if (isRateLimit) {
-      showToast("GET SOME MONEY AND PAY YOUR BILING", "error");
+      showToast("Provider limit — Oracle fallback (savior for boncos)", "loading");
       if (billingDialogBackdrop) {
         const billingMsg = document.getElementById('billing-dialog-message');
         if (billingMsg && data.message) {
@@ -2642,12 +2653,67 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
         }
         billingDialogBackdrop.classList.add('open');
       }
-      return null;
+      // Try Oracle savior via server fallback (allow_offline=true)
+      try {
+        const fallbackRes = await fetchApi('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'custom', message: message, model: originalModel, code: getEditorValue(), allow_offline: true })
+        });
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData.ok && fallbackData.reply) {
+          return fallbackData.reply;
+        }
+      } catch (e) {
+        console.log("Oracle fallback attempt failed", e);
+      }
+      // If still failing, try direct oracle explain if message contains traceback
+      try {
+        if (message && message.length > 30) {
+          const expRes = await fetchApi('/api/oracle/explain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stderr: message })
+          });
+          const expData = await expRes.json();
+          if (expData.ok) {
+            return `🔮 Zaba Oracle (offline savior — boncos mode)\n\n**${expData.title}** (line ${expData.line || '?'})\n\n${expData.what}\n\n**Fix:** ${expData.fix}\n\n_Provider limit reached, but I'm here — no key, no quota._`;
+          }
+        }
+      } catch {}
+      return `🔮 Zaba Oracle (offline savior)\n\nProvider ${provider} limit/quota reached (boncos). I'm taking over!\n\nYour code has ${getEditorValue().split('\n').length} lines. For error like "unterminated string literal", fix is: add missing \"\" at column where detected.\nExample: print (hello world) → print('hello world')\n\nType "fix my code" or "review my code" and I'll read your editor directly.`;
     }
 
     if (!data.ok) {
-      showToast(data.message || "Failed to get AI response", "error");
-      addMsg("Error: " + (data.message || "Unknown error"), "system-hint");
+      // If not ok but we have offline fallback reason, try Oracle
+      if (data.fallback_reason || !data.needs_key) {
+        try {
+          const fbRes = await fetchApi('/api/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: 'custom', message: message, model: originalModel, code: getEditorValue(), allow_offline: true })
+          });
+          const fbData = await fbRes.json();
+          if (fbData.ok) return fbData.reply;
+        } catch {}
+      }
+      showToast(data.message || "Failed to get AI response — trying Oracle", "error");
+      // Try Oracle as last resort
+      try {
+        const oracleRes = await fetchApi('/api/oracle/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: getEditorValue() })
+        });
+        const oracleData = await oracleRes.json();
+        if (oracleData.ok === false && oracleData.message) {
+          return `🔮 Oracle says: ${oracleData.message} (line ${oracleData.line || '?'}) — Your error is there is no "" at column, add ""`;
+        }
+        if (oracleData.ok && oracleData.notes && oracleData.notes.length > 0) {
+          return `🔮 Oracle review (savior mode):\n` + oracleData.notes.map(n => `- ${n}`).join('\n');
+        }
+      } catch {}
+      addMsg("Error: " + (data.message || "Unknown error") + " — Oracle tried but no code in editor?", "system-hint");
       return null;
     }
 

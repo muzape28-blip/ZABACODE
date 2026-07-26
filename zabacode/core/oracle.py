@@ -32,7 +32,26 @@ ORACLE_SIGNATURE = "🔮 Zaba Oracle (offline)"
 # ---------------------------------------------------------------------------
 
 # (regex, title, explanation template, fix template)
+# Enhanced for v1.2.0 — more SyntaxError variants for beginner mistakes
 _ERROR_RULES: list[tuple[str, str, str, str]] = [
+    (
+        r"SyntaxError: unterminated string literal \(detected at line (\d+)\)",
+        "Unclosed String Quote! 🗨️",
+        "You started a string with `'` or `\"` but never closed it on line {0}. Python saw an opening quote and waited for the closing one, but hit end-of-line instead.",
+        "Add the matching closing quote at the same column. Example: if you wrote `print('Hello`, close it: `print('Hello')`. If you wrote `print (hello world)`, you need quotes: `print('hello world')`. Check column where it says detected.",
+    ),
+    (
+        r"SyntaxError: EOL while scanning string literal",
+        "String Not Closed Before Newline! 📝",
+        "A string was opened but you pressed Enter before closing it. Python doesn't allow multi-line single-quoted strings without explicit continuation.",
+        "Close the string on same line with matching `\"` or `'`. For multi-line text, use triple quotes: `\"\"\"your text\"\"\"` or close and use + to join.",
+    ),
+    (
+        r"SyntaxError: invalid syntax\. Perhaps you forgot a comma\?",
+        "Maybe Missing Comma or Quotes! 🧩",
+        "Python thought you forgot a comma, but often this means you wrote words without quotes inside a function call, like `print(hello world)` instead of `print('hello world')`.",
+        "Put quotes around text: `print('hello world')`. If you have multiple items, separate with commas: `print('hello', 'world')`.",
+    ),
     (
         r"NameError: name '([^']+)' is not defined",
         "Calling a Ghost! 👻",
@@ -342,6 +361,18 @@ _TSUNDERE_OPENERS = [
 
 _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
     (
+        ("fix my code", "fix this code", "how to fix", "benerin code", "perbaiki code", "tolong fix"),
+        "To fix your code:\n1. **Tell me where:** RUN first, then copy error or type 'fix my code' with code in editor — I read your buffer\n2. **Common fix:**\n   - `print (hello world)` → `print('hello world')` — add quotes around text\n   - `print('Hello` → `print('Hello')` — close quote\n   - `if x = 5:` → `if x == 5:` — use == for comparison\n3. **Tap ASK ZABA AI TO FIX THIS** in terminal after crash → I’ll say exact column + fix even if provider limit (I’m savior for boncos)\n\nIf you type 'review my code' I list all issues in editor, 'fix my code' I focus on error location.",
+    ),
+    (
+        ("print hello world", "print without quotes", "missing quotes print"),
+        "Your error is: There is no `\"\"` at column, so Python thinks `hello` and `world` are variable names, not text.\n\n**Fix:** Add quotes:\n```python\nprint('hello world')\n# or\nprint(\"hello world\")\n```\nIf you wrote `print (hello world)` → change to `print('hello world')`. If you wrote `print('Hello` → close it: `print('Hello')`.",
+    ),
+    (
+        ("unterminated string", "eol while scanning", "string not closed", "unclosed string"),
+        "Your string started with `'` or `\"` but never closed before newline.\n\n**Fix:** Add matching closing quote on same line.\n```python\n# Wrong:\nprint('Hello\n# Right:\nprint('Hello')\n# Multi-line:\nprint(\"\"\"Hello\nworld\"\"\")\n```\nCheck line number in error — add `\"` or `'` at column where it says detected.",
+    ),
+    (
         ("list comprehension", "listcomp", "comprehension"),
         "`[expr for item in iterable if condition]`. It builds a list in one pass and is faster "
         "than appending in a loop.\n\n"
@@ -478,66 +509,242 @@ def _match_knowledge(question: str) -> str | None:
 
 
 def offline_reply(message: str, code: str = "") -> dict:
-    """Answer without any network. Always returns ``ok: True`` — never leaves the user stranded."""
+    """Answer without any network. Always returns ok: True — never leaves the user stranded.
+
+    Enhanced v1.2.0 philosophy:
+    - Oracle is savior when provider fails (boncos, rate limit, no key)
+    - 'review my code' → analyze actual editor buffer
+    - 'fix my code' → explain error location + suggestion, not just generic fix
+    - ASK ZABA AI TO FIX THIS → message contains traceback + code, humanize it
+    - print (hello world) without quotes → detect missing quotes
+    """
     msg = (message or "").strip()
     opener = _TSUNDERE_OPENERS[len(msg) % len(_TSUNDERE_OPENERS)]
 
     if not msg:
-        return {"ok": True, "reply": f"{opener}\n\nYou didn't actually ask anything.",
-                "source": ORACLE_SIGNATURE, "offline": True}
+        return {
+            "ok": True,
+            "reply": f"{opener}\n\nYou didn't actually ask anything.",
+            "source": ORACLE_SIGNATURE,
+            "offline": True,
+        }
 
     lower = msg.lower()
 
-    # "why did this crash?" — feed it the traceback
-    if any(w in lower for w in ("traceback", "error:", "exception", "crash")) and len(msg) > 40:
+    # 1) If message contains a traceback (from terminal or ASK ZABA button), humanize it directly
+    # This is the savior path: provider limit → Oracle answers with specific fix
+    # We look for common traceback markers
+    has_traceback = any(
+        marker in msg
+        for marker in (
+            "Traceback (most recent call last):",
+            "SyntaxError:",
+            "NameError:",
+            "TypeError:",
+            "File \"/",
+            "File \"",
+            "line ",
+            "unterminated string",
+            "EOL while scanning",
+        )
+    )
+    if has_traceback and len(msg) > 30:
         human = humanize_traceback(msg)
         if human.get("ok"):
             where = f" (line {human['line']})" if human.get("line") else ""
+            # For ASK ZABA AI TO FIX THIS, also include code analysis if code provided
+            extra_analysis = ""
+            if code and code.strip():
+                analysis = analyze_buffer(code)
+                if analysis.get("ok") and analysis.get("notes"):
+                    extra_analysis = "\n\n**Additional notes from your current code:**\n" + "\n".join(
+                        f"- {n}" for n in analysis["notes"][:3]
+                    )
+                elif not analysis.get("ok"):
+                    extra_analysis = f"\n\n**Your editor has:** {analysis.get('message')}"
+
             return {
                 "ok": True,
-                "reply": f"{opener}\n\n**{human['title']}**{where}\n\n{human['what']}\n\n"
-                         f"**Fix:** {human['fix']}",
+                "reply": (
+                    f"{opener}\n\n"
+                    f"**{human['title']}**{where}\n\n"
+                    f"{human['what']}\n\n"
+                    f"**Fix:** {human['fix']}"
+                    f"{extra_analysis}\n\n"
+                    f"---\n"
+                    f"_I’m Oracle, offline savior. No key, no limit, no boncos._"
+                ),
+                "source": ORACLE_SIGNATURE,
+                "offline": True,
+                "savior": True,
+            }
+
+    # 2) "fix my code" — user wants to know where error is + suggestion
+    # Distinguish from review: fix focuses on error location
+    if any(w in lower for w in ("fix my code", "fix this", "fix code", "how to fix", "tolong fix", "benerin code")):
+        # First, try analyzing the editor buffer for syntax errors
+        if code and code.strip():
+            analysis = analyze_buffer(code)
+            if not analysis.get("ok"):
+                # Syntax error found — this is the "print (hello world)" case
+                syntax_msg = analysis.get("message", "Syntax error")
+                line_no = analysis.get("line", "?")
+                # Provide specific guidance for common beginner mistakes
+                specific_fix = ""
+                code_lower = code.lower()
+
+                # Detect missing quotes in print
+                if "print" in code_lower and (
+                    "hello world" in code_lower
+                    or "hello" in code_lower
+                    and '"' not in code
+                    and "'" not in code.split("print")[-1][:50]
+                ):
+                    # Heuristic: print (hello world) without quotes
+                    if re.search(r"print\s*\(\s*[a-zA-Z_][a-zA-Z0-9_ ]*\s*[a-zA-Z_]", code):
+                        specific_fix = (
+                            "\n\n**Your error is:** There is no `\"\"` around your text inside `print()`.\n"
+                            "You wrote `print (hello world)` — Python thinks `hello` and `world` are variable names, not text.\n"
+                            "**Fix:** Add quotes: `print('hello world')` or `print(\"hello world\")`.\n"
+                            "If you want space, keep it inside quotes: `print('hello world')`."
+                        )
+
+                # Detect unterminated string in code
+                if "unterminated" in syntax_msg.lower() or "EOL" in syntax_msg:
+                    specific_fix += (
+                        "\n\n**Detail:** Your string started with `'` or `\"` but never closed.\n"
+                        f"Check line {line_no}: add matching closing `\"` or `'` at the same column.\n"
+                        "Example: `print('Hello` → `print('Hello')`"
+                    )
+
+                return {
+                    "ok": True,
+                    "reply": (
+                        f"{opener}\n\n"
+                        f"**Found error in your editor:**\n"
+                        f"{syntax_msg} (line {line_no})\n\n"
+                        f"**Where:** Line {line_no} in your current buffer.\n"
+                        f"**Should be:** {specific_fix if specific_fix else 'Close quotes/brackets, check syntax near that line.'}\n\n"
+                        f"**Code you have:**\n```python\n{code[:500]}\n```\n\n"
+                        f"Try fixing that line, then RUN again. I’m offline, so I can keep helping even if you’re boncos."
+                    ),
+                    "source": ORACLE_SIGNATURE,
+                    "offline": True,
+                    "savior": True,
+                }
+
+            # If no syntax error but user asks fix, give analysis notes
+            if analysis.get("notes"):
+                return {
+                    "ok": True,
+                    "reply": (
+                        f"{opener}\n\n"
+                        f"**I checked your code ({analysis['lines']} lines):**\n"
+                        + "\n".join(f"- {n}" for n in analysis["notes"])
+                        + "\n\n**Suggestion:** Fix notes above one by one, then RUN. No need for online AI — I’m here."
+                    ),
+                    "source": ORACLE_SIGNATURE,
+                    "offline": True,
+                }
+
+        # If no code provided, ask for it but still helpful
+        return {
+            "ok": True,
+            "reply": (
+                f"{opener}\n\n"
+                "You said **fix my code** but I don’t see your code buffer.\n"
+                "Make sure your code is in the editor, then type 'fix my code' again.\n\n"
+                "Common fixes:\n"
+                "- `print (hello world)` → `print('hello world')` (add quotes)\n"
+                "- `print('Hello` → `print('Hello')` (close quote)\n"
+                "- `if x = 5:` → `if x == 5:` (use == for comparison)\n\n"
+                "I’m Oracle, offline savior for boncos moments."
+            ),
+            "source": ORACLE_SIGNATURE,
+            "offline": True,
+        }
+
+    # 3) "review my code" / "check my code" — analyze actual editor buffer
+    if any(
+        w in lower
+        for w in (
+            "review",
+            "check my",
+            "what's wrong",
+            "whats wrong",
+            "improve",
+            "refactor",
+            "explain my",
+            "analyze",
+            "review my code",
+            "cek code",
+            "periksa code",
+        )
+    ):
+        analysis = analyze_buffer(code)
+        if not analysis.get("ok"):
+            return {
+                "ok": True,
+                "reply": (
+                    f"{opener}\n\n"
+                    f"**Editor check:** {analysis.get('message')}\n\n"
+                    f"Line {analysis.get('line', '?')}: {analysis.get('message')}\n"
+                    f"Fix that first, then ask review again."
+                ),
                 "source": ORACLE_SIGNATURE,
                 "offline": True,
             }
 
-    # "review my code" / "what's wrong"
-    if any(w in lower for w in ("review", "check my", "what's wrong", "whats wrong",
-                                "improve", "refactor", "explain my", "analyze")):
-        analysis = analyze_buffer(code)
-        if not analysis.get("ok"):
-            return {"ok": True, "reply": f"{opener}\n\n{analysis.get('message')}",
-                    "source": ORACLE_SIGNATURE, "offline": True}
-
         parts = [
             opener,
             "",
-            f"**{analysis['lines']} lines** · {len(analysis['functions'])} function(s) · "
-            f"{len(analysis['classes'])} class(es) · max loop depth {analysis['loop_depth']}",
+            f"**Reviewing your current editor code:** {analysis['lines']} lines · "
+            f"{len(analysis['functions'])} func · {len(analysis['classes'])} class · "
+            f"loop depth {analysis['loop_depth']}",
         ]
         if analysis["notes"]:
             parts.append("")
-            parts.append("Things I'd change:")
+            parts.append("**Things I’d improve (offline analysis):**")
             parts += [f"- {n}" for n in analysis["notes"]]
         else:
             parts.append("")
-            parts.append("...It's actually clean. Don't let it go to your head.")
-        return {"ok": True, "reply": "\n".join(parts), "source": ORACLE_SIGNATURE, "offline": True}
+            parts.append("...Actually clean! No major issues. Don’t let it go to your head.")
+            if analysis["imports"]:
+                parts.append(f"Imports: {', '.join(analysis['imports'])}")
 
-    # Knowledge base lookup
+        parts.append("")
+        parts.append("_I read directly from your terminal/editor buffer, no copy-paste needed._")
+        return {
+            "ok": True,
+            "reply": "\n".join(parts),
+            "source": ORACLE_SIGNATURE,
+            "offline": True,
+        }
+
+    # 4) Knowledge base lookup — expanded for fix/review intents
     answer = _match_knowledge(lower)
     if answer:
-        return {"ok": True, "reply": f"{opener}\n\n{answer}",
-                "source": ORACLE_SIGNATURE, "offline": True}
+        return {
+            "ok": True,
+            "reply": f"{opener}\n\n{answer}",
+            "source": ORACLE_SIGNATURE,
+            "offline": True,
+        }
 
+    # 5) Default fallback — still helpful, mentions savior role for boncos
     return {
         "ok": True,
-        "reply": f"{opener}\n\nI'm running offline, so my range is limited — I handle error "
-                 f"explanations, code review, and Python fundamentals without a network.\n\n"
-                 f"Try: *\"review my code\"*, paste a traceback, or ask about loops, files, "
-                 f"classes, dicts, or f-strings.\n\n"
-                 f"For anything deeper, connect a provider in Settings. No key required for me, "
-                 f"though — I don't work for a subscription.",
+        "reply": (
+            f"{opener}\n\n"
+            "I’m running offline, so I’m your **savior when you’re boncos** — no key, no limit, no quota.\n\n"
+            "I handle:\n"
+            "- **Error explanations:** Paste traceback or tap 'ASK ZABA AI TO FIX THIS' → I’ll say where error is, e.g. 'there is no \"\" at column, add \"\"'\n"
+            "- **Code review:** Type 'review my code' → I read your editor buffer and list issues\n"
+            "- **Fix guidance:** Type 'fix my code' → I tell line + suggestion (like missing quotes in `print (hello world)`)\n"
+            "- **Python fundamentals:** loops, files, dicts, classes, f-strings, etc.\n\n"
+            "Try: `review my code`, `fix my code`, or paste your error. For deeper help, add provider key in Settings — but I’ll always stay as fallback."
+        ),
         "source": ORACLE_SIGNATURE,
         "offline": True,
+        "savior": True,
     }

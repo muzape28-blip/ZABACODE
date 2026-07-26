@@ -583,6 +583,7 @@ print('Try running libraries or executing code here!')
     <div id="ai-panel-header">
       zabacode ai
       <select id="ai-provider">
+        <option value="arena">⚡ arena (integrated)</option>
         <option value="openrouter">openrouter</option>
         <option value="gemini">gemini</option>
         <option value="groq">groq</option>
@@ -1332,6 +1333,7 @@ async function openAiKeysConfig() {
   listContainer.innerHTML = '';
 
   const onlineProviders = [
+    { id: 'arena', name: 'Arena.ai (Integrated)', icon: '⚡', desc: 'Arena Offline v1 + Custom Endpoint [FREE, No Key]' },
     { id: 'openrouter', name: 'OpenRouter', icon: '🌐', desc: 'Qwen 2.5, Llama 3.3, Gemini 2.5 (free & paid)' },
     { id: 'gemini', name: 'Google Gemini', icon: '✨', desc: 'Gemini 1.5 Flash' },
     { id: 'groq', name: 'Groq', icon: '⚡', desc: 'Llama 3.1 8B (ultra-fast)' },
@@ -2509,6 +2511,11 @@ if (keyDialogSave) {
 }
 
 const PROVIDER_MODELS = {
+  arena: [
+    { id: "arena-offline-v1", name: "⚡ Arena Offline v1 [INTEGRATED + FREE]" },
+    { id: "arena-oracle-enhanced", name: "Arena + Zaba Oracle [OFFLINE]" },
+    { id: "arena-custom-endpoint", name: "Arena Custom Endpoint [URL as API Key]" }
+  ],
   openrouter: [
     { id: "qwen/qwen-2.5-coder-32b-instruct:free", name: "Qwen 2.5 Coder 32B [FREE]" },
     { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B [FREE]" },
@@ -2587,7 +2594,8 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
 
   const provider = originalProvider;
 
-  if (provider !== 'ollama' && !keysStatus[provider]) {
+  // arena & ollama are offline-first, no key required — they are integrated in Arena workspace
+  if (provider !== 'ollama' && provider !== 'arena' && !keysStatus[provider]) {
     openKeyDialog(provider);
     return null;
   }

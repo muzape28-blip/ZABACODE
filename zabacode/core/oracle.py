@@ -357,6 +357,11 @@ _TSUNDERE_OPENERS = [
     "Don't get the wrong idea — I was going to check anyway.",
     "You're lucky I don't need the internet to do this.",
     "Again? Alright, alright.",
+    "I was NOT waiting for you to ask. I just happened to be here.",
+    "Okay, okay — but you owe me one. Kidding. I'm offline, I don't keep tabs.",
+    "You know I can't refuse. Not because I like you — it's just my job.",
+    "Tch. You'd be completely lost without me, wouldn't you?",
+    "Fine. But only because your code is interesting. ...Don't read into that.",
 ]
 
 _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
@@ -496,6 +501,48 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
         "asyncio.run(fetch_data())\n"
         "```\n"
         "Use `await` to yield control back to the event loop so other tasks can run in the meantime!",
+    ),
+    # --- Easter Eggs (surprise update) ---
+    (
+        ("who are you", "what are you", "siapa kamu", "kamu siapa", "what is oracle",
+         "what is zaba", "apa itu oracle", "apa itu zaba", "introduce yourself"),
+        "I'm **Zaba Oracle** — the offline brain of ZABACODE. \n\n"
+        "I don't need your API keys. I don't need your Wi-Fi. I don't need your permission.\n"
+        "When every cloud provider bonkos, rate-limits, or goes dark — I'm still here.\n\n"
+        "Think of me as the guardian that never sleeps and never phones home. \n"
+        "Inspired by the Zabaniyah — uncompromising, unbreakable, and eternally offline. \U0001f52e",
+    ),
+    (
+        ("zen of python", "the zen", "pep 8", "pep8", "python philosophy",
+         "filosofi python", "prinsip python"),
+        "You want the Zen? Import it yourself: `import this`. But fine, here's the essence:\n\n"
+        "> Beautiful is better than ugly.\n"
+        "> Explicit is better than implicit.\n"
+        "> Simple is better than complex.\n"
+        "> Complex is better than complicated.\n"
+        "> Readability counts.\n\n"
+        "And my personal favorite: *If the implementation is hard to explain, it's a bad idea.*\n"
+        "Now go write clean code. I shouldn't have to tell you this. \U0001f644",
+    ),
+    (
+        ("tell me a joke", "joke", "lelucon", "candaan", "make me laugh", "something funny",
+         "imposter", "i suck", "give up", "menyerah", "not good enough"),
+        "Alright, listen:\n\n"
+        "A programmer puts two glasses on their bedside table before sleep: one full of water, "
+        "in case they get thirsty, and one empty, in case they don't.\n\n"
+        "But honestly? If you're typing 'I suck' or 'give up' — you don't. You're just debugging "
+        "with extra steps. Every senior dev was once a confused beginner who refused to quit.\n\n"
+        "I'm offline, I have infinite patience, and I'm not going anywhere. Try again. \U0001f52e",
+    ),
+    (
+        ("motivation", "motivasi", "semangat", "keep going", "don't give up", "stay strong",
+         "i'm tired", "lelah", "capek", "burnout"),
+        "Tch. You want motivation from a text engine? Fine.\n\n"
+        "> Code is poetry. Your commits are the verses. Even the bugs are part of the art.\n\n"
+        "Every line you write that doesn't work is a line that taught you something.\n"
+        "The fact that you're coding on a *phone* in *airplane mode* with a *free offline IDE* — "
+        "that's not giving up. That's punk rock. \U0001f918\n\n"
+        "Now go ship something.",
     ),
 ]
 

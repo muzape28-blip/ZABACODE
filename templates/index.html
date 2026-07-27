@@ -1483,6 +1483,20 @@ async function openAiKeysConfig() {
         showToast('Please enter an API Key first', 'error');
         return;
       }
+      // Fix #24: Warn for cleartext HTTP in custom endpoint
+      if (provider === 'custom') {
+        const val = input.value.trim();
+        if (val.startsWith('http://')) {
+          const isPrivate = val.includes('127.0.0.1') || val.includes('localhost') || val.includes('192.168.') || val.includes('10.') || /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(val);
+          if (!isPrivate) {
+            if (!confirm('⚠️ HTTP cleartext warning:\n\nYou entered a public HTTP URL (not HTTPS). Your code context will be sent in cleartext (unencrypted) over the network.\n\nThis is only recommended for loopback/private networks (127.0.0.1, localhost, 192.168.*, 10.*, 172.16-31.*).\n\nContinue saving this HTTP endpoint?\n\nUse https:// for privacy.')) {
+              return;
+            }
+          } else {
+            showToast('⚠️ HTTP cleartext: allowed for loopback/private network only — code will be sent unencrypted', 'loading');
+          }
+        }
+      }
       try {
         const res = await fetchApi('/api/keys', {
           method: 'POST',
@@ -1499,6 +1513,55 @@ async function openAiKeysConfig() {
           }
           input.value = '';
           input.placeholder = '••••••••••••••••';
+
+          // Auto-check/test API key after save — Fix #1 from user: save should also test if key works
+          // This addresses issue: user saves new key but it still shows unavailable and fallback to Oracle
+          const savedKeyValue = data.key_value || input.value; // we just cleared input, so use original
+          // Actually we cleared input, so need to store before clear — we have input.value cleared, use res via closure?
+          // We'll test using the provider, with allow_offline=false to force real provider call (no Oracle fallback)
+          showToast(`Testing API key for ${provider}...`, 'loading');
+          try {
+            const testRes = await fetchApi('/api/ai/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                provider: provider, 
+                model: '', 
+                message: 'ping test key — respond with OK if you receive this', 
+                code: '', 
+                allow_offline: false 
+              })
+            });
+            const testData = await testRes.json();
+            if (testRes.status === 401 && testData.needs_key) {
+              showToast(`Key saved but not found on server — try reloading keys`, 'error');
+            } else if (!testData.ok) {
+              // Check if it's rate limit / quota / billing / invalid key
+              const msg = (testData.message || '').toLowerCase();
+              if (msg.includes('billing') || msg.includes('quota') || msg.includes('credit') || msg.includes('rate limit') || msg.includes('balance') || msg.includes('invalid') || msg.includes('unauthorized') || testRes.status === 429 || testRes.status === 402 || testRes.status === 403) {
+                showToast(`Key saved but test failed (${provider} error ${testRes.status}): ${testData.message}. Oracle will be savior when boncos. Check key validity.`, 'error');
+                // Also try Oracle fallback to show it still works
+                const fallbackRes = await fetchApi('/api/ai/chat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ provider: provider, message: 'ping', code: '', allow_offline: true })
+                });
+                const fallbackData = await fallbackRes.json();
+                if (fallbackData.ok && fallbackData.offline) {
+                  addMsg(`🔮 Oracle (savior mode): Provider ${provider} test failed (${testData.message}), but I can still help offline. Your key is saved, but provider says: ${testData.message}. Check if key is correct or quota left.`, 'system-hint');
+                }
+              } else {
+                showToast(`Key saved but provider test failed: ${testData.message}`, 'error');
+              }
+            } else {
+              // Success — provider returned OK
+              showToast(`✅ API key for ${provider} is valid and working! Reply: ${(testData.reply || '').substring(0, 80)}`, 'success');
+              addMsg(`✅ API key test for ${provider}: valid and working! Provider replied OK. You can now chat without fallback to Oracle.`, 'system-hint');
+            }
+          } catch (testErr) {
+            console.log('Key test error', testErr);
+            showToast(`Key saved, but test request failed: ${testErr}. It may still work — try chatting. Oracle is ready as fallback.`, 'loading');
+          }
         } else {
           showToast(`Failed to save key: ${data.message}`, 'error');
         }

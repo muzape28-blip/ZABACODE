@@ -28,7 +28,7 @@ from zabacode.core.checker import check_code
 from zabacode.core.file_manager import (
     secure_filename, list_files, save_file, read_file, delete_file, FILES_DIR
 )
-from zabacode.core.security import AUTH_TOKEN, verify_token, xor_cipher, xor_decipher, load_keys, save_key
+from zabacode.core.security import AUTH_TOKEN, verify_token, load_keys, save_key
 from zabacode.lib_manager import (
     KNOWN_LIBRARIES, is_package_installed, get_all_libraries, install_library,
     get_library_info, _PACKAGE_NAME_RE
@@ -199,16 +199,6 @@ class TestSecurity:
     def test_verify_invalid_token(self):
         assert verify_token("invalid_token_12345") is False
         assert verify_token("") is False
-    
-    def test_xor_cipher_roundtrip(self):
-        original = "Hello, ZABACODE! 🔥"
-        encrypted = xor_cipher(original, "test_key")
-        decrypted = xor_decipher(encrypted, "test_key")
-        assert decrypted == original
-    
-    def test_xor_decipher_invalid(self):
-        result = xor_decipher("not_valid_base64!!!", "key")
-        assert result == ""
 
 
 # ===================================================================

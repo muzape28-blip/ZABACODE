@@ -451,6 +451,8 @@ def install_library(name: str) -> dict:
     Install a library by name.
     Returns dict with: ok, message, needs_rebuild (optional)
     """
+    if not isinstance(name, str):
+        return {"ok": False, "message": "Package name must be a string."}
     name = name.strip().lower()
     
     if not name or not _PACKAGE_NAME_RE.fullmatch(name):

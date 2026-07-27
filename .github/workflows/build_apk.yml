@@ -43,15 +43,24 @@ jobs:
         python3 -m pip install --user buildozer==1.5.0 cython==0.29.33
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-    - name: Install Code Quality & Testing Dependencies (locked)
+    - name: Install Code Quality & Testing Dependencies (locked with fallback)
       run: |
-        # Prefer locked file for reproducibility, fallback to dev file
+        # Prefer locked file for reproducibility, fallback to dev file if lock fails (e.g., pyjnius platform issues)
         if [ -f requirements.lock ]; then
-          python3 -m pip install -r requirements.lock
+          echo "Attempting install from requirements.lock..."
+          if ! python3 -m pip install -r requirements.lock; then
+            echo "⚠️ Lock file install failed (likely pyjnius or platform dep), falling back to requirements-dev.txt + core tools"
+            python3 -m pip install ruff mypy pytest pytest-cov
+            python3 -m pip install -r requirements-dev.txt || true
+            # Try installing pyjnius separately as optional, don't fail if it fails
+            python3 -m pip install pyjnius==1.6.1 || echo "⚠️ pyjnius optional install failed, continuing without it (Android-only dep)"
+          fi
         else
           python3 -m pip install ruff mypy pytest pytest-cov
-          python3 -m pip install -r requirements-dev.txt
+          python3 -m pip install -r requirements-dev.txt || true
         fi
+        # Ensure core test deps are present even if lock had issues
+        python3 -m pip install Flask waitress certifi requests tinydb beautifulsoup4 python-dotenv pytest -q || true
 
     - name: Run Ruff Linter (critical - blocking)
       run: |

@@ -1,5 +1,5 @@
 # ZABACODE Locked Dependencies — v1.2.0
-# Generated: 2026-07-26, Reviewed
+# Generated: 2026-07-26, Reviewed, Fixed for CI
 # Purpose: Reproducible builds, supply-chain trust (Fix #26)
 # Usage: pip install -r requirements.lock
 # To update: pip-compile requirements-dev.txt --generate-hashes -o requirements.lock
@@ -22,7 +22,8 @@ pytest==7.4.0
 pytest-cov==4.1.0
 
 # Android / Pyjnius Integration (optional in dev, active on Android)
-pyjnius==1.5.2
+# Fixed: 1.5.2 not found on PyPI for this platform, use 1.6.1 which exists
+pyjnius==1.6.1
 
 # Code Quality (CI)
 ruff==0.6.9
@@ -32,5 +33,6 @@ cython==0.29.33
 
 # Notes:
 # - All versions pinned to exact, no floating >=
+# - pyjnius 1.5.2 -> 1.6.1 fix: 1.5.2 not available on PyPI (available: 1.5.0, 1.6.0, 1.6.1, 1.7.0)
 # - For full hash-locked file, run: pip-compile --generate-hashes
-# - CI uses this file + pinned GitHub Actions SHAs
+# - CI uses this file + pinned GitHub Actions SHAs, with fallback to requirements-dev.txt if lock fails

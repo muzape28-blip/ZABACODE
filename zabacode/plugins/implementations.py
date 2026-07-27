@@ -22,7 +22,7 @@ class AutoImportOptimizer:
         except SyntaxError as e:
             return {"ok": False, "error": f"SyntaxError: {str(e)}", "unused": []}
 
-        imported_names = {}  # name -> (node, line_num, full_imported_name)
+        imported_names = {}  # name -> (node, line_num, end_line_num, full_imported_name)
         used_names = set()
 
         class ImportVisitor(ast.NodeVisitor):
@@ -30,13 +30,15 @@ class AutoImportOptimizer:
                 for alias in node.names:
                     name = alias.asname or alias.name
                     root_name = name.split('.')[0]
-                    imported_names[root_name] = (node, node.lineno, name)
+                    end = getattr(node, "end_lineno", node.lineno)
+                    imported_names[root_name] = (node, node.lineno, end, name)
                 self.generic_visit(node)
 
             def visit_ImportFrom(self, node):
                 for alias in node.names:
                     name = alias.asname or alias.name
-                    imported_names[name] = (node, node.lineno, name)
+                    end = getattr(node, "end_lineno", node.lineno)
+                    imported_names[name] = (node, node.lineno, end, name)
                 self.generic_visit(node)
 
             def visit_Name(self, node):
@@ -48,9 +50,9 @@ class AutoImportOptimizer:
         visitor.visit(tree)
 
         unused = []
-        for name, (node, lineno, full_name) in imported_names.items():
+        for name, (node, lineno, end_lineno, full_name) in imported_names.items():
             if name not in used_names:
-                unused.append((lineno, full_name))
+                unused.append((lineno, end_lineno, full_name))
 
         # Sort unused imports by line number
         unused.sort()
@@ -67,13 +69,20 @@ class AutoImportOptimizer:
             return code, ["No unused imports found."]
 
         lines = code.split('\n')
-        unused_lines = set(item[0] for item in unused)
+        # Build a set of line numbers to comment, covering full multi-line import spans
+        unused_lines = set()
+        line_to_names = {}
+        for start, end, name in unused:
+            for ln in range(start, end + 1):
+                unused_lines.add(ln)
+            line_to_names.setdefault(start, []).append(name)
         report = []
         new_lines = []
         for i, line in enumerate(lines, 1):
             if i in unused_lines:
-                names_on_line = [item[1] for item in unused if item[0] == i]
-                report.append(f"Line {i}: Unused import {', '.join(names_on_line)}")
+                if i in line_to_names:
+                    names_on_line = line_to_names[i]
+                    report.append(f"Line {i}: Unused import {', '.join(names_on_line)}")
                 new_lines.append(f"# {line}  # Optimized: unused import")
             else:
                 new_lines.append(line)
@@ -131,42 +140,44 @@ class SmartCommentGenerator:
 
     @staticmethod
     def generate(code: str) -> tuple[str, list[str]]:
-        try:
-            tree = ast.parse(code)
-        except SyntaxError as e:
-            return code, [f"SyntaxError: {str(e)}"]
-
-        func_nodes = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                docstring = ast.get_docstring(node)
-                if docstring is None:
-                    func_nodes.append(node)
-
-        if not func_nodes:
-            return code, ["No functions missing docstrings found."]
-
-        # Sort in descending line number order so line insertions don't affect indices
-        func_nodes.sort(key=lambda x: x.lineno, reverse=True)
-        lines = code.split('\n')
         report = []
+        current = code
+        # Process one function at a time, re-parsing after each insertion so line
+        # numbers stay accurate. Inserting at a function shifts every line below
+        # it, which corrupts offsets captured from a single up-front parse.
+        while True:
+            try:
+                tree = ast.parse(current)
+            except SyntaxError as e:
+                return current, [f"SyntaxError: {str(e)}"] + report
 
-        for node in func_nodes:
-            body_start_line_idx = node.body[0].lineno - 1
+            target = None
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and ast.get_docstring(node) is None:
+                    target = node
+                    break
+            if target is None:
+                break
+
+            lines = current.split('\n')
+            body_start_line_idx = target.body[0].lineno - 1
             first_body_line = lines[body_start_line_idx]
             indent = len(first_body_line) - len(first_body_line.lstrip())
             indent_str = " " * indent
 
-            params = [arg.arg for arg in node.args.args if arg.arg != 'self']
+            params = [arg.arg for arg in target.args.args if arg.arg != 'self']
             param_lines = [f"{indent_str}    {p}: Type description." for p in params]
             param_block = f"\n{indent_str}Args:\n" + "\n".join(param_lines) if params else ""
 
-            doc = f'{indent_str}"""Docstring for {node.name}.\n{param_block}\n{indent_str}Returns:\n{indent_str}    Type: Description.\n{indent_str}"""'
+            doc = f'{indent_str}"""Docstring for {target.name}.\n{param_block}\n{indent_str}Returns:\n{indent_str}    Type: Description.\n{indent_str}"""'
 
             lines.insert(body_start_line_idx, doc)
-            report.append(f"Generated docstring for function '{node.name}' at line {node.lineno}")
+            report.append(f"Generated docstring for function '{target.name}' at line {target.lineno}")
+            current = '\n'.join(lines)
 
-        return '\n'.join(lines), report
+        if not report:
+            return current, ["No functions missing docstrings found."]
+        return current, report
 
 
 class CodeBeautifierPro:
@@ -314,27 +325,29 @@ class VariableTypeHintGenerator:
 
     @staticmethod
     def generate(code: str) -> tuple[str, list[str]]:
-        try:
-            tree = ast.parse(code)
-        except SyntaxError as e:
-            return code, [f"SyntaxError: {str(e)}"]
-
-        func_nodes = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                func_nodes.append(node)
-
-        if not func_nodes:
-            return code, ["No functions found to add type hints."]
-
-        func_nodes.sort(key=lambda x: x.lineno, reverse=True)
-        lines = code.split('\n')
         report = []
+        current = code
         has_any_imports = "from typing import Any" in code or "import typing" in code
 
-        for node in func_nodes:
-            args = node.args.args
-            defaults = node.args.defaults
+        # Process one function per pass, re-parsing so line offsets stay valid
+        # after each edit, and never overwrite an existing return annotation.
+        skipped = set()
+        while True:
+            try:
+                tree = ast.parse(current)
+            except SyntaxError as e:
+                return current, [f"SyntaxError: {str(e)}"] + report
+
+            target = None
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name not in skipped:
+                    target = node
+                    break
+            if target is None:
+                break
+
+            args = target.args.args
+            defaults = target.args.defaults
 
             defaults_map = {}
             for idx, default in enumerate(reversed(defaults)):
@@ -342,18 +355,16 @@ class VariableTypeHintGenerator:
                 if arg_idx >= 0:
                     defaults_map[args[arg_idx].arg] = default
 
-            needs_annotation = False
-            for arg in args:
-                if arg.arg != 'self' and arg.annotation is None:
-                    needs_annotation = True
-            if node.returns is None:
-                needs_annotation = True
-
-            if not needs_annotation:
+            needs_annotation = any(
+                arg.arg != 'self' and arg.annotation is None for arg in args
+            )
+            if not needs_annotation and target.returns is not None:
+                skipped.add(target.name)
                 continue
 
-            sig_start_idx = node.lineno - 1
-            sig_end_idx = node.body[0].lineno - 1
+            lines = current.split('\n')
+            sig_start_idx = target.lineno - 1
+            sig_end_idx = target.body[0].lineno - 1
 
             def_line = lines[sig_start_idx]
             indent = len(def_line) - len(def_line.lstrip())
@@ -384,16 +395,26 @@ class VariableTypeHintGenerator:
                     arg_repr += f" = {val_repr}"
                 arg_strs.append(arg_repr)
 
-            new_sig = f"{indent_str}def {node.name}({', '.join(arg_strs)}) -> Any:"
+            # Preserve an existing return annotation instead of forcing -> Any:
+            if target.returns is None:
+                return_part = " -> Any:"
+            else:
+                return_part = ":"
+
+            new_sig = f"{indent_str}def {target.name}({', '.join(arg_strs)}){return_part}"
 
             del lines[sig_start_idx:sig_end_idx]
             lines.insert(sig_start_idx, new_sig)
-            report.append(f"Injected variable type hints into function '{node.name}' signature.")
+            report.append(f"Injected variable type hints into function '{target.name}' signature.")
+            current = '\n'.join(lines)
+            skipped.add(target.name)
 
         if report and not has_any_imports:
-            lines.insert(0, "from typing import Any, Optional")
+            current = "from typing import Any, Optional\n" + current
 
-        return '\n'.join(lines), report
+        if not report:
+            return current, ["No functions found to add type hints."]
+        return current, report
 
 
 class PluginExecutor:

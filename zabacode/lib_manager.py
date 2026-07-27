@@ -185,7 +185,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Text-to-speech offline engine. 100% offline (uses system TTS)."
     },
-    " SpeechRecognition": {
+    "speechrecognition": {
         "tier": "runtime", "category": "AI & Automation",
         "mode": "hybrid",
         "reason": "Speech recognition library. Google API mode online, Sphinx mode offline."
@@ -352,14 +352,6 @@ KNOWN_LIBRARIES = {
         "mode": "hybrid",
         "reason": "Built-in low-level networking. Bisa lokal atau remote."
     },
-}
-
-# Clean up the typo key
-KNOWN_LIBRARIES.pop(" SpeechRecognition", None)
-KNOWN_LIBRARIES["speechrecognition"] = {
-    "tier": "runtime", "category": "AI & Automation",
-    "mode": "hybrid",
-    "reason": "Speech recognition library. Google API mode online, Sphinx mode offline."
 }
 
 

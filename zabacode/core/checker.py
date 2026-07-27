@@ -122,15 +122,16 @@ def check_code(code: str) -> dict:
     if brace_open != brace_close:
         issues.append(f"Braces {{}} imbalance: {brace_open} '{{' vs {brace_close} '}}'")
     
-    # Check for common Python syntax errors
+    # Check for missing indentation after a colon (likely IndentationError)
     lines = code.split('\n')
     for i, line in enumerate(lines, 1):
         stripped = line.rstrip()
         if stripped.endswith(':') and i < len(lines):
             next_line = lines[i]
-            if next_line.strip() and not next_line.startswith(' ') and not next_line.startswith('\t'):
-                if not next_line.strip().startswith('#') and not next_line.strip().startswith('"""'):
-                    pass  # Allow single-line statements or let python parse them
+            ns = next_line.strip()
+            if ns and not next_line.startswith(' ') and not next_line.startswith('\t'):
+                if not ns.startswith('#') and not ns.startswith('"""') and not ns.startswith("'''"):
+                    issues.append(f"Line {i+1}: missing indentation after ':' on line {i}")
     
     return {
         "ok": True,

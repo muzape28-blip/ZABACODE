@@ -41,37 +41,6 @@ if str(USER_PACKAGES_DIR) not in sys.path:
 
 
 # ---------------------------------------------------------------------------
-# XOR-Base64 Encoding (legacy helper — NOT used for API-key storage anymore)
-#
-# Retained only for backwards compatibility with older callers. This is
-# obfuscation, not encryption: never use it for secrets. API keys now go
-# through zabacode.core.keystore (authenticated, per-install random key).
-# ---------------------------------------------------------------------------
-
-def xor_cipher(data_str: str, key_str: str) -> str:
-    """Encrypt/decrypt using XOR + Base64 encoding (symmetric)."""
-    key_bytes = key_str.encode("utf-8")
-    data_bytes = data_str.encode("utf-8")
-    res = bytearray()
-    for i, b in enumerate(data_bytes):
-        res.append(b ^ key_bytes[i % len(key_bytes)])
-    return base64.b64encode(bytes(res)).decode("utf-8")
-
-
-def xor_decipher(b64_str: str, key_str: str) -> str:
-    """Decrypt XOR-Base64 encoded string."""
-    try:
-        key_bytes = key_str.encode("utf-8")
-        data_bytes = base64.b64decode(b64_str.encode("utf-8"))
-        res = bytearray()
-        for i, b in enumerate(data_bytes):
-            res.append(b ^ key_bytes[i % len(key_bytes)])
-        return res.decode("utf-8")
-    except Exception:
-        return ""
-
-
-# ---------------------------------------------------------------------------
 # Android Keystore / Encrypted Preferences Integration
 # Centralized provider list to avoid missing new providers like 'custom'
 # ---------------------------------------------------------------------------

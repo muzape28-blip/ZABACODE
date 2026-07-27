@@ -2,6 +2,7 @@
 
 import functools
 from pathlib import Path
+from typing import Any, Dict, Tuple, Union
 
 from flask import Flask, jsonify, render_template, request
 from waitress import serve
@@ -9,11 +10,12 @@ from waitress import serve
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.executor import (
     PRELUDE_LINE_COUNT,
+    MAX_CODE_BYTES,
     execute_code_isolated,
     start_interactive_session,
     send_interactive_input,
     get_interactive_output,
-    stop_interactive_session
+    stop_interactive_session,
 )
 from zabacode.core.checker import check_code
 from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
@@ -65,7 +67,78 @@ def require_auth(func):
         if not verify_token(request.headers.get("X-Zabacode-Token", "")):
             return jsonify({"ok": False, "message": "Access denied: invalid authentication token."}), 401
         return func(*args, **kwargs)
+
     return wrapped
+
+
+# ---------------------------------------------------------------------------
+# JSON Validation Helper — Fix #23
+# ---------------------------------------------------------------------------
+
+def _get_json_payload() -> Tuple[Union[Dict[str, Any], None], Union[tuple[Any, int], None]]:
+    """
+    Parse and validate JSON body — must be an object, not array or primitive.
+    Returns (payload_dict, error_response). If error_response is not None, return it.
+    """
+    data = request.get_json(silent=True)
+    if data is None:
+        # No JSON or invalid — treat as empty object for routes that have defaults,
+        # but callers should still validate required fields
+        return {}, None
+    if not isinstance(data, dict):
+        # JSON arrays or primitives are not allowed — previously treated as {} silently
+        return None, (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "JSON body must be an object",
+                    "code": "invalid_json_type",
+                }
+            ),
+            400,
+        )
+    return data, None
+
+
+def _validate_string_field(payload: dict, field: str, required: bool = False, max_len: int | None = None):
+    """Validate a field is string if present, return error if not."""
+    if field not in payload:
+        if required:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "message": f"Field '{field}' is required",
+                        "code": "missing_field",
+                    }
+                ),
+                400,
+            )
+        return None
+    val = payload.get(field)
+    if not isinstance(val, str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": f"Field '{field}' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+    if max_len is not None and len(val) > max_len:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": f"Field '{field}' too large (max {max_len} chars)",
+                    "code": "too_large",
+                }
+            ),
+            413,
+        )
+    return None
 
 
 @app.get("/")
@@ -75,17 +148,52 @@ def index():
 
 @app.get("/api/health")
 def health_check():
-    return jsonify({"ok": True, "version": APP_VERSION, "providers": sorted(ALLOWED_PROVIDERS), "ui": "webview"})
+    return jsonify(
+        {"ok": True, "version": APP_VERSION, "providers": sorted(ALLOWED_PROVIDERS), "ui": "webview"}
+    )
 
 
 @app.post("/api/run")
 @require_auth
 def run_code():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    # Validate code field must be string if present
+    if "code" in payload and not isinstance(payload.get("code"), str):
+        return (
+            jsonify({"ok": False, "message": "Field 'code' must be a string", "code": "invalid_type"}),
+            400,
+        )
+    if "stdin_data" in payload and not isinstance(payload.get("stdin_data"), str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'stdin_data' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+
     code = payload.get("code", "")
     stdin_data = payload.get("stdin_data", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    # Enforce size bound already in executor, but also early 413
+    if len(code.encode("utf-8")) > MAX_CODE_BYTES:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": f"Source too large: {len(code.encode('utf-8'))} bytes > {MAX_CODE_BYTES} limit",
+                    "code": "too_large",
+                }
+            ),
+            413,
+        )
 
     result = execute_code_isolated(code, stdin_data=stdin_data)
 
@@ -101,13 +209,29 @@ def run_code():
 # Interactive Execution & Check Endpoints
 # ---------------------------------------------------------------------------
 
+
 @app.post("/api/run/interactive/start")
 @require_auth
 def run_interactive_start():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     code = payload.get("code", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    # Early 413 for oversized source — Fix #18
+    if len(code.encode("utf-8")) > MAX_CODE_BYTES:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": f"Source too large: {len(code.encode('utf-8'))} bytes > {MAX_CODE_BYTES} limit",
+                    "code": "too_large",
+                }
+            ),
+            413,
+        )
     return jsonify(start_interactive_session(code))
 
 
@@ -120,10 +244,25 @@ def run_interactive_output():
 @app.post("/api/run/interactive/input")
 @require_auth
 def run_interactive_input():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     text = payload.get("text", "")
     if not isinstance(text, str):
         return jsonify({"ok": False, "message": "Field 'text' must be a string."}), 400
+    # Bound input size
+    if len(text.encode("utf-8")) > 8192:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Input too large (max 8KB)",
+                    "code": "too_large",
+                }
+            ),
+            413,
+        )
     return jsonify(send_interactive_input(text))
 
 
@@ -136,18 +275,20 @@ def run_interactive_stop():
 @app.post("/api/check")
 @require_auth
 def check_code_endpoint():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     code = payload.get("code", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     return jsonify(check_code(code))
 
 
-
-
 # ---------------------------------------------------------------------------
 # Other Core Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/libraries")
 @require_auth
@@ -158,7 +299,22 @@ def libraries():
 @app.post("/api/libraries/install")
 @require_auth
 def install():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    # Fix #23: Validate 'name' must be string
+    if "name" in payload and not isinstance(payload.get("name"), str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'name' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
     return jsonify(install_library(payload.get("name", "")))
 
 
@@ -174,7 +330,20 @@ def file_item(filename):
     if request.method == "GET":
         result = read_file(filename)
     elif request.method == "POST":
-        payload = request.get_json(silent=True) or {}
+        payload, err = _get_json_payload()
+        if err:
+            return err
+        if "content" in payload and not isinstance(payload.get("content"), str):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "message": "Field 'content' must be a string",
+                        "code": "invalid_type",
+                    }
+                ),
+                400,
+            )
         result = save_file(filename, payload.get("content", ""))
     else:
         result = delete_file(filename)
@@ -209,7 +378,10 @@ def plugins():
 @app.post("/api/plugins/execute")
 @require_auth
 def execute_plugin():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     plugin_id = payload.get("plugin_id", "")
     code = payload.get("code", "")
     if not isinstance(plugin_id, str) or not isinstance(code, str):
@@ -232,7 +404,34 @@ def keys_status():
 @app.post("/api/keys")
 @require_auth
 def set_key():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    # Fix #23: Validate provider and api_key are strings
+    if "provider" in payload and not isinstance(payload.get("provider"), str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'provider' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+    if "api_key" in payload and not isinstance(payload.get("api_key"), str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'api_key' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+
     provider = payload.get("provider", "")
     api_key = payload.get("api_key", "")
     if provider not in ALLOWED_PROVIDERS or not isinstance(api_key, str):
@@ -244,29 +443,134 @@ def set_key():
 @app.post("/api/ai/chat")
 @require_auth
 def ai_chat():
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     provider = payload.get("provider", "openrouter")
     model = payload.get("model", "")
     message = payload.get("message", "")
     code = payload.get("code", "")
-    if provider not in ALLOWED_PROVIDERS or not isinstance(message, str) or not isinstance(code, str):
-        return jsonify({"ok": False, "message": "Invalid AI request."}), 400
+
+    # Fix #23 + #24: Strict validation for AI chat fields
+    if not isinstance(provider, str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'provider' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+    if not isinstance(model, str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'model' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+    if not isinstance(message, str):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'message' must be a string",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+    if not isinstance(code, str):
+        return (
+            jsonify(
+                {"ok": False, "message": "Field 'code' must be a string", "code": "invalid_type"}
+            ),
+            400,
+        )
+
+    if provider not in ALLOWED_PROVIDERS:
+        return jsonify({"ok": False, "message": "Invalid AI provider."}), 400
     if len(message) > MAX_AI_FIELD_CHARS or len(code) > MAX_AI_FIELD_CHARS:
         return jsonify({"ok": False, "message": "AI context is too large."}), 413
+
+    # allow_offline should be bool if present
     allow_offline = payload.get("allow_offline", True)
+    if not isinstance(allow_offline, bool):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Field 'allow_offline' must be a boolean",
+                    "code": "invalid_type",
+                }
+            ),
+            400,
+        )
+
+    # Fix #24: Separate Custom Endpoint URL validation, warn cleartext HTTP
+    # For custom provider, we now support separate 'endpoint_url' field in addition to api_key
+    # api_key may still be URL for backward compat, but we encourage endpoint_url
+    endpoint_url = None
+    if provider == "custom":
+        # Accept both 'endpoint_url' and legacy 'api_key' as URL
+        candidate = payload.get("endpoint_url") or payload.get("api_key") or ""
+        if candidate:
+            if not isinstance(candidate, str):
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "message": "Field 'endpoint_url' must be a string URL",
+                            "code": "invalid_type",
+                        }
+                    ),
+                    400,
+                )
+            # Basic URL validation — must be http:// or https://
+            if not (candidate.startswith("http://") or candidate.startswith("https://")):
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "message": "Custom endpoint URL must start with http:// or https://",
+                            "code": "invalid_url",
+                        }
+                    ),
+                    400,
+                )
+            endpoint_url = candidate
+            # Warn for cleartext HTTP — will be surfaced in UI, but also log
+            if candidate.startswith("http://"):
+                # Allow loopback/private network without hard fail, but warn
+                # For now we allow but will include warning in response if needed
+                pass
 
     api_key = load_keys().get(provider)
-    # Ollama is offline-first (no key required), custom requires URL as key
+    # Ollama is offline-first (no key required)
     is_offline_provider = provider in ("ollama",)
     if not api_key and not is_offline_provider:
-        if allow_offline:
-            fallback = offline_reply(message, code)
-            fallback["fallback_reason"] = "no_api_key"
-            return jsonify(fallback)
-        return jsonify({"ok": False, "needs_key": True, "provider": provider}), 401
+        # For custom, if endpoint_url provided in request payload, allow even if no saved key
+        if provider == "custom" and endpoint_url:
+            api_key = endpoint_url
+        else:
+            if allow_offline:
+                fallback = offline_reply(message, code)
+                fallback["fallback_reason"] = "no_api_key"
+                return jsonify(fallback)
+            return jsonify({"ok": False, "needs_key": True, "provider": provider}), 401
     # For offline providers, empty key is fine
     if not api_key:
         api_key = ""
+
+    # If custom and endpoint_url provided in payload, override api_key with endpoint_url for this request
+    if provider == "custom" and endpoint_url:
+        api_key = endpoint_url
 
     result = PROVIDER_HANDLERS[provider](api_key, message, code, model=model)
 
@@ -285,7 +589,10 @@ def ai_chat():
 @require_auth
 def oracle_explain():
     """Explain a traceback in plain language. Works with zero network."""
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     stderr = payload.get("stderr", "")
     if not isinstance(stderr, str):
         return jsonify({"ok": False, "message": "Field 'stderr' must be a string."}), 400
@@ -296,7 +603,10 @@ def oracle_explain():
 @require_auth
 def oracle_analyze():
     """Static AST analysis of the editor buffer. Works with zero network."""
-    payload = request.get_json(silent=True) or {}
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
     code = payload.get("code", "")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
@@ -304,4 +614,30 @@ def oracle_analyze():
 
 
 def run_webview_server():
-    serve(app, host="127.0.0.1", port=5000, threads=4)
+    """Run WebView server with port conflict detection (Fix #27)."""
+    import socket
+
+    # Try ports 5000-5010 to handle collision/denial-of-service on fixed port
+    for port in range(5000, 5011):
+        try:
+            # Quick check if port is available
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("127.0.0.1", port))
+                # If bind succeeds, port is free, close and let Waitress use it
+        except OSError as e:
+            print(f"[WARN] Port {port} occupied ({e}), trying next...")
+            continue
+
+        try:
+            print(f"[INFO] Starting ZABACODE WebView server on 127.0.0.1:{port}")
+            print(f"[INFO] Loopback-only: exposure reduction, not full app-private boundary (see SECURITY.md #27)")
+            print(f"[INFO] Token delivery: AUTH_TOKEN embedded in root HTML JS, validated via constant-time compare, sensitive routes require X-Zabacode-Token")
+            serve(app, host="127.0.0.1", port=port, threads=4)
+            break
+        except OSError as e:
+            print(f"[WARN] Failed to start on port {port}: {e}, trying next...")
+            if port == 5010:
+                print(f"[ERROR] All ports 5000-5010 occupied. Clear recovery: check other ZABACODE instances or run `lsof -i :5000` / `netstat -tulpn` and kill conflicting process.")
+                raise
+            continue

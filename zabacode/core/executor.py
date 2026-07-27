@@ -1,6 +1,7 @@
 """
 ZABACODE Core — Isolated & Interactive Subprocess Code Execution Engine
 Runs user Python code in isolated or interactive subprocesses.
+Fixed for #18: Bound source size, output buffering, session duration
 """
 
 import base64
@@ -10,6 +11,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from zabacode.core.paths import FILES_DIR, USER_PACKAGES_DIR, CACHE_DIR
@@ -18,6 +20,9 @@ from zabacode.core.paths import FILES_DIR, USER_PACKAGES_DIR, CACHE_DIR
 MAX_CODE_BYTES = 512 * 1024   # 512 KB
 MAX_OUTPUT_CHARS = 256 * 1024  # 256 KB
 DEFAULT_TIMEOUT = 30           # seconds
+MAX_INTERACTIVE_DURATION = 120  # seconds — max lifetime of interactive session
+MAX_INTERACTIVE_INACTIVITY = 60  # seconds — kill if no output and no input for this long
+MAX_INTERACTIVE_QUEUE = 10000  # max chars buffered in queue at once (bounded)
 
 
 def _truncate(text: str) -> str:
@@ -174,15 +179,19 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
 
 
 # ---------------------------------------------------------------------------
-# Interactive Subprocess Execution Engine
+# Interactive Subprocess Execution Engine — Bounded (Fix #18)
 # ---------------------------------------------------------------------------
 
 class InteractiveSession:
     def __init__(self):
         self.proc = None
-        self.output_queue = queue.Queue()
-        self.threads = []
+        self.output_queue: queue.Queue = queue.Queue(maxsize=MAX_INTERACTIVE_QUEUE)
+        self.threads: list[threading.Thread] = []
         self.active = False
+        self.start_time: float | None = None
+        self.last_activity: float | None = None
+        self.total_chars: int = 0
+        self.output_truncated: bool = False
 
 
 _session = InteractiveSession()
@@ -193,23 +202,56 @@ _session = InteractiveSession()
 _session_lock = threading.RLock()
 
 
-def _read_stream_char(stream, q, stream_type):
-    """Asynchronously read characters from subprocess output streams."""
+def _read_stream_char(stream, session: InteractiveSession, stream_type: str):
+    """Asynchronously read characters from subprocess output streams — bounded."""
     try:
         while True:
             char = stream.read(1)
             if not char:
                 break
-            q.put((stream_type, char))
+            
+            # Bound total output to prevent memory bloat from tight printing loops
+            with _session_lock:
+                if session.total_chars >= MAX_OUTPUT_CHARS:
+                    if not session.output_truncated:
+                        session.output_truncated = True
+                        # Try to push truncation notice once
+                        try:
+                            session.output_queue.put_nowait((stream_type, "\n[Output truncated — flooding limit reached]\n"))
+                        except queue.Full:
+                            pass
+                    # Stop reading further to avoid unbounded memory
+                    break
+                session.total_chars += 1
+                session.last_activity = time.time()
+
+            # Bounded queue — if full, drop oldest? For simplicity, try put with timeout, drop if full
+            try:
+                session.output_queue.put((stream_type, char), timeout=0.1)
+            except queue.Full:
+                # Queue full — mark truncated and keep draining to avoid blocking child
+                with _session_lock:
+                    session.output_truncated = True
+                # Drop char, continue to drain stream but don't queue
+                continue
     except Exception:
         pass
 
 
 def start_interactive_session(code: str) -> dict:
-    """Spawns an interactive unbuffered subprocess and starts listener threads."""
+    """Spawns an interactive unbuffered subprocess and starts listener threads — bounded."""
     with _session_lock:
         global _session
         stop_interactive_session()
+
+        # --- Fix #18: Reject oversized source ---
+        if not isinstance(code, str):
+            return {"ok": False, "message": "Field 'code' must be a string."}
+        if len(code.encode("utf-8")) > MAX_CODE_BYTES:
+            return {
+                "ok": False,
+                "message": f"Source too large: {len(code.encode('utf-8'))} bytes > {MAX_CODE_BYTES} bytes limit. Split your code or clear editor.",
+            }
 
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         temp_script = FILES_DIR / "_active_run.py"
@@ -243,10 +285,22 @@ def start_interactive_session(code: str) -> dict:
                 start_new_session=os.name != "nt",
             )
             _session.active = True
-            _session.output_queue = queue.Queue()
+            _session.output_queue = queue.Queue(maxsize=MAX_INTERACTIVE_QUEUE)
+            _session.start_time = time.time()
+            _session.last_activity = time.time()
+            _session.total_chars = 0
+            _session.output_truncated = False
 
-            t_out = threading.Thread(target=_read_stream_char, args=(_session.proc.stdout, _session.output_queue, "stdout"), daemon=True)
-            t_err = threading.Thread(target=_read_stream_char, args=(_session.proc.stderr, _session.output_queue, "stderr"), daemon=True)
+            t_out = threading.Thread(
+                target=_read_stream_char,
+                args=(_session.proc.stdout, _session, "stdout"),
+                daemon=True,
+            )
+            t_err = threading.Thread(
+                target=_read_stream_char,
+                args=(_session.proc.stderr, _session, "stderr"),
+                daemon=True,
+            )
             t_out.start()
             t_err.start()
             _session.threads = [t_out, t_err]
@@ -263,20 +317,75 @@ def send_interactive_input(text: str) -> dict:
         if not _session.active or not _session.proc:
             return {"ok": False, "message": "No active interactive session found."}
 
+        # Bound input size to avoid flooding
+        if len(text.encode("utf-8")) > 8192:
+            return {"ok": False, "message": "Input too large (max 8KB per send)."}
+
         try:
             _session.proc.stdin.write(text)
             _session.proc.stdin.flush()
+            _session.last_activity = time.time()
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "message": f"Failed to send input: {e}"}
 
 
 def get_interactive_output() -> dict:
-    """Collect all pending outputs from the unbuffered subprocess streams."""
+    """Collect all pending outputs from the unbuffered subprocess streams — bounded with timeout."""
     with _session_lock:
         global _session
         if not _session.active or not _session.proc:
-            return {"ok": False, "done": True, "output": []}
+            return {"ok": False, "done": True, "output": [], "output_truncated": _session.output_truncated}
+
+        # Check max duration
+        now = time.time()
+        if _session.start_time and (now - _session.start_time) > MAX_INTERACTIVE_DURATION:
+            # Timeout — kill session
+            try:
+                if _session.proc.poll() is None:
+                    if os.name != "nt":
+                        try:
+                            os.killpg(_session.proc.pid, signal.SIGKILL)
+                        except OSError:
+                            _session.proc.kill()
+                    else:
+                        _session.proc.kill()
+            except Exception:
+                pass
+            _session.active = False
+            return {
+                "ok": True,
+                "done": True,
+                "output": [],
+                "exit_code": -1,
+                "timeout": True,
+                "message": f"Interactive session exceeded max duration {MAX_INTERACTIVE_DURATION}s and was stopped.",
+                "output_truncated": _session.output_truncated,
+            }
+
+        # Check inactivity timeout
+        if _session.last_activity and (now - _session.last_activity) > MAX_INTERACTIVE_INACTIVITY:
+            try:
+                if _session.proc.poll() is None:
+                    if os.name != "nt":
+                        try:
+                            os.killpg(_session.proc.pid, signal.SIGKILL)
+                        except OSError:
+                            _session.proc.kill()
+                    else:
+                        _session.proc.kill()
+            except Exception:
+                pass
+            _session.active = False
+            return {
+                "ok": True,
+                "done": True,
+                "output": [],
+                "exit_code": -1,
+                "timeout": True,
+                "message": f"Interactive session inactivity timeout {MAX_INTERACTIVE_INACTIVITY}s — stopped.",
+                "output_truncated": _session.output_truncated,
+            }
 
         output_chars = []
         while not _session.output_queue.empty():
@@ -290,9 +399,20 @@ def get_interactive_output() -> dict:
         if done:
             _session.active = False
             exit_code = _session.proc.returncode
-            return {"ok": True, "done": True, "output": output_chars, "exit_code": exit_code}
+            return {
+                "ok": True,
+                "done": True,
+                "output": output_chars,
+                "exit_code": exit_code,
+                "output_truncated": _session.output_truncated,
+            }
 
-        return {"ok": True, "done": False, "output": output_chars}
+        return {
+            "ok": True,
+            "done": False,
+            "output": output_chars,
+            "output_truncated": _session.output_truncated,
+        }
 
 
 def stop_interactive_session() -> dict:
@@ -313,6 +433,8 @@ def stop_interactive_session() -> dict:
                     _session.proc.kill()
             _session.active = False
             _session.proc = None
+            _session.start_time = None
+            _session.last_activity = None
             return {"ok": True, "message": "Process successfully stopped."}
         except Exception as e:
             return {"ok": False, "message": f"Failed to stop process: {e}"}

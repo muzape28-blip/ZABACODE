@@ -22,7 +22,7 @@ pytest==7.4.0
 pytest-cov==4.1.0
 
 # Android / Pyjnius Integration (optional in dev, active on Android)
-pyjnius==1.5.2
+pyjnius==1.7.0
 
 # Code Quality (CI)
 ruff==0.6.9

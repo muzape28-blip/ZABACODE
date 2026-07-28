@@ -2945,6 +2945,11 @@ async function renderAutoFixButton(stderrText, container) {
         // implying the Oracle failed, and never rewrite valid source.
         renderAutoFixRefusal(data, container);
         btn.remove();
+      } else if (data.explanation) {
+        // No confident patch, but the Oracle still knows the exact line,
+        // column and parser complaint. A toast would throw all of that away.
+        renderAutoFixRefusal(data, container, 'NO SAFE PATCH');
+        btn.remove();
       } else {
         // Surface the server's actual reason rather than a generic line.
         showToast(data.message || 'Oracle could not automatically fix this error safely.', 'info');
@@ -2959,17 +2964,28 @@ async function renderAutoFixButton(stderrText, container) {
   container.appendChild(btn);
 }
 
-function renderAutoFixRefusal(data, container) {
+function renderAutoFixRefusal(data, container, badge) {
   const card = document.createElement('div');
   card.className = 'oracle-card';
   card.style.borderLeftColor = 'var(--ai)';
-  const text = escapeHtml(data.explanation || data.message || '')
+  // Fenced blocks hold the caret pointer at the failing column, so they must
+  // keep their whitespace — extract them before the <br> conversion.
+  const raw = data.explanation || data.message || '';
+  const blocks = [];
+  const withPlaceholders = raw.replace(/```\n?([\s\S]*?)```/g, (m, body) => {
+    blocks.push(body.replace(/\n$/, ''));
+    return '\u0000BLOCK' + (blocks.length - 1) + '\u0000';
+  });
+  let text = escapeHtml(withPlaceholders)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.1); padding:2px 4px; border-radius:2px; font-family:monospace;">$1</code>')
     .replace(/\n/g, '<br>');
+  text = text.replace(/\u0000BLOCK(\d+)\u0000/g, (m, i) =>
+    '<pre style="background:rgba(0,0,0,0.3); border:1px solid var(--border); padding:8px; border-radius:4px; margin:8px 0; overflow-x:auto; font-family:monospace; font-size:12px; white-space:pre;">' +
+    escapeHtml(blocks[Number(i)]) + '</pre>');
   card.innerHTML =
     '<div class="oracle-head">\uD83D\uDD2E Zaba Oracle ' +
-      '<span class="oracle-badge">RUNTIME ERROR</span></div>' +
+      '<span class="oracle-badge">' + escapeHtml(badge || 'RUNTIME ERROR') + '</span></div>' +
     '<div class="oracle-what">' + text + '</div>';
   container.appendChild(card);
 }

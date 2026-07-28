@@ -487,3 +487,181 @@ print(prices[9])
 ---
 
 *Semua temuan direproduksi secara runtime di venv Python 3.11 dengan Flask test client, lalu diperbaiki dan diverifikasi ulang.*
+
+---
+---
+
+# 🔧 LANJUTAN — PERLUASAN CAKUPAN AUTO-FIX
+
+**Tanggal:** 2026-07-28 (sesi lanjutan)
+**Konteks:** 9 temuan di atas sudah diverifikasi ulang (semua masih PASS). Setelah
+Auto-Fix jadi *aman*, masalah berikutnya adalah Auto-Fix masih terlalu *sempit*.
+
+## Masalah: aman tapi hampir selalu menyerah
+
+Safety gate F-02 menutup lubang "merusak kode valid", tapi mesin patch-nya sendiri
+tidak berubah: dia cuma tahu **5 bentuk baris** yang di-hardcode (quotes di
+`print()`, `=` vs `==`, titik dua hilang, string tidak ditutup, kurung tidak
+seimbang).
+
+Saya uji 36 kesalahan pemula yang realistis. Hasilnya:
+
+```
+sebelum:  17 ✅   /  13 ❌ menyerah  /  6 runtime (benar ditolak)
+```
+
+Yang **gagal** justru yang paling sering terjadi di HP:
+
+- `print 'hello'` — tutorial Python 2 masih bertebaran di internet
+- `msg = “hello”` — keyboard HP & copy-paste dari WhatsApp/Discord otomatis
+  mengubah kutip lurus jadi kutip miring
+- `if a == 1 && b == 2:` — otot memori dari C/Java/JavaScript
+- `def f():` lalu badan fungsi lupa di-indent — kesalahan #1 pemula di layar kecil
+- Tab campur spasi — tak terlihat mata, mematikan di Python
+- Kurung dibuka di baris 1, error dilaporkan di baris 5
+
+Semua itu keluar pesan yang sama: *"I couldn't produce a patch"*. Aman, tapi tidak
+menolong.
+
+## Akar masalah desain
+
+Fixer lama **menebak bentuk baris** dengan regex, lalu berharap tebakannya kena.
+Padahal CPython **sudah tahu persis** apa yang dia harapkan dan di kolom berapa —
+informasi itu dibuang begitu saja:
+
+```python
+except SyntaxError as exc:
+    err_line = exc.lineno        # ← cuma nomor baris yang dipakai
+    # exc.msg, exc.offset, exc.end_offset → dibuang
+```
+
+`exc.msg` isinya bukan teks generik. CPython 3.10+ memberi diagnosis presisi:
+`"expected ':'"`, `"'(' was never closed"`, `"unmatched ')'"`,
+`"Missing parentheses in call to 'print'"`, `"invalid character '“' (U+201C)"`.
+
+## Solusi: error-directed repair
+
+Strategi dibalik — **baca diagnosis parser, ajukan kandidat patch untuk pesan itu
+persis, dan simpan hanya kalau parser benar-benar maju.**
+
+```python
+def accept(candidate_lines, note):
+    before = _error_position("\n".join(lines))       # (baris, kolom) error pertama
+    after  = _error_position("\n".join(candidate_lines))
+    if after <= before:
+        return False        # tidak maju → tolak, jangan pernah dipaksakan
+    ...
+```
+
+`_error_position()` mengembalikan sentinel `(10**9, 0)` untuk kode valid, jadi
+"apakah patch ini menolong?" cukup perbandingan tuple. **Tidak ada patch yang
+diterima atas dasar keyakinan** — semuanya harus dibuktikan ke parser dulu.
+
+### Prioritas kandidat itu penting
+
+Beberapa perbaikan sama-sama *parse* tapi hanya satu yang **benar**:
+
+| Input | Patch naif (parse ✅, salah) | Patch yang dipilih |
+|---|---|---|
+| `print(hello world)` | `print(hello, world)` → **NameError** saat run | `print("hello world")` |
+| `var x = 5` | `var: x = 5` (anotasi tipe, tak berguna) | `x = 5` |
+| `else if y:` | `else: if y:` (struktur berubah diam-diam) | `elif y:` |
+
+Menukar syntax error jadi runtime error **bukan** perbaikan. Ketiga kasus ini
+dikunci oleh test tersendiri.
+
+## Hasil
+
+| Kelas kesalahan | Contoh input | Hasil |
+|---|---|---|
+| Python 2 `print` | `print 'hello world'` | `print('hello world')` |
+| Python 2 `except X, e:` | `except ValueError, e:` | `except ValueError as e:` |
+| `else if` (C/Java) | `else if x == 2:` | `elif x == 2:` |
+| `&&` / `\|\|` | `if a == 1 && b == 2:` | `if a == 1 and b == 2:` |
+| `!x` negasi | `if !x:` | `if not x:` |
+| `//` komentar | `// note` | `# note` |
+| `x++` / `x--` | `x++` | `x += 1` |
+| `var` / `let` / `const` | `var x = 5` | `x = 5` |
+| Blok `{ }` gaya C | `def f() {` … `}` | `def f():` |
+| Kutip miring (keyboard HP) | `msg = “hello”` | `msg = "hello"` |
+| Kurung full-width | `print（'hi'）` | `print('hi')` |
+| Spasi non-breaking | indent `\u00a0\u00a0\u00a0\u00a0` | 4 spasi biasa |
+| Badan blok lupa indent | `def f():` `return 1` | `    return 1` |
+| Indent nyasar | `x = 1` `  y = 2` | diluruskan |
+| Tab campur spasi | `\t` + 8 spasi | semua jadi 4 spasi |
+| Kurung tak ditutup lintas baris | buka di baris 1, error baris 5 | ditutup di akhir ekspresi |
+| Kurung penutup berlebih | `print('a'))` | `print('a')` |
+| `in` hilang di for | `for i range(3):` | `for i in range(3):` |
+| Koma hilang | `[1 2, 3]` | `[1, 2, 3]` |
+| Titik dua lambda | `lambda x x + 1` | `lambda x: x + 1` |
+| 4 typo sekaligus | `def f()` + `if x = 1` + `print(x` | ketiganya dibetulkan |
+
+```
+sesudah:  38 ✅  /  3 ❌ (ambigu, sengaja ditolak)  /  6 runtime
+```
+
+## Penolakan sekarang berguna
+
+Tiga kasus sisa (`def f(:`, kutip bersarang `print("he said "hi"")`) memang
+ambigu — menebak di situ melanggar kontrak F-02. Tapi penolakannya tidak lagi
+membuang informasi:
+
+```
+Here's exactly what Python choked on, on line 1: invalid syntax.
+
+def f(:
+      ^
+
+Fix that spot by hand — check the line above it too, since unclosed
+brackets and quotes are usually reported one line late.
+```
+
+Response JSON menambah `error_line`, `error_message`, dan `attempted_fixes`
+(patch yang menolong sebagian tapi tidak cukup, jadi tidak diterapkan). Di UI,
+jalur ini dulu cuma `showToast()` generik — sekarang render kartu penuh dengan
+blok `<pre>` supaya caret `^` tetap lurus di kolom yang benar. **Pelajaran F-01
+diterapkan: perbaikan yang tidak terlihat user sama saja tidak ada.**
+
+## Performa — regresi yang tertangkap sebelum di-commit
+
+Sweep terakhir mem-parse ulang seluruh file untuk **setiap baris**, jadi
+kompleksitasnya kuadratik. Cakupan yang lebih luas berarti lebih banyak kandidat,
+dan pada file 800 baris yang tidak bisa diperbaiki UI membeku:
+
+```
+sebelum:  2.306 s     ← HP terasa hang
+sesudah:  0.159 s     ← sweep dibatasi ±40 baris dari titik error
+```
+
+Penyebab bug hampir selalu dekat baris yang dilaporkan, jadi radius ini tidak
+mengurangi cakupan sama sekali (21/21 tetap lolos). Ada test yang mengunci batas
+1.5 detik supaya regresi ini tidak balik lagi.
+
+## Invarian keamanan tetap dijaga
+
+Cakupan luas tidak boleh dibayar dengan korektnes. Yang dikunci test:
+
+1. **Kode yang sudah valid tidak pernah disentuh** — 15 snippet valid (termasuk
+   tab konsisten, kutip miring *di dalam* string yang benar, `f(timeout=5)`)
+   dijalankan dengan stderr palsu; `fixed_code` harus identik.
+2. **`ok: True` selalu berarti hasilnya parse** — fuzz menghapus satu karakter
+   dari setiap snippet valid (85 mutasi), setiap klaim sukses diverifikasi ulang.
+3. **Patch tidak boleh menghapus kode user** — jumlah karakter alfanumerik tidak
+   pernah berkurang.
+4. **Fuzz acak 1000 mutasi** (hapus/sisip/ganti 1-3 karakter) — 0 crash, 0 klaim
+   palsu, 0 kehilangan konten.
+
+### Verifikasi akhir
+
+```
+pytest                 -> 199 passed  (dari 159)
+ruff E9,F821           -> All checks passed
+ruff total E501        -> 87 -> 86  (tidak menambah utang lint)
+mypy core (6 modul)    -> Success: no issues found
+security gates         -> no unverified SSL / ace bundled / CSP / certifi / no CDN
+fuzz 1000 mutasi       -> 0 crash / 0 klaim palsu / 0 konten hilang
+auto-fix 800 baris     -> 2.306s -> 0.159s
+```
+
+*Diverifikasi runtime di venv Python 3.11 lewat Flask test client, bukan hanya unit test —
+jalur `POST /api/oracle/fix` yang sebenarnya dipakai browser ikut diuji.*

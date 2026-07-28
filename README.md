@@ -63,6 +63,8 @@ Other IDEs die without internet. ZABACODE doesn't.
 
 * **Traceback Humanizer** — 20+ error families auto-translated to plain English with concrete fix, inline in terminal. Line numbers mapped to your editor (not prelude).
 * **Offline Code Review** — AST-based detection: deep nesting, bare `except:`, mutable defaults, unreachable code, static `10/0`, security risks (`eval`, `exec`), missing docstrings, TODOs.
+* **Auto-Fix** — Repairs syntax errors offline, driven by CPython's own diagnosis: Python 2 leftovers (`print 'x'`), C/JS habits (`else if`, `&&`, `x++`, `{ }` blocks), phone-keyboard damage (curly quotes, non-breaking spaces), indentation (missing block body, tabs mixed with spaces), unclosed brackets across lines, and multiple typos in one pass. A patch is only offered when the file actually parses afterwards — **code that already parses is never rewritten**, because turning a visible crash into a silently wrong answer is worse than no fix.
+* **Honest refusals** — When no safe patch exists, you get the exact line, the parser's message and a caret at the failing column — not a shrug.
 * **Graceful Fallback** — When cloud provider is rate-limited / no key / offline, Oracle answers. You never stare at a dead chat window.
 
 ```

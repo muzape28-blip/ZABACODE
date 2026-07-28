@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-29 — Oracle chat & terminal integration
+
+The engine was fixed in the previous pass; this one connects it to the paths
+the user actually touches. 13 new tests, 235 → 248 total.
+
+### Fixed — "fix my code" never used the real repair engine
+
+The chat branch re-implemented its own fixer inline: a regex hunting for the
+literal string `hello world`. It therefore described exactly one mistake, and
+**never produced corrected code** — while `auto_fix_code()`, the verified engine
+already behind the Auto-Fix button, sat unused two functions away. The branch
+now calls that engine, so "fix my code" answers with the actual patched source
+(and, when it refuses, with CPython's exact line and complaint).
+
+### Fixed — Oracle told users with a full editor that it was empty
+
+`analysis.get("notes")` is falsy for clean code, so valid code with no smells
+fell through to the no-buffer branch: *"I don't see your code buffer"* while the
+user was looking straight at their program. Valid code now gets a runtime/logic
+answer, and only a genuinely blank editor is reported as empty.
+
+### Fixed — Oracle card threw away the line number it had just resolved
+
+The previous pass made line numbers accurate; the terminal card still rendered a
+bare `Line 3`. It now echoes the offending source line beneath the explanation
+and makes it tappable to jump the editor there (Ace and native), which is what
+the accuracy work was for. Out-of-range and blank lines degrade gracefully, and
+the echoed source is HTML-escaped.
+
+### Fixed — Oracle card styling silently did nothing
+
+`.oracle-what`, `.oracle-fix` and `.oracle-line` referenced `var(--fg)`,
+`var(--ok)` and `var(--dim)` — none of which this stylesheet defines. Undefined
+custom properties fail silently, so the green **Fix:** emphasis never rendered.
+Repointed at the real variables (`--text`, `--text-bright`, `--text-dim`); a
+test now asserts every `var(--x)` used is defined.
+
+### Fixed — two canned messages that were wrong most of the time
+
+- The analyze fallback appended `— Your error is there is no "" at column, add ""`
+  to **every** syntax error, regardless of what the parser actually said.
+- The rate-limit fallback recited a fixed example about unterminated strings
+  instead of looking at the buffer. It now reports the real analysis.
+
+### Changed — truncated reviews are honest about it
+
+`/api/oracle/analyze` returns `note_count` (the true total before the 12-note
+cap), and the UI shows "N issues, showing first 12" rather than implying the
+visible list is everything.
+
+---
+
 ## [Unreleased] - 2026-07-28 — Oracle diagnosis accuracy & knowledge coverage
 
 A follow-up pass over the Oracle, this time probing it with realistic input

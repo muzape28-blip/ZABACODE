@@ -2026,3 +2026,152 @@ class TestKnowledgeBaseCoversEverydayQuestions:
                 f"keyword {probe!r} no longer reaches its own entry — "
                 f"an earlier entry shadows it"
             )
+
+
+# ===========================================================================
+# Oracle chat/UI integration — session of 2026-07-29
+#
+# The engine was correct but the paths the user actually touches were not
+# wired to it: "fix my code" re-implemented a worse fixer inline, and the
+# terminal card threw away the line number the engine had just resolved.
+# ===========================================================================
+
+
+class TestFixMyCodeUsesTheRealRepairEngine:
+    """The chat path hand-rolled regexes instead of calling auto_fix_code().
+
+    It searched for the literal string "hello world", so it could describe
+    exactly one mistake and never produced actual corrected code.
+    """
+
+    def test_returns_the_corrected_source(self):
+        from zabacode.core.oracle import offline_reply
+
+        result = offline_reply("fix my code", "print(hello world)\n")
+        assert result["fixed_code"].strip() == 'print("hello world")'
+        assert 'print("hello world")' in result["reply"]
+        assert result["applied_fixes"]
+
+    def test_works_for_mistakes_other_than_the_hardcoded_example(self):
+        """The old branch only recognised `print(hello world)`."""
+        from zabacode.core.oracle import offline_reply
+
+        for broken, expected in [
+            ("if x = 5:\n    pass\n", "if x == 5:"),
+            ("for i range(3):\n    print(i)\n", "for i in range(3):"),
+            ("print 'hi'\n", "print('hi')"),
+        ]:
+            result = offline_reply("fix my code", broken)
+            assert expected in result["reply"], f"no patch offered for {broken!r}"
+
+    def test_patch_offered_is_always_valid_python(self):
+        from zabacode.core.oracle import _is_valid_python, offline_reply
+
+        for broken in ("print(hello world)", "x = [1, 2", 'print("hi'):
+            result = offline_reply("fix my code", broken)
+            if "fixed_code" in result:
+                assert _is_valid_python(result["fixed_code"])
+
+    def test_valid_code_is_not_claimed_to_be_a_missing_buffer(self):
+        """Regression: valid code with no smells said "I don't see your code".
+
+        `analysis.get("notes")` was falsy for clean code, so control fell
+        through to the no-buffer branch and told users staring at their own
+        program that the editor was empty.
+        """
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("fix my code", "prices = [1, 2]\nprint(prices[9])\n")["reply"]
+        assert "don't see your code" not in reply
+        assert "don’t see your code" not in reply
+        assert "runtime" in reply.lower() or "logic" in reply.lower()
+
+    def test_genuinely_empty_buffer_still_asks_for_code(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("fix my code", "   ")["reply"]
+        assert "empty" in reply.lower()
+
+    def test_refusal_reports_the_parser_diagnosis(self):
+        from zabacode.core.oracle import offline_reply
+
+        result = offline_reply("fix my code", "def f(:\n    pass\n")
+        assert result["ok"] is True
+        if not result.get("fixed_code"):
+            assert result.get("error_line")
+            assert str(result["error_line"]) in result["reply"]
+
+
+class TestReviewPathMessaging:
+    def test_syntax_error_message_is_not_printed_twice(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("review my code", "print(hello world)\n")["reply"]
+        assert reply.count("Perhaps you forgot a comma") == 1
+
+    def test_empty_editor_does_not_render_a_blank_line_number(self):
+        """Was: "Line ?: The editor is empty." — a line number for no code."""
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("review my code", "")["reply"]
+        assert "Line ?" not in reply
+        assert "empty" in reply.lower()
+
+
+class TestAnalyzeEndpointExposesNoteTotal:
+    """The UI can only be honest about truncation if the API sends the total."""
+
+    def test_note_count_is_returned(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        code = "\n".join(f"def f{i}(a, b, c, d, e, g):\n    pass" for i in range(40))
+        body = app.test_client().post(
+            "/api/oracle/analyze",
+            json={"code": code},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert body["note_count"] > len(body["notes"])
+
+
+class TestOracleCardRendering:
+    """F-01's lesson again: a diagnosis the user cannot see is not a diagnosis."""
+
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_card_shows_the_offending_source_line(self):
+        html = self._html()
+        assert "oracle-src" in html, "the card should echo the offending source line"
+        assert "focusEditorLine" in html, "the line number should be tappable"
+
+    def test_every_css_variable_used_is_defined(self):
+        """.oracle-what used var(--fg), which this stylesheet never defines.
+
+        Undefined custom properties fail silently — the green "Fix:" emphasis
+        simply never rendered.
+        """
+        import re
+
+        html = self._html()
+        used = set(re.findall(r"var\((--[a-z-]+)\)", html))
+        defined = set(re.findall(r"(--[a-z-]+)\s*:", html))
+        assert used <= defined, f"undefined CSS variables: {sorted(used - defined)}"
+
+    def test_analyze_fallback_reports_the_real_parser_message(self):
+        """It used to append a fixed 'add ""' hint to every syntax error.
+
+        Checked against code lines only — the comment explaining the old bug
+        naturally quotes the very string being banned.
+        """
+        code = "\n".join(
+            line for line in self._html().split("\n")
+            if not line.lstrip().startswith("//")
+        )
+        assert 'there is no "" at column, add ""' not in code
+
+    def test_rate_limit_fallback_does_not_recite_a_canned_example(self):
+        html = self._html()
+        assert 'For error like "unterminated string literal"' not in html

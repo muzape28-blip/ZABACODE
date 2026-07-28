@@ -1166,86 +1166,107 @@ def offline_reply(message: str, code: str = "") -> dict:
                 "savior": True,
             }
 
-    # 2) "fix my code" — user wants to know where error is + suggestion
-    # Distinguish from review: fix focuses on error location
+    # 2) "fix my code" — user wants the actual repair, not a lecture
+    # Distinguish from review: fix focuses on the error and the patch.
     if any(w in lower for w in ("fix my code", "fix this", "fix code", "how to fix", "tolong fix", "benerin code")):
-        # First, try analyzing the editor buffer for syntax errors
-        if code and code.strip():
-            analysis = analyze_buffer(code)
-            if not analysis.get("ok"):
-                # Syntax error found — this is the "print (hello world)" case
-                syntax_msg = analysis.get("message", "Syntax error")
-                line_no = analysis.get("line", "?")
-                # Provide specific guidance for common beginner mistakes
-                specific_fix = ""
-                code_lower = code.lower()
+        # No buffer at all — the only case where asking for the code is honest.
+        if not code or not code.strip():
+            return {
+                "ok": True,
+                "reply": (
+                    f"{opener}\n\n"
+                    "You said **fix my code** but the editor is empty.\n"
+                    "Write or paste your code first, then ask again.\n\n"
+                    "Common fixes I can apply automatically:\n"
+                    "- `print (hello world)` → `print('hello world')` (add quotes)\n"
+                    "- `print('Hello` → `print('Hello')` (close quote)\n"
+                    "- `if x = 5:` → `if x == 5:` (use == for comparison)\n\n"
+                    "I’m Oracle, offline savior for boncos moments."
+                ),
+                "source": ORACLE_SIGNATURE,
+                "offline": True,
+            }
 
-                # Detect missing quotes in print
-                if "print" in code_lower and (
-                    "hello world" in code_lower
-                    or "hello" in code_lower
-                    and '"' not in code
-                    and "'" not in code.split("print")[-1][:50]
-                ):
-                    # Heuristic: print (hello world) without quotes
-                    if re.search(r"print\s*\(\s*[a-zA-Z_][a-zA-Z0-9_ ]*\s*[a-zA-Z_]", code):
-                        specific_fix = (
-                            "\n\n**Your error is:** There is no `\"\"` around your text inside `print()`.\n"
-                            "You wrote `print (hello world)` — Python thinks `hello` and `world` are variable names, not text.\n"
-                            "**Fix:** Add quotes: `print('hello world')` or `print(\"hello world\")`.\n"
-                            "If you want space, keep it inside quotes: `print('hello world')`."
-                        )
+        analysis = analyze_buffer(code)
 
-                # Detect unterminated string in code
-                if "unterminated" in syntax_msg.lower() or "EOL" in syntax_msg:
-                    specific_fix += (
-                        "\n\n**Detail:** Your string started with `'` or `\"` but never closed.\n"
-                        f"Check line {line_no}: add matching closing `\"` or `'` at the same column.\n"
-                        "Example: `print('Hello` → `print('Hello')`"
-                    )
-
+        # --- Broken syntax: run the real repair engine ---------------------
+        # This branch used to re-implement a worse fixer inline with regexes
+        # hunting for the literal string "hello world", so it could describe
+        # only the one example it was written against. auto_fix_code() is the
+        # engine the Auto-Fix button already uses: it reads CPython's own
+        # diagnosis and verifies every patch re-parses before offering it.
+        if not analysis.get("ok"):
+            repair = auto_fix_code(code)
+            if repair.get("ok"):
                 return {
                     "ok": True,
                     "reply": (
                         f"{opener}\n\n"
-                        f"**Found error in your editor:**\n"
-                        f"{syntax_msg} (line {line_no})\n\n"
-                        f"**Where:** Line {line_no} in your current buffer.\n"
-                        f"**Should be:** {specific_fix if specific_fix else 'Close quotes/brackets, check syntax near that line.'}\n\n"
-                        f"**Code you have:**\n```python\n{code[:500]}\n```\n\n"
-                        f"Try fixing that line, then RUN again. I’m offline, so I can keep helping even if you’re boncos."
+                        "**I found the syntax error and patched it:**\n"
+                        + "\n".join(f"- {fix}" for fix in repair["applied_fixes"])
+                        + "\n\n**Here's the corrected code:**\n"
+                        f"```python\n{repair['fixed_code']}\n```\n\n"
+                        "I re-parsed it to be sure it's valid Python. Tap **Auto-Fix with Oracle** "
+                        "in the terminal to apply it straight to your editor."
                     ),
                     "source": ORACLE_SIGNATURE,
                     "offline": True,
                     "savior": True,
+                    "fixed_code": repair["fixed_code"],
+                    "applied_fixes": repair["applied_fixes"],
                 }
 
-            # If no syntax error but user asks fix, give analysis notes
-            if analysis.get("notes"):
-                return {
-                    "ok": True,
-                    "reply": (
-                        f"{opener}\n\n"
-                        f"**I checked your code ({analysis['lines']} lines):**\n"
-                        + "\n".join(f"- {n}" for n in analysis["notes"])
-                        + "\n\n**Suggestion:** Fix notes above one by one, then RUN. No need for online AI — I’m here."
-                    ),
-                    "source": ORACLE_SIGNATURE,
-                    "offline": True,
-                }
+            # Refused: hand over the parser's exact diagnosis rather than a
+            # generic "check your syntax".
+            detail_line = repair.get("error_line") or analysis.get("line")
+            detail_msg = repair.get("error_message") or "invalid syntax"
+            pointer = ""
+            source_lines = code.split("\n")
+            if detail_line and 1 <= detail_line <= len(source_lines):
+                pointer = f"\n\n```python\n{source_lines[detail_line - 1].rstrip()}\n```"
+            return {
+                "ok": True,
+                "reply": (
+                    f"{opener}\n\n"
+                    f"**Syntax error on line {detail_line or '?'}:** {detail_msg}"
+                    f"{pointer}\n\n"
+                    "I couldn't build a patch I'm confident in, so I won't hand you something "
+                    "broken. Fix that spot by hand — and check the line above it too, since "
+                    "unclosed brackets and quotes are usually reported one line late."
+                ),
+                "source": ORACLE_SIGNATURE,
+                "offline": True,
+                "savior": True,
+                "error_line": detail_line,
+                "error_message": detail_msg,
+            }
 
-        # If no code provided, ask for it but still helpful
+        # --- Syntax is fine: it's a logic bug ------------------------------
+        # Previously, valid code with no review notes fell through to "I don't
+        # see your code buffer" — telling the user their editor was empty
+        # while they were staring at their code.
+        if analysis.get("notes"):
+            return {
+                "ok": True,
+                "reply": (
+                    f"{opener}\n\n"
+                    f"Your syntax is valid, so there's no typo for me to patch — this is a "
+                    f"**logic issue**. Here's what I'd look at ({analysis['lines']} lines):\n"
+                    + "\n".join(f"- {n}" for n in analysis["notes"])
+                    + "\n\nIf it crashed at runtime, paste the traceback and I'll pinpoint the line."
+                ),
+                "source": ORACLE_SIGNATURE,
+                "offline": True,
+            }
+
         return {
             "ok": True,
             "reply": (
                 f"{opener}\n\n"
-                "You said **fix my code** but I don’t see your code buffer.\n"
-                "Make sure your code is in the editor, then type 'fix my code' again.\n\n"
-                "Common fixes:\n"
-                "- `print (hello world)` → `print('hello world')` (add quotes)\n"
-                "- `print('Hello` → `print('Hello')` (close quote)\n"
-                "- `if x = 5:` → `if x == 5:` (use == for comparison)\n\n"
-                "I’m Oracle, offline savior for boncos moments."
+                f"I parsed all {analysis['lines']} line(s) and found **no syntax error and no "
+                f"obvious smells** — so there's nothing for me to safely patch.\n\n"
+                "If it still misbehaves, that's a runtime/logic bug: paste the traceback here "
+                "(or tap **Auto-Fix with Oracle** after a crash) and I'll tell you the exact line."
             ),
             "source": ORACLE_SIGNATURE,
             "offline": True,
@@ -1270,13 +1291,27 @@ def offline_reply(message: str, code: str = "") -> dict:
     ):
         analysis = analyze_buffer(code)
         if not analysis.get("ok"):
+            # The message was previously printed twice — once plain and once
+            # prefixed with a "Line ?:" that was blank for an empty editor.
+            if not analysis.get("syntax_error"):
+                return {
+                    "ok": True,
+                    "reply": (
+                        f"{opener}\n\n"
+                        f"**Nothing to review:** {analysis.get('message')}\n\n"
+                        "Write some code in the editor first, then ask me again."
+                    ),
+                    "source": ORACLE_SIGNATURE,
+                    "offline": True,
+                }
             return {
                 "ok": True,
                 "reply": (
                     f"{opener}\n\n"
-                    f"**Editor check:** {analysis.get('message')}\n\n"
-                    f"Line {analysis.get('line', '?')}: {analysis.get('message')}\n"
-                    f"Fix that first, then ask review again."
+                    f"**I can't review this yet — it doesn't parse.**\n\n"
+                    f"{analysis.get('message')}\n\n"
+                    "Fix that first (or ask me to **fix my code** and I'll try to patch it), "
+                    "then ask for a review again."
                 ),
                 "source": ORACLE_SIGNATURE,
                 "offline": True,

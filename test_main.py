@@ -1251,3 +1251,337 @@ class TestInteractiveTracebackMasking:
         from zabacode.core.executor import _mask_runner_filename
 
         assert _mask_runner_filename([]) == []
+
+
+# ===========================================================================
+# Auto-Fix coverage expansion — error-directed repair
+#
+# The original fixer recognised five hard-coded line shapes. Everything else
+# (Python 2 syntax, smart quotes off a phone keyboard, C-style operators,
+# mixed tabs, a bracket opened three lines up) fell through to "I couldn't
+# produce a patch". These tests pin the widened coverage *and* the safety
+# invariants that must survive it.
+# ===========================================================================
+
+
+def _fix(code, stderr=""):
+    from zabacode.core.oracle import auto_fix_code
+
+    return auto_fix_code(code, stderr)
+
+
+def _assert_fixed(code, expected_substrings=(), stderr=""):
+    """The patch must be applied, must parse, and must contain the expected text."""
+    from zabacode.core.oracle import _is_valid_python
+
+    result = _fix(code, stderr)
+    assert result["ok"] is True, f"auto-fix gave up on {code!r}: {result.get('error_message')}"
+    assert _is_valid_python(result["fixed_code"]), f"claimed success but does not parse: {result['fixed_code']!r}"
+    assert result["applied_fixes"], "a successful fix must say what it changed"
+    for needle in expected_substrings:
+        assert needle in result["fixed_code"], (
+            f"expected {needle!r} in fixed code, got {result['fixed_code']!r}"
+        )
+    return result
+
+
+class TestAutoFixPython2Syntax:
+    """Tutorials and old Stack Overflow answers are full of Python 2."""
+
+    def test_print_statement_becomes_call(self):
+        _assert_fixed("print 'hello world'", ["print('hello world')"])
+
+    def test_print_statement_with_variable(self):
+        _assert_fixed("x = 5\nprint x", ["print(x)"])
+
+    def test_print_with_multiple_values(self):
+        _assert_fixed("a = 1\nb = 2\nprint a, b", ["print(a, b)"])
+
+    def test_except_comma_becomes_as(self):
+        _assert_fixed(
+            "try:\n    pass\nexcept ValueError, e:\n    print(e)",
+            ["except ValueError as e:"],
+        )
+
+
+class TestAutoFixForeignLanguageSyntax:
+    """Muscle memory from C, Java and JavaScript."""
+
+    def test_else_if_becomes_elif(self):
+        result = _assert_fixed(
+            "x = 1\nif x == 1:\n    pass\nelse if x == 2:\n    pass",
+            ["elif x == 2:"],
+        )
+        # `else: if ...` would also parse but silently changes the structure.
+        assert "else if" not in result["fixed_code"]
+
+    def test_double_ampersand_becomes_and(self):
+        _assert_fixed("a = 1\nb = 2\nif a == 1 && b == 2:\n    pass", ["and"])
+
+    def test_double_pipe_becomes_or(self):
+        _assert_fixed("a = 1\nb = 2\nif a == 1 || b == 2:\n    pass", [" or "])
+
+    def test_bang_becomes_not(self):
+        _assert_fixed("x = 1\nif !x:\n    pass", ["not x"])
+
+    def test_slash_comment_becomes_hash(self):
+        _assert_fixed("// a note\nx = 1", ["# a note"])
+
+    def test_increment_becomes_augmented_assignment(self):
+        _assert_fixed("x = 1\nx++", ["x += 1"])
+
+    def test_decrement_becomes_augmented_assignment(self):
+        _assert_fixed("x = 1\nx--", ["x -= 1"])
+
+    def test_var_declaration_is_dropped_not_annotated(self):
+        result = _assert_fixed("var x = 5\nprint(x)", ["x = 5"])
+        # Inserting a colon would produce the valid-but-wrong `var: x = 5`.
+        assert "var" not in result["fixed_code"]
+
+    def test_brace_block_becomes_colon_block(self):
+        result = _assert_fixed("def f() {\n    return 1\n}", ["def f():"])
+        assert "{" not in result["fixed_code"]
+        assert "}" not in result["fixed_code"]
+
+
+class TestAutoFixMobileKeyboardDamage:
+    """Text pasted from chat apps and phone keyboards."""
+
+    def test_smart_double_quotes_are_normalised(self):
+        result = _assert_fixed("msg = \u201chello world\u201d\nprint(msg)", ['"hello world"'])
+        assert "\u201c" not in result["fixed_code"]
+        assert "\u201d" not in result["fixed_code"]
+
+    def test_fullwidth_parentheses_are_normalised(self):
+        _assert_fixed("print\uff08'hi'\uff09", ["print('hi')"])
+
+    def test_non_breaking_space_indentation(self):
+        result = _assert_fixed("def f():\n\u00a0\u00a0\u00a0\u00a0return 1", ["return 1"])
+        assert "\u00a0" not in result["fixed_code"]
+
+    def test_smart_quotes_inside_a_working_string_are_left_alone(self):
+        """Typographic quotes are legitimate *data* — only broken code is touched."""
+        code = 'print("she said \u201chi\u201d")'
+        result = _fix(code)
+        assert result["fixed_code"] == code
+        assert result.get("runtime_error") is True
+
+
+class TestAutoFixIndentation:
+    """The single most common beginner failure on a phone keyboard."""
+
+    def test_missing_indent_after_block_header(self):
+        _assert_fixed("def f():\nreturn 1", ["    return 1"])
+
+    def test_missing_indent_after_if(self):
+        _assert_fixed("x = 1\nif x:\nprint(x)", ["    print(x)"])
+
+    def test_unexpected_indent_is_realigned(self):
+        result = _assert_fixed("x = 1\n  y = 2", ["y = 2"])
+        assert result["fixed_code"].split("\n")[1].startswith("y")
+
+    def test_mixed_tabs_and_spaces(self):
+        result = _assert_fixed("def f():\n\tx = 1\n        y = 2", ["x = 1", "y = 2"])
+        assert "\t" not in result["fixed_code"]
+
+
+class TestAutoFixBracketsAcrossLines:
+    """An unclosed bracket is reported on a later line than the typo."""
+
+    def test_bracket_closed_at_end_of_continuation(self):
+        result = _assert_fixed(
+            "result = sum(\n    1,\n    2\n\nprint(result)",
+            ["print(result)"],
+        )
+        assert "2)" in result["fixed_code"]
+
+    def test_stray_closing_bracket_is_removed(self):
+        _assert_fixed("print('a'))", ["print('a')"])
+
+    def test_unclosed_dict_literal(self):
+        _assert_fixed("d = {'a': 1,\nprint(d)", ["print(d)"])
+
+
+class TestAutoFixMissingTokens:
+    def test_missing_in_keyword_in_for_loop(self):
+        _assert_fixed("for i range(3):\n    print(i)", ["for i in range(3):"])
+
+    def test_missing_comma_in_list(self):
+        _assert_fixed("x = [1 2, 3]", ["1, 2"])
+
+    def test_missing_colon_in_lambda(self):
+        _assert_fixed("f = lambda x x + 1", ["lambda x:"])
+
+    def test_unquoted_prose_is_quoted_not_comma_separated(self):
+        """`print(hello world)` means text, not two undefined names.
+
+        Inserting a comma also parses, but produces a NameError at runtime —
+        trading a syntax error for a crash is not a fix.
+        """
+        result = _assert_fixed("print(hello world)", ['print("hello world")'])
+        assert "hello, world" not in result["fixed_code"]
+
+
+class TestAutoFixMultipleErrors:
+    def test_four_separate_typos_in_one_file(self):
+        result = _assert_fixed(
+            "def f()\n    x = 1\n    if x = 1\n        print(x\n",
+            ["def f():", "if x == 1:", "print(x)"],
+        )
+        assert len(result["applied_fixes"]) >= 3
+
+
+class TestAutoFixRefusalIsInformative:
+    """When no safe patch exists, hand over what the parser already told us."""
+
+    AMBIGUOUS = [
+        "def f(:\n    pass",
+        'print("he said "hi"")',
+    ]
+
+    def test_refusal_reports_line_and_parser_message(self):
+        for code in self.AMBIGUOUS:
+            result = _fix(code)
+            if result["ok"]:
+                continue
+            assert result["fixed_code"] == code, "a refusal must not modify the buffer"
+            assert result["applied_fixes"] == []
+            assert result.get("error_line"), f"no line reported for {code!r}"
+            assert result.get("error_message"), f"no parser message reported for {code!r}"
+            assert str(result["error_line"]) in result["explanation"]
+
+    def test_refusal_explanation_is_not_the_old_generic_text(self):
+        result = _fix("def f(:\n    pass")
+        assert result["ok"] is False
+        assert "Here's exactly what Python choked on" in result["explanation"]
+
+
+class TestAutoFixSafetyUnderExpandedCoverage:
+    """Wider coverage must not cost correctness. These are the invariants."""
+
+    VALID = [
+        "prices = [1, 2]\nprint(prices[9])",
+        "import math\nprint(math.pi)",
+        "d = {}\nprint(d['k'])",
+        "def f(a, b=1, *args, **kw):\n    return a + b\nprint(f(1))",
+        "s = 'he said \"hi\"'\nprint(s)",
+        "s = \"tab\\there # not a comment\"\nprint(s)",
+        "class A:\n    def m(self):\n        return lambda x: x + 1",
+        "x = [i for i in range(10) if i % 2 == 0]",
+        "try:\n    pass\nexcept (ValueError, TypeError) as e:\n    print(e)",
+        "def f():\n\tx = 1\n\treturn x",
+        "print('a' 'b')",
+        "a = 1 if True else 2",
+        "matrix = [[1, 2],\n          [3, 4]]",
+        "while retry(timeout=5):\n    pass",
+        "print(f'{1 + 1}')",
+    ]
+
+    def test_valid_code_is_never_touched(self):
+        for snippet in self.VALID:
+            result = _fix(snippet, "IndexError: list index out of range")
+            assert result["fixed_code"] == snippet, f"mutated valid code: {snippet!r}"
+            assert result["ok"] is False
+            assert result["applied_fixes"] == []
+
+    def test_ok_always_implies_the_result_parses(self):
+        """Fuzz: break valid code one character at a time, never lie about success."""
+        from zabacode.core.oracle import _is_valid_python
+
+        checked = 0
+        for snippet in self.VALID:
+            for char in (":", ")", "]", "}", "'", '"', ","):
+                idx = snippet.find(char)
+                while idx != -1:
+                    broken = snippet[:idx] + snippet[idx + 1:]
+                    if not _is_valid_python(broken):
+                        result = _fix(broken)
+                        checked += 1
+                        if result["ok"]:
+                            assert _is_valid_python(result["fixed_code"]), (
+                                f"claimed success on {broken!r} -> {result['fixed_code']!r}"
+                            )
+                    idx = snippet.find(char, idx + 1)
+        assert checked > 20, "fuzz corpus degenerated — it is no longer testing anything"
+
+    def test_fixes_never_delete_user_content(self):
+        """A patch may add or reshape, but must not quietly drop code."""
+        from zabacode.core.oracle import _is_valid_python
+
+        for snippet in self.VALID:
+            for char in (":", ")", "]"):
+                idx = snippet.find(char)
+                if idx == -1:
+                    continue
+                broken = snippet[:idx] + snippet[idx + 1:]
+                if _is_valid_python(broken):
+                    continue
+                result = _fix(broken)
+                if not result["ok"]:
+                    continue
+                before = sum(c.isalnum() for c in broken)
+                after = sum(c.isalnum() for c in result["fixed_code"])
+                assert after >= before, f"content lost: {broken!r} -> {result['fixed_code']!r}"
+
+    def test_large_unfixable_file_stays_responsive(self):
+        """The repair sweep is bounded — an unbounded one froze the UI for seconds."""
+        import time
+
+        code = "\n".join([f"x{i} = {i}" for i in range(800)] + ["@@@ ??? %%%"])
+        started = time.time()
+        result = _fix(code)
+        elapsed = time.time() - started
+        assert result["ok"] is False
+        assert elapsed < 1.5, f"auto-fix took {elapsed:.2f}s on an 800-line buffer"
+
+    def test_comment_only_and_empty_edge_cases(self):
+        assert _fix("")["ok"] is False
+        assert _fix("   \n\n  ")["ok"] is False
+        assert _fix("# just a comment")["ok"] is False
+
+
+class TestAutoFixEndpointExposesRefusalDetail:
+    """The UI can only show the parser's diagnosis if the API forwards it."""
+
+    def _post(self, payload):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        return app.test_client().post(
+            "/api/oracle/fix",
+            json=payload,
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        )
+
+    def test_expanded_fix_reaches_the_client(self):
+        body = self._post({"code": "print 'hello'"}).get_json()
+        assert body["ok"] is True
+        assert body["fixed_code"] == "print('hello')"
+
+    def test_refusal_carries_line_and_message(self):
+        body = self._post({"code": "def f(:\n    pass"}).get_json()
+        assert body["ok"] is False
+        assert body["error_line"] == 1
+        assert body["error_message"]
+        assert body["explanation"]
+
+
+class TestAutoFixRefusalRendering:
+    """F-01 taught us that a fix nobody can see is not a fix."""
+
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_refusal_card_is_rendered_instead_of_a_toast(self):
+        html = self._html()
+        assert "renderAutoFixRefusal(data, container, 'NO SAFE PATCH')" in html, (
+            "a refusal with an explanation must render the detailed card, not a generic toast"
+        )
+
+    def test_refusal_card_preserves_the_caret_pointer_block(self):
+        html = self._html()
+        helper = html.split("function renderAutoFixRefusal(")[1].split("\n}")[0]
+        assert "<pre" in helper, "the caret pointer needs pre-formatted whitespace to line up"
+        assert "white-space:pre" in helper

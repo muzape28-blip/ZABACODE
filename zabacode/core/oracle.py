@@ -937,6 +937,491 @@ def _replace_bare_equals(text: str) -> tuple[str, int]:
     return "".join(out), replacements
 
 
+# ---------------------------------------------------------------------------
+# 4. Auto-Fix — error-directed repair primitives
+# ---------------------------------------------------------------------------
+#
+# The original fixer only knew five hard-coded line shapes. Everything else —
+# Python 2 `print`, smart quotes pasted from a chat app, `&&`, tabs mixed with
+# spaces, a bracket left open three lines up — fell through to "I couldn't
+# produce a patch".
+#
+# CPython's own parser already knows precisely what it expected and where, so
+# the strategy below is: read the SyntaxError, propose targeted candidates for
+# that exact message, and keep a candidate only when it demonstrably moves the
+# parser forward. Nothing is applied on faith.
+
+_NO_ERROR_POS = (10**9, 0)
+
+# Characters phones and chat apps love to substitute. Only ever replaced at the
+# exact offset CPython flagged, so a smart quote *inside* a working string
+# literal is never touched.
+_UNICODE_LOOKALIKES: dict[str, str] = {
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+    "\u00ab": '"', "\u00bb": '"',
+    "\uff02": '"', "\uff07": "'",
+    "\uff08": "(", "\uff09": ")", "\uff3b": "[", "\uff3d": "]",
+    "\uff5b": "{", "\uff5d": "}",
+    "\uff0c": ",", "\uff1a": ":", "\uff1b": ";", "\uff1d": "=",
+    "\uff0b": "+", "\uff0d": "-", "\uff0a": "*", "\uff0f": "/",
+    "\u3010": "[", "\u3011": "]", "\u2013": "-", "\u2014": "-",
+    "\u00a0": " ", "\u3000": " ", "\u2212": "-",
+}
+
+_CLOSER_FOR = {"(": ")", "[": "]", "{": "}"}
+
+# A line that clearly starts a new statement ends a bracket continuation region.
+_NEW_STATEMENT_RE = re.compile(
+    r"^\s*(?:def|class|if|elif|else|for|while|try|except|finally|with|return|"
+    r"import|from|print|raise|assert|del|pass|break|continue|global|nonlocal|@)\b"
+)
+
+
+def _syntax_error(source: str) -> SyntaxError | None:
+    """Return the first SyntaxError raised by ``source``, or None if it parses."""
+    try:
+        ast.parse(source)
+        return None
+    except SyntaxError as exc:
+        return exc
+    except Exception:
+        return None
+
+
+def _error_position(source: str) -> tuple[int, int]:
+    """(line, column) of the first syntax error — sorts as "how far the parser got".
+
+    Valid source returns a sentinel that compares greater than any real
+    position, so "did this patch help?" is a plain tuple comparison.
+    """
+    if _is_valid_python(source):
+        return _NO_ERROR_POS
+    exc = _syntax_error(source)
+    if exc is None:
+        return _NO_ERROR_POS
+    return (exc.lineno or 0, exc.offset or 0)
+
+
+def _indent_of(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _with_indent(line: str, indent: str) -> str:
+    return indent + line.lstrip()
+
+
+def _expand_leading_tabs(line: str, width: int = 4) -> str:
+    """Expand tabs in the *indentation only* — tabs inside strings are data."""
+    stripped = line.lstrip("\t ")
+    prefix = line[: len(line) - len(stripped)]
+    return prefix.replace("\t", " " * width) + stripped
+
+
+def _replace_outside_strings(text: str, transform) -> tuple[str, bool]:
+    """Apply ``transform`` to the code parts of ``text``, skipping strings/comments.
+
+    ``transform`` receives the raw segment and returns the rewritten segment.
+    Returns ``(new_text, changed)``.
+    """
+    out: list[str] = []
+    buf: list[str] = []
+    changed = False
+    quote: str | None = None
+    escaped = False
+    i = 0
+
+    def flush() -> None:
+        nonlocal changed
+        if not buf:
+            return
+        segment = "".join(buf)
+        rewritten = transform(segment)
+        if rewritten != segment:
+            changed = True
+        out.append(rewritten)
+        buf.clear()
+
+    while i < len(text):
+        char = text[i]
+        if quote:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            i += 1
+            continue
+        if char in "\"'":
+            flush()
+            out.append(char)
+            quote = char
+            i += 1
+            continue
+        if char == "#":
+            flush()
+            out.append(text[i:])
+            i = len(text)
+            break
+        buf.append(char)
+        i += 1
+
+    flush()
+    return "".join(out), changed
+
+
+def _pythonize_operators(text: str) -> tuple[str, list[str]]:
+    """Translate C/JavaScript-style operators into their Python equivalents."""
+    notes: list[str] = []
+
+    def convert(segment: str) -> str:
+        seg = segment
+        if "&&" in seg:
+            seg = seg.replace("&&", " and ")
+            notes.append("`&&` → `and`")
+        if "||" in seg:
+            seg = seg.replace("||", " or ")
+            notes.append("`||` → `or`")
+        if "<>" in seg:
+            seg = seg.replace("<>", "!=")
+            notes.append("`<>` → `!=`")
+        # `!x` → `not x`, but never `!=`.
+        new_seg = re.sub(r"!(?!=)\s*(?=[A-Za-z_(])", "not ", seg)
+        if new_seg != seg:
+            notes.append("`!` → `not`")
+            seg = new_seg
+        return seg
+
+    result, changed = _replace_outside_strings(text, convert)
+    if not changed:
+        return text, []
+    # Collapse the double spaces introduced around and/or.
+    result = re.sub(r"[ \t]{2,}(?=\S)", " ", result.rstrip()) + result[len(result.rstrip()):]
+    return result, sorted(set(notes))
+
+
+def _continuation_end(lines: list[str], start: int) -> int:
+    """Last line index that plausibly belongs to the expression opened at ``start``."""
+    end = start
+    for idx in range(start + 1, min(len(lines), start + 60)):
+        stripped = lines[idx].strip()
+        if not stripped:
+            break
+        if _NEW_STATEMENT_RE.match(lines[idx]) or re.match(r"^\S[\w\.\[\]]*\s*=(?!=)", lines[idx]):
+            break
+        end = idx
+    return end
+
+
+def _insert_at(lines: list[str], lineno: int, col: int, text: str) -> list[str] | None:
+    """Insert ``text`` at a 1-based line / 0-based column, returning new lines."""
+    idx = lineno - 1
+    if not (0 <= idx < len(lines)):
+        return None
+    line = lines[idx]
+    col = max(0, min(col, len(line)))
+    patched = list(lines)
+    patched[idx] = line[:col] + text + line[col:]
+    return patched
+
+
+def _insert_token(lines: list[str], lineno: int, col: int, token: str) -> list[str] | None:
+    """Insert punctuation, then tidy the space it would otherwise leave behind.
+
+    ``lambda x x+1`` gets its colon at the parser's offset, which lands after a
+    space and yields ``lambda x :x+1`` — valid, but not what anyone writes.
+    """
+    patched = _insert_at(lines, lineno, col, token)
+    if patched is None:
+        return None
+    if token in ":,":
+        tidied = re.sub(r"[ \t]+" + re.escape(token), token, patched[lineno - 1])
+        patched = _replace_line(patched, lineno, tidied)
+    return patched
+
+
+def _delete_at(lines: list[str], lineno: int, col: int, count: int = 1) -> list[str] | None:
+    idx = lineno - 1
+    if not (0 <= idx < len(lines)):
+        return None
+    line = lines[idx]
+    if not (0 <= col < len(line)):
+        return None
+    patched = list(lines)
+    patched[idx] = line[:col] + line[col + count:]
+    return patched
+
+
+def _replace_line(lines: list[str], lineno: int, new_line: str) -> list[str] | None:
+    idx = lineno - 1
+    if not (0 <= idx < len(lines)):
+        return None
+    patched = list(lines)
+    patched[idx] = new_line
+    return patched
+
+
+def _error_directed_candidates(lines: list[str], exc: SyntaxError) -> list[tuple[list[str], str]]:
+    """Propose patches for the *specific* complaint CPython raised.
+
+    Every candidate is only a proposal: the caller keeps it exclusively when the
+    parser then gets strictly further into the file.
+    """
+    out: list[tuple[list[str], str]] = []
+    msg = exc.msg or ""
+    lineno = exc.lineno or 0
+    col = max(0, (exc.offset or 1) - 1)
+    if not (1 <= lineno <= len(lines)):
+        return out
+    line = lines[lineno - 1]
+
+    def add(patched: list[str] | None, note: str) -> None:
+        if patched is not None and patched != lines:
+            out.append((patched, note))
+
+    # -- Unquoted prose inside print() --------------------------------------
+    # Highest priority: CPython reports `print(hello world)` as "perhaps you
+    # forgot a comma", but inserting a comma yields `print(hello, world)` —
+    # two undefined names and a NameError at runtime. Quoting is what the
+    # beginner meant, and it is the one reading that actually runs.
+    prose = re.search(r"print\s*\(\s*([^()\"']*?)\s*\)\s*$", line.rstrip())
+    if prose:
+        inner = prose.group(1).strip()
+        if inner and not _is_valid_expression(inner) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_ ]*", inner):
+            rebuilt = line.rstrip()[: prose.start()] + f'print("{inner}")'
+            add(_replace_line(lines, lineno, rebuilt), f"Wrapped missing quotes in print() on line {lineno}")
+
+    # -- `else if` is C, `elif` is Python -----------------------------------
+    # Checked before the generic "expected ':'" repair, which would otherwise
+    # turn `else if y:` into the nonsense `else: if y:` shape.
+    if re.match(r"^\s*else\s+if\b", line):
+        add(
+            _replace_line(lines, lineno, re.sub(r"^(\s*)else\s+if\b", r"\1elif", line)),
+            f"Rewrote `else if` as `elif` on line {lineno}",
+        )
+
+    # -- JavaScript variable declaration ------------------------------------
+    # Must precede the colon repairs: inserting `:` at the parser's offset
+    # turns `var x = 5` into the valid-but-meaningless annotation `var: x = 5`.
+    m = re.match(r"^(\s*)(?:var|let|const)\s+([A-Za-z_]\w*\s*=.*)$", line)
+    if m:
+        add(
+            _replace_line(lines, lineno, m.group(1) + m.group(2)),
+            f"Removed the JavaScript `var`/`let`/`const` keyword on line {lineno}",
+        )
+
+    # -- C / JavaScript brace block -----------------------------------------
+    m = re.match(r"^(\s*)((?:def|class|if|elif|else|for|while|try|except|finally|with)\b.*?)\s*\{\s*$", line)
+    if m:
+        indent, header = m.groups()
+        header = header.rstrip()
+        if not header.endswith(":"):
+            header += ":"
+        patched = _replace_line(lines, lineno, indent + header)
+        if patched is not None:
+            # Drop the matching `}` line that closes the block, if present.
+            for idx in range(lineno, len(patched)):
+                if patched[idx].strip() == "}":
+                    patched = patched[:idx] + patched[idx + 1:]
+                    break
+            add(patched, f"Replaced the C-style `{{ }}` block with a Python `:` block on line {lineno}")
+
+    # -- Python 2 print / exec statement -----------------------------------
+    if "Missing parentheses in call to" in msg:
+        name = "print"
+        m = re.search(r"call to '([^']+)'", msg)
+        if m:
+            name = m.group(1)
+        stmt = re.match(rf"^(\s*)({re.escape(name)})\s+(.*?)\s*$", line)
+        if stmt:
+            indent, _, rest = stmt.groups()
+            trailing_comma = rest.endswith(",")
+            rest = rest.rstrip(",").strip()
+            if trailing_comma:
+                add(
+                    _replace_line(lines, lineno, f"{indent}{name}({rest}, end=' ')"),
+                    f"Converted Python 2 `{name}` statement to `{name}(...)` on line {lineno}",
+                )
+            add(
+                _replace_line(lines, lineno, f"{indent}{name}({rest})"),
+                f"Converted Python 2 `{name}` statement to `{name}(...)` on line {lineno}",
+            )
+
+    # -- Parser knows a colon is missing and exactly where ------------------
+    if "expected ':'" in msg:
+        add(_insert_token(lines, lineno, col, ":"), f"Inserted the missing ':' on line {lineno}")
+        add(_replace_line(lines, lineno, line.rstrip() + ":"), f"Added missing ':' on line {lineno}")
+
+    # -- CPython names the assignment it refused ----------------------------
+    if "Maybe you meant '==' instead of '='" in msg:
+        fixed_nc, count = _replace_bare_equals(line)
+        if count:
+            add(
+                _replace_line(lines, lineno, fixed_nc),
+                f"Replaced assignment `=` with comparison `==` on line {lineno}",
+            )
+
+    # -- Stray closing bracket ----------------------------------------------
+    m = re.search(r"unmatched '([)\]}])'", msg)
+    if m:
+        add(_delete_at(lines, lineno, col), f"Removed the extra `{m.group(1)}` on line {lineno}")
+
+    # -- Bracket opened and never closed (often several lines up) -----------
+    m = re.search(r"'([(\[{])' was never closed", msg)
+    if m:
+        closer = _CLOSER_FOR[m.group(1)]
+        start = lineno - 1
+        end = _continuation_end(lines, start)
+        # Closing at the end of the continuation region is nearly always what
+        # the user meant; only then fall back to earlier lines.
+        for idx in range(end, start - 1, -1):
+            where = f" (added `{closer}` on line {idx + 1})" if idx + 1 != lineno else ""
+            add(
+                _replace_line(lines, idx + 1, lines[idx].rstrip() + closer),
+                f"Balanced the `{m.group(1)}` bracket opened on line {lineno}{where}",
+            )
+
+    # -- Character a phone keyboard or chat app substituted -----------------
+    m = re.search(r"invalid character '(.)' \(U\+([0-9A-Fa-f]+)\)", msg)
+    if m:
+        bad = m.group(1)
+        ascii_equiv = _UNICODE_LOOKALIKES.get(bad)
+        if ascii_equiv is not None:
+            # Curly quotes arrive in pairs, and fixing only the opening one
+            # leaves an unterminated string at the very same offset — no
+            # measurable progress, so the patch would be rejected. Normalise
+            # every lookalike on the line in a single candidate first.
+            swept = line
+            for wrong, right in _UNICODE_LOOKALIKES.items():
+                swept = swept.replace(wrong, right)
+            add(
+                _replace_line(lines, lineno, swept),
+                f"Replaced typographic characters (like `{bad}`) with plain ASCII on line {lineno}",
+            )
+            patched = _delete_at(lines, lineno, col)
+            if patched is not None and lines[lineno - 1][col: col + 1] == bad:
+                add(
+                    _insert_at(patched, lineno, col, ascii_equiv),
+                    f"Replaced the typographic `{bad}` with `{ascii_equiv}` on line {lineno}",
+                )
+            # Offset can drift on multi-byte lines; fall back to the whole line.
+            add(
+                _replace_line(lines, lineno, line.replace(bad, ascii_equiv)),
+                f"Replaced the typographic `{bad}` with `{ascii_equiv}` on line {lineno}",
+            )
+
+    # -- Invisible character (non-breaking space from a copy-paste) ---------
+    if "invalid non-printable character" in msg:
+        cleaned = line
+        for wrong, right in _UNICODE_LOOKALIKES.items():
+            cleaned = cleaned.replace(wrong, right)
+        def _is_invisible(ch: str) -> bool:
+            if ch in "\t \n":
+                return False
+            code_point = ord(ch)
+            return code_point < 32 or 0x200B <= code_point <= 0x200F or code_point == 0xFEFF
+
+        cleaned = "".join(ch for ch in cleaned if not _is_invisible(ch))
+        add(
+            _replace_line(lines, lineno, cleaned),
+            f"Removed invisible/non-breaking characters from line {lineno}",
+        )
+
+    # -- `for x range(3):` — the `in` keyword was dropped -------------------
+    m = re.match(r"^(\s*for\s+[A-Za-z_][\w, ]*?)\s+(?!in\b)(\S.*)$", line)
+    if m:
+        add(
+            _replace_line(lines, lineno, f"{m.group(1)} in {m.group(2)}"),
+            f"Inserted the missing `in` keyword on line {lineno}",
+        )
+
+    # -- Tabs and spaces mixed ----------------------------------------------
+    if isinstance(exc, TabError) or "inconsistent use of tabs" in msg:
+        add(
+            [_expand_leading_tabs(ln) for ln in lines],
+            "Converted tab indentation to 4 spaces (never mix tabs and spaces)",
+        )
+
+    # -- Body of a block never indented -------------------------------------
+    m = re.search(r"expected an indented block(?: after .* on line (\d+))?", msg)
+    if m:
+        header_no = int(m.group(1)) if m.group(1) else lineno - 1
+        if 1 <= header_no <= len(lines):
+            header_indent = _indent_of(lines[header_no - 1])
+            add(
+                _replace_line(lines, lineno, _with_indent(line, header_indent + "    ")),
+                f"Indented line {lineno} into the block opened on line {header_no}",
+            )
+
+    # -- Indentation that doesn't line up with anything ---------------------
+    if "unexpected indent" in msg or "unindent does not match" in msg or "unexpected unindent" in msg:
+        seen: list[str] = []
+        for prev in reversed(lines[: lineno - 1]):
+            if prev.strip():
+                indent = _indent_of(prev)
+                if indent not in seen:
+                    seen.append(indent)
+                if prev.rstrip().endswith(":"):
+                    deeper = indent + "    "
+                    if deeper not in seen:
+                        seen.append(deeper)
+                if len(seen) >= 4:
+                    break
+        for indent in seen:
+            add(
+                _replace_line(lines, lineno, _with_indent(line, indent)),
+                f"Re-aligned the indentation of line {lineno}",
+            )
+
+    # -- Python 2 `except E, e:` --------------------------------------------
+    if "multiple exception types must be parenthesized" in msg:
+        add(
+            _replace_line(lines, lineno, re.sub(r"^(\s*except\s+[^,]+),\s*", r"\1 as ", line)),
+            f"Rewrote Python 2 `except X, e:` as `except X as e:` on line {lineno}",
+        )
+
+    # -- C-style operators ---------------------------------------------------
+    converted, notes = _pythonize_operators(line)
+    if notes:
+        add(_replace_line(lines, lineno, converted), f"Converted {', '.join(notes)} on line {lineno}")
+
+    # -- `//` used as a comment marker --------------------------------------
+    if re.match(r"^\s*//", line):
+        add(
+            _replace_line(lines, lineno, re.sub(r"^(\s*)//", r"\1#", line)),
+            f"Rewrote the `//` comment as a `#` comment on line {lineno}",
+        )
+
+    # -- `x++` / `x--` -------------------------------------------------------
+    m = re.match(r"^(\s*)([A-Za-z_][\w\.\[\]'\"]*)\s*(\+\+|--)\s*$", line)
+    if m:
+        indent, target, op = m.groups()
+        add(
+            _replace_line(lines, lineno, f"{indent}{target} {op[0]}= 1"),
+            f"Rewrote `{target}{op}` as `{target} {op[0]}= 1` on line {lineno}",
+        )
+
+    # -- Parser explicitly suspects a missing comma -------------------------
+    if "forgot a comma" in msg:
+        end_col = (exc.end_offset or 0) - 1
+        if exc.end_lineno == lineno and end_col > col:
+            for pos in range(col, min(end_col, len(line))):
+                if line[pos].isspace() and not line[pos - 1: pos].isspace():
+                    add(
+                        _insert_at(lines, lineno, pos, ","),
+                        f"Inserted the missing `,` on line {lineno}",
+                    )
+
+    # -- Last resort for a plain "invalid syntax": the parser's own offset ---
+    if msg.strip() == "invalid syntax":
+        add(_insert_token(lines, lineno, col, ":"), f"Inserted the missing ':' on line {lineno}")
+        add(_insert_token(lines, lineno, col, ","), f"Inserted the missing `,` on line {lineno}")
+
+    return out
+
+
 def auto_fix_code(code: str, stderr: str = "") -> dict:
     """Offline Auto-Fix engine for *syntax* errors.
 
@@ -1061,6 +1546,20 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
 
         return line_content, None
 
+    def accept(candidate_lines: list[str], note: str) -> bool:
+        """Commit a whole-file candidate only when the parser gets further."""
+        nonlocal lines
+        if candidate_lines == lines:
+            return False
+        before = _error_position("\n".join(lines))
+        after = _error_position("\n".join(candidate_lines))
+        if after <= before:
+            return False
+        lines = candidate_lines
+        if note not in applied_fixes:
+            applied_fixes.append(note)
+        return True
+
     def attempt(line_idx: int) -> bool:
         """Try to patch one line, keeping it only if it doesn't regress the parse."""
         if not (0 <= line_idx < len(lines)):
@@ -1073,49 +1572,65 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
         trial[line_idx] = candidate
         # Keep the patch when it either fully fixes the file or moves the first
         # syntax error further down (progress on multi-error files).
-        if _is_valid_python("\n".join(trial)) or _first_error_line("\n".join(trial)) > _first_error_line("\n".join(lines)):
-            lines[line_idx] = candidate
-            if msg not in applied_fixes:
-                applied_fixes.append(msg)
-            return True
+        return accept(trial, msg)
+
+    def attempt_error_directed() -> bool:
+        """Ask CPython what it expected, then try patches aimed at that answer."""
+        exc = _syntax_error("\n".join(lines))
+        if exc is None:
+            return False
+        for candidate, note in _error_directed_candidates(lines, exc):
+            if accept(candidate, note):
+                return True
         return False
 
-    def _first_error_line(source: str) -> int:
-        try:
-            ast.parse(source)
-            return 10**9  # no error at all
-        except SyntaxError as exc:
-            return exc.lineno or 0
-        except Exception:
-            return 0
-
-    # Iteratively repair whichever line the parser complains about.
-    for _ in range(10):
-        current = "\n".join(lines)
-        if _is_valid_python(current):
+    # Iteratively repair whichever line the parser complains about. The parser's
+    # own diagnosis is tried first because it carries the exact position; the
+    # older line-shape heuristics stay as the fallback.
+    for _ in range(25):
+        if _is_valid_python("\n".join(lines)):
             break
-        try:
-            ast.parse(current)
+        exc = _syntax_error("\n".join(lines))
+        if exc is None:
             break
-        except SyntaxError as exc:
-            err_line = exc.lineno
-            if not err_line or err_line > len(lines):
-                err_line = stderr_line if (stderr_line and 0 < stderr_line <= len(lines)) else None
-            if not err_line:
-                break
-            if not attempt(err_line - 1):
-                break
+        if attempt_error_directed():
+            continue
+        err_line = exc.lineno
+        if not err_line or err_line > len(lines):
+            err_line = stderr_line if (stderr_line and 0 < stderr_line <= len(lines)) else None
+        if not err_line:
+            break
+        if attempt(err_line - 1):
+            continue
+        # The reported line is often the *victim* of a typo one line above
+        # (an unclosed bracket is only noticed on the following statement).
+        if err_line >= 2 and attempt(err_line - 2):
+            continue
+        break
 
     # Targeted retry on the traceback line, if one was supplied.
     if not _is_valid_python("\n".join(lines)) and stderr_line:
         attempt(stderr_line - 1)
 
-    # Last resort: sweep every line, keeping only patches that help.
+    # Last resort: sweep the lines around the failure, keeping only patches that
+    # help. Each attempt re-parses the whole file, so an unbounded sweep is
+    # quadratic — on a 1000-line buffer that is seconds of frozen UI on a phone.
+    # The culprit is essentially always near the reported error anyway.
     if not _is_valid_python("\n".join(lines)):
-        for idx in range(len(lines)):
+        exc = _syntax_error("\n".join(lines))
+        focus = (exc.lineno or 1) if exc else (stderr_line or 1)
+        radius = 40
+        window = range(max(0, focus - 1 - radius), min(len(lines), focus + radius))
+        for idx in window:
             if _is_valid_python("\n".join(lines)):
                 break
             attempt(idx)
+        # One more error-directed pass now that the sweep may have unblocked it.
+        for _ in range(10):
+            if _is_valid_python("\n".join(lines)):
+                break
+            if not attempt_error_directed():
+                break
 
     fixed_code = "\n".join(lines)
     is_success = _is_valid_python(fixed_code)
@@ -1133,19 +1648,57 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
             "showing it to you. Click **Apply Fix** below to load the corrected code "
             "into your editor. And pay more attention next time, dummy! 🙄"
         )
-    else:
-        explanation = (
-            "Hmph. I looked over your code and the error trace, but I couldn't "
-            "produce a patch that I'm confident is correct — so I'm not going to "
-            "guess and hand you something broken.\n\n"
-            "Check my diagnostic card above for the line number and cause, then fix "
-            "it by hand. I'm not solving every single one of your bugs!"
+
+        return {
+            "ok": True,
+            "fixed_code": fixed_code,
+            "explanation": explanation,
+            "applied_fixes": applied_fixes,
+        }
+
+    # --- Refusal path ------------------------------------------------------
+    # No confident patch. Saying only "I couldn't fix it" wastes what we *do*
+    # know: CPython told us the exact line, column and expectation. Hand that
+    # over so the user can finish the job by hand.
+    exc = _syntax_error(code)
+    detail_line = exc.lineno if exc else None
+    detail_msg = (exc.msg if exc else None) or "invalid syntax"
+    source_line = ""
+    if detail_line and 1 <= detail_line <= len(code.split("\n")):
+        source_line = code.split("\n")[detail_line - 1].rstrip()
+
+    where = f", on **line {detail_line}**" if detail_line else ""
+    pointer = ""
+    if source_line:
+        caret_col = max(0, (exc.offset or 1) - 1) if exc else 0
+        caret_col = min(caret_col, len(source_line))
+        pointer = f"\n\n```\n{source_line}\n{' ' * caret_col}^\n```"
+
+    partial = ""
+    if applied_fixes:
+        partial = (
+            "\n\nI did get part of the way there — these changes helped but weren't "
+            "enough on their own, so I'm not applying them:\n"
+            + "\n".join(f"- {fix}" for fix in applied_fixes)
         )
+
+    explanation = (
+        "Hmph. I couldn't produce a patch I'm confident is correct, and I refuse "
+        "to hand you something broken.\n\n"
+        f"Here's exactly what Python choked on{where}: **{detail_msg}**."
+        f"{pointer}"
+        f"{partial}\n\n"
+        "Fix that spot by hand — check the line above it too, since unclosed "
+        "brackets and quotes are usually reported one line late."
+    )
 
     return {
         # Only claim success when the patched source actually parses.
-        "ok": is_success and len(applied_fixes) > 0,
-        "fixed_code": fixed_code if is_success else code,
+        "ok": False,
+        "fixed_code": code,
         "explanation": explanation,
-        "applied_fixes": applied_fixes if is_success else [],
+        "applied_fixes": [],
+        "error_line": detail_line,
+        "error_message": detail_msg,
+        "attempted_fixes": applied_fixes,
     }

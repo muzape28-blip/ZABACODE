@@ -7,9 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - 2026-07-28 — Oracle Auto-Fix correctness & safety
+## [Unreleased] - 2026-07-28 — Oracle Auto-Fix correctness, safety & coverage
 
 Full analysis in `AUDIT_REPORT.md`.
+
+### Added — Auto-Fix coverage expansion (error-directed repair)
+
+The safety work below made Auto-Fix trustworthy but left it narrow: it knew only
+five hard-coded line shapes, so the most common beginner mistakes on a phone
+still returned *"I couldn't produce a patch"*. Measured on 36 realistic
+snippets, it repaired 17 and gave up on 13.
+
+The fixer now reads CPython's own diagnosis (`exc.msg`, `exc.offset`,
+`exc.end_offset` — previously discarded, only `lineno` was used) and proposes
+candidates aimed at that exact complaint. **A candidate is kept only when the
+parser demonstrably gets further into the file**, so the F-02 safety contract
+is unchanged: nothing is applied on faith.
+
+Newly repaired, all verified end-to-end through `POST /api/oracle/fix`:
+
+- **Python 2 leftovers** — `print 'x'` → `print('x')`, `except E, e:` → `except E as e:`
+- **C / Java / JavaScript muscle memory** — `else if` → `elif`, `&&`/`||` →
+  `and`/`or`, `!x` → `not x`, `//` comment → `#`, `x++` → `x += 1`,
+  `var x = 5` → `x = 5`, `{ }` blocks → `:` blocks
+- **Mobile keyboard and chat-app damage** — smart/curly quotes, full-width
+  parentheses, non-breaking spaces and other invisible characters
+- **Indentation** (the #1 beginner failure on a small screen) — missing block
+  body indent, stray indent, tabs mixed with spaces
+- **Brackets across lines** — an unclosed `(` on line 1 reported on line 5 is now
+  closed at the end of its expression; stray `)` removed
+- **Missing tokens** — `in` in a `for` header, commas in literals, `lambda` colon
+- **Several independent typos in one file** are repaired in a single pass
+
+Coverage went from 17/30 to 27/30 fixable cases (the 3 genuinely ambiguous ones
+are still refused on purpose).
+
+Correct-but-wrong patches are explicitly ranked out, because trading a syntax
+error for a runtime error is not a fix:
+
+- `print(hello world)` → `print("hello world")`, **not** `print(hello, world)`
+  (which parses, then dies with `NameError`)
+- `var x = 5` → `x = 5`, **not** `var: x = 5` (a meaningless type annotation)
+- `else if y:` → `elif y:`, **not** `else: if y:` (silently different structure)
+
+### Changed — refusals now carry the parser's diagnosis
+
+When no safe patch exists the Oracle no longer throws away what it knows. The
+response adds `error_line`, `error_message` and `attempted_fixes` (partial
+patches that helped but weren't sufficient, so were not applied), and the
+explanation includes the offending source line with a caret at the failing
+column. The UI rendered this path as a generic toast; it now renders the full
+card, with the caret block in `<pre>` so the column still lines up — applying
+the F-01 lesson that a fix the user cannot see is not a fix.
+
+### Fixed — Auto-Fix froze the UI on large files
+
+The last-resort sweep re-parsed the whole buffer for every line, which is
+quadratic. Wider coverage meant more candidates, and an 800-line unfixable file
+took **2.31 s** — a visible hang on a phone. The sweep is now bounded to ±40
+lines around the reported error (the culprit is essentially always nearby):
+**0.16 s**, with no loss of coverage. A test pins the 1.5 s ceiling.
 
 ### Fixed
 - **Oracle Auto-Fix and traceback cards were completely non-functional (critical).**
@@ -43,6 +100,11 @@ Full analysis in `AUDIT_REPORT.md`.
 ### Added
 - 15 regression tests covering the browser's real content-type path, auto-fix
   safety invariants, checker line numbers and traceback masking (144 → 159).
+- 40 further tests for the coverage expansion above (159 → 199): one per newly
+  supported error class, plus the safety invariants that must survive it —
+  valid code is never rewritten, `ok: True` always implies the result parses
+  (fuzzed by deleting one character at a time from valid snippets), patches
+  never delete user content, and large files stay responsive.
 - `pyproject.toml` with ruff (`line-length = 120`) and pytest configuration.
 
 ### Changed

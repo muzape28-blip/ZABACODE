@@ -2121,23 +2121,7 @@ function finishInteractiveSession(exitCode, note) {
     renderOracleExplanation(interactiveStderrBuffer, outputTerminal);
   }
 
-  if (interactiveStderrBuffer.trim() && outputTerminal) {
-    const fixBtn = document.createElement('button');
-    fixBtn.className = 'mini-btn';
-    fixBtn.style.cssText = 'background:var(--ai);color:#1A0F00;border:none;font-weight:bold;margin-top:8px;padding:6px 12px;cursor:pointer;';
-    fixBtn.innerHTML = '\u26A1 ASK ZABA AI TO FIX THIS';
-    const stderrSnapshot = interactiveStderrBuffer;
-    fixBtn.onclick = () => {
-      const aiPanelEl = document.getElementById('ai-panel');
-      if (aiPanelEl) aiPanelEl.classList.add('open');
-      const input = document.getElementById('ai-input');
-      if (input) {
-        input.value = 'My code raised the following error. Analyse it and give me a fix:\n' + stderrSnapshot;
-      }
-      sendAiMessage();
-    };
-    outputTerminal.appendChild(fixBtn);
-  }
+
 
   const ok = exitCode === 0;
   if (outputTerminal) {
@@ -2891,7 +2875,19 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
 // Zaba Oracle — offline traceback explanation (no API key, no network)
 // ---------------------------------------------------------------------------
 function renderOracleCard(exp, container) {
-  if (!exp || !exp.ok || !container) return;
+  if (!exp || !container) return;
+  if (!exp.ok) {
+    // Show fallback card for unrecognized errors
+    const card = document.createElement('div');
+    card.className = 'oracle-card';
+    card.style.borderLeftColor = 'var(--text-dim)';
+    card.innerHTML =
+      '<div class="oracle-head">\uD83D\uDD2E Zaba Oracle <span class="oracle-badge">OFFLINE</span></div>' +
+      '<div class="oracle-what">I detected an error in your code. While I could not auto-diagnose it precisely, I can still attempt to patch common syntax issues.</div>' +
+      '<div class="oracle-fix"><b>Tip:</b> Click "\u2699\uFE0F Auto-Fix with Oracle" below to try automatic repair of missing quotes, brackets, colons, and other typical mistakes.</div>';
+    container.appendChild(card);
+    return;
+  }
   const card = document.createElement('div');
   card.className = 'oracle-card';
   const where = exp.line ? ('<div class="oracle-line">Line ' + exp.line + '</div>') : '';
@@ -2911,10 +2907,12 @@ async function renderOracleExplanation(stderrText, container) {
     });
     const data = await res.json();
     renderOracleCard(data, container);
-    if (data.ok) {
-      renderAutoFixButton(stderrText, container);
-    }
-  } catch (e) { /* offline explanation is best-effort; never block the terminal */ }
+  } catch (e) {
+    // Show fallback card if API call fails
+    renderOracleCard({ ok: false }, container);
+  }
+  // ALWAYS show auto-fix button, regardless of whether oracle explanation succeeded
+  renderAutoFixButton(stderrText, container);
 }
 
 async function renderAutoFixButton(stderrText, container) {

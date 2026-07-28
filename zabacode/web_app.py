@@ -11,6 +11,7 @@ from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.checker import check_code
 from zabacode.core.executor import (
     MAX_CODE_BYTES,
+    MAX_INTERACTIVE_BYTES,
     PRELUDE_LINE_COUNT,
     execute_code_isolated,
     get_interactive_output,
@@ -268,7 +269,7 @@ def run_interactive_input():
     if not isinstance(text, str):
         return jsonify({"ok": False, "message": "Field 'text' must be a string."}), 400
     # Bound input size
-    if len(text.encode("utf-8")) > 8192:
+    if len(text.encode("utf-8")) > MAX_INTERACTIVE_BYTES:
         return (
             jsonify(
                 {

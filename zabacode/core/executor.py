@@ -21,6 +21,7 @@ MAX_OUTPUT_CHARS = 256 * 1024  # 256 KB
 DEFAULT_TIMEOUT = 30           # seconds
 MAX_INTERACTIVE_DURATION = 120  # seconds — max lifetime of interactive session
 MAX_INTERACTIVE_INACTIVITY = 60  # seconds — kill if no output and no input for this long
+MAX_INTERACTIVE_BYTES = 8192   # max bytes per interactive input send
 MAX_INTERACTIVE_QUEUE = 10000  # max chars buffered in queue at once (bounded)
 
 
@@ -340,7 +341,7 @@ def send_interactive_input(text: str) -> dict:
             return {"ok": False, "message": "No active interactive session found."}
 
         # Bound input size to avoid flooding
-        if len(text.encode("utf-8")) > 8192:
+        if len(text.encode("utf-8")) > MAX_INTERACTIVE_BYTES:
             return {"ok": False, "message": "Input too large (max 8KB per send)."}
 
         try:

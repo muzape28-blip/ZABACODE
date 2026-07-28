@@ -19,7 +19,7 @@ from zabacode.core.executor import (
 )
 from zabacode.core.checker import check_code
 from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
-from zabacode.core.oracle import analyze_buffer, humanize_traceback, offline_reply
+from zabacode.core.oracle import analyze_buffer, humanize_traceback, offline_reply, auto_fix_code
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
@@ -611,6 +611,23 @@ def oracle_analyze():
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     return jsonify(analyze_buffer(code))
+
+@app.post("/api/oracle/fix")
+@require_auth
+def oracle_fix():
+    """Automatically patch code based on syntax error/traceback. Works offline."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    code = payload.get("code", "")
+    stderr = payload.get("stderr", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(stderr, str):
+        return jsonify({"ok": False, "message": "Field 'stderr' must be a string."}), 400
+
+    return jsonify(auto_fix_code(code, stderr))
 
 
 def run_webview_server():

@@ -22,7 +22,7 @@ Two capabilities:
 import ast
 import re
 
-__all__ = ["humanize_traceback", "offline_reply", "analyze_buffer", "ORACLE_SIGNATURE"]
+__all__ = ["humanize_traceback", "offline_reply", "analyze_buffer", "ORACLE_SIGNATURE", "auto_fix_code"]
 
 ORACLE_SIGNATURE = "🔮 Zaba Oracle (offline)"
 
@@ -794,4 +794,206 @@ def offline_reply(message: str, code: str = "") -> dict:
         "source": ORACLE_SIGNATURE,
         "offline": True,
         "savior": True,
+    }
+
+
+def auto_fix_code(code: str, stderr: str = "") -> dict:
+    """Offline Auto-Fix engine for common Python errors.
+    Uses iterative AST/Syntax validation to safely patch code.
+    """
+    from zabacode.core.checker import strip_comments_and_strings
+
+    if not code or not code.strip():
+        return {
+            "ok": False,
+            "message": "The editor is empty. Write some code first, dummy!",
+        }
+
+    # Extract target line from stderr/traceback if provided
+    stderr_line = None
+    for m in re.finditer(r"line (\d+)", stderr or ""):
+        stderr_line = int(m.group(1))
+
+    lines = code.split("\n")
+    applied_fixes = []
+
+    def try_fix_line(line_content: str, line_idx: int) -> tuple[str, str | None]:
+        # 1. Missing Quotes inside Print: print(hello world) or print(hello_world)
+        # Avoid print(x) if it is a single valid identifier, but if there are spaces or NameError in stderr on this line, we wrap it.
+        # We look for: print( ... )
+        # E.g., print(hello world) -> print("hello world")
+        print_match = re.search(r"print\s*\(\s*([^\"'\s][^\"')]*[^\"'\s]|[a-zA-Z_][a-zA-Z0-9_]*)\s*\)", line_content)
+        if print_match:
+            inner = print_match.group(1).strip()
+            # If inner is not empty and not numeric, boolean, or None
+            is_keyword = inner in ("True", "False", "None") or inner.replace(".", "", 1).isdigit()
+            # If it's a bare word with spaces, or matches NameError in stderr
+            has_spaces = " " in inner
+            is_name_error_candidate = stderr_line == line_idx and "NameError" in (stderr or "")
+            if not is_keyword and (has_spaces or is_name_error_candidate or not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", inner)):
+                # Wrap inner in double quotes
+                fixed = line_content.replace(print_match.group(0), f'print("{inner}")')
+                if fixed != line_content:
+                    return fixed, f"Wrapped missing quotes in print() on line {line_idx}"
+
+        # Get trailing comment
+        comment_match = re.search(r"(\s*#.*)$", line_content)
+        comment = comment_match.group(1) if comment_match else ""
+        non_comment = line_content[: -len(comment)] if comment else line_content
+        stripped_nc = non_comment.rstrip()
+
+        # 2. Single equals in comparison (if x = 5: -> if x == 5:)
+        if re.match(r"^\s*(if|elif|while)\b", non_comment):
+            fixed_nc, count = re.subn(r"(?<![!=<>+\-*/%])=(?![=])", "==", non_comment)
+            if count > 0:
+                return fixed_nc + comment, f"Replaced single '=' with '==' on line {line_idx}"
+
+        # 3. Missing colon in blocks: if x == 5 -> if x == 5:
+        if re.match(r"^\s*(if|elif|else|for|while|def|class)\b", stripped_nc):
+            if not stripped_nc.endswith(":"):
+                return stripped_nc + ":" + comment, f"Added missing ':' on line {line_idx}"
+
+        # 4. Unterminated string literal
+        # Scan quotes
+        in_single = False
+        in_double = False
+        escaped = False
+        for char in non_comment:
+            if escaped:
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+            elif char == "'" and not in_double:
+                in_single = not in_single
+            elif char == '"' and not in_single:
+                in_double = not in_double
+
+        if in_single:
+            return non_comment + "'" + comment, f"Closed unterminated single-quoted string on line {line_idx}"
+        if in_double:
+            return non_comment + '"' + comment, f"Closed unterminated double-quoted string on line {line_idx}"
+
+        # 5. Unbalanced brackets/parentheses on this line
+        clean_line, _ = strip_comments_and_strings(non_comment)
+        stack = []
+        matching = {")": "(", "]": "[", "}": "{"}
+        reverse_matching = {"(": ")", "[": "]", "{": "}"}
+        for char in clean_line:
+            if char in "([{":
+                stack.append(char)
+            elif char in ")]}":
+                if stack and stack[-1] == matching[char]:
+                    stack.pop()
+        if stack:
+            to_append = "".join(reverse_matching[c] for c in reversed(stack))
+            return stripped_nc + to_append + comment, f"Balanced bracket/parenthesis on line {line_idx}"
+
+        return line_content, None
+
+    # Let's run iterative AST parse and fix
+    max_iterations = 10
+    current_code = code
+    for iteration in range(max_iterations):
+        try:
+            ast.parse(current_code)
+            # If it compiles, we are good!
+            break
+        except SyntaxError as e:
+            err_line = e.lineno
+            if not err_line or err_line > len(lines):
+                # If we don't have a valid line, fallback to checking target line
+                if stderr_line and 0 < stderr_line <= len(lines):
+                    err_line = stderr_line
+                else:
+                    break
+
+            # Try to fix that specific line
+            line_idx = err_line - 1
+            orig_line = lines[line_idx]
+            fixed_line, msg = try_fix_line(orig_line, err_line)
+            if msg and fixed_line != orig_line:
+                lines[line_idx] = fixed_line
+                applied_fixes.append(msg)
+                current_code = "\n".join(lines)
+            else:
+                # If no fix matched, but it's a syntax error, try to balance brackets file-wide or append bracket
+                # Or try general quote close or colon check
+                # If we cannot fix it, break to avoid infinite loop
+                break
+
+    # If parsing is successful or we have targeted runtime line, check if we can fix that runtime line too
+    if stderr_line and 0 < stderr_line <= len(lines):
+        line_idx = stderr_line - 1
+        orig_line = lines[line_idx]
+        fixed_line, msg = try_fix_line(orig_line, stderr_line)
+        if msg and fixed_line != orig_line:
+            # Verify if applying this change doesn't break syntax
+            test_lines = list(lines)
+            test_lines[line_idx] = fixed_line
+            test_code = "\n".join(test_lines)
+            try:
+                ast.parse(test_code)
+                lines[line_idx] = fixed_line
+                current_code = test_code
+                if msg not in applied_fixes:
+                    applied_fixes.append(msg)
+            except SyntaxError:
+                pass
+
+    fixed_code = current_code
+    is_success = False
+    try:
+        ast.parse(fixed_code)
+        is_success = True
+    except SyntaxError:
+        pass
+
+    # If no changes were applied but it doesn't parse, see if we can do a global fix or fallback
+    if not applied_fixes:
+        # Check if we can do anything on the whole code
+        # For example, let's try to fix standard errors line by line
+        for idx, line in enumerate(lines):
+            fixed, msg = try_fix_line(line, idx + 1)
+            if msg and fixed != line:
+                # Try to apply and test
+                test_lines = list(lines)
+                test_lines[idx] = fixed
+                try:
+                    ast.parse("\n".join(test_lines))
+                    lines[idx] = fixed
+                    applied_fixes.append(msg)
+                    fixed_code = "\n".join(test_lines)
+                    is_success = True
+                except SyntaxError:
+                    pass
+
+    # Let's generate a lovely tsundere-lore reply explanation!
+    import random
+    from zabacode.core.oracle import _TSUNDERE_OPENERS
+    opener = _TSUNDERE_OPENERS[len(applied_fixes) % len(_TSUNDERE_OPENERS)]
+
+    if applied_fixes:
+        explanation = (
+            f"{opener}\n\n"
+            f"Hmph! You completely messed up your code, and it crashed. "
+            f"Luckily for you, I analysed the Syntax/Runtime trace and patched it:\n\n"
+            + "\n".join(f"- **{fix}**" for fix in applied_fixes)
+            + "\n\n"
+            f"Click **Apply Fix** below to load the corrected code back into your editor. "
+            f"And make sure you pay more attention next time, dummy! 🙄"
+        )
+    else:
+        explanation = (
+            "Hmph. I looked over your code and the error trace, but it's either too "
+            "convoluted for an automatic safe-patch, or it requires manual rewriting. "
+            "Check my diagnostic card above, double check your logic, and don't expect me "
+            "to solve every single one of your bugs!"
+        )
+
+    return {
+        "ok": len(applied_fixes) > 0,
+        "fixed_code": fixed_code,
+        "explanation": explanation,
+        "applied_fixes": applied_fixes,
     }

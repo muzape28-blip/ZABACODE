@@ -989,3 +989,69 @@ class TestOracleLineMapping:
     def test_prelude_count_matches_actual_patch(self):
         from zabacode.core.executor import PRELUDE_LINE_COUNT, SAFE_INPUT_PATCH
         assert PRELUDE_LINE_COUNT == SAFE_INPUT_PATCH.count("\n")
+
+
+class TestOracleAutoFix:
+    """Verify Zaba Oracle's offline Auto-Fix capabilities."""
+
+    def test_missing_quotes_in_print(self):
+        from zabacode.core.oracle import auto_fix_code
+        r = auto_fix_code("print(hello world)")
+        assert r["ok"] is True
+        assert r["fixed_code"] == 'print("hello world")'
+        assert any("quotes" in fix for fix in r["applied_fixes"])
+
+    def test_single_equals_conditional(self):
+        from zabacode.core.oracle import auto_fix_code
+        r = auto_fix_code("if x = 5:")
+        assert r["ok"] is True
+        assert r["fixed_code"] == "if x == 5:"
+        assert any("==" in fix for fix in r["applied_fixes"])
+
+    def test_missing_colon(self):
+        from zabacode.core.oracle import auto_fix_code
+        r = auto_fix_code("if x == 5")
+        assert r["ok"] is True
+        assert r["fixed_code"] == "if x == 5:"
+        assert any("colon" in fix or ":" in fix for fix in r["applied_fixes"])
+
+    def test_unterminated_string_literal(self):
+        from zabacode.core.oracle import auto_fix_code
+        r = auto_fix_code("print(\"hello")
+        assert r["ok"] is True
+        assert r["fixed_code"] == 'print("hello")'
+        assert any("unterminated" in fix or "string" in fix for fix in r["applied_fixes"])
+
+    def test_unclosed_brackets(self):
+        from zabacode.core.oracle import auto_fix_code
+        r = auto_fix_code("x = [1, 2")
+        assert r["ok"] is True
+        assert r["fixed_code"] == "x = [1, 2]"
+        assert any("bracket" in fix or "parenthesis" in fix for fix in r["applied_fixes"])
+
+    def test_fix_endpoint_auth(self):
+        from zabacode.web_app import app
+        c = app.test_client()
+        r = c.post("/api/oracle/fix", json={"code": "print(hello)"})
+        assert r.status_code == 401
+
+    def test_fix_endpoint_success(self):
+        from zabacode.web_app import app
+        from zabacode.core.security import AUTH_TOKEN
+        c = app.test_client()
+        r = c.post(
+            "/api/oracle/fix",
+            json={"code": "print(hello world)"},
+            headers={"X-Zabacode-Token": AUTH_TOKEN}
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["fixed_code"] == 'print("hello world")'
+
+    def test_ui_contains_auto_fix_functions(self):
+        import pathlib
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "renderAutoFixButton" in html
+        assert "renderDiffView" in html
+        assert "renderAutoFixResult" in html

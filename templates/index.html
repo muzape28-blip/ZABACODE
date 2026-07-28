@@ -2911,7 +2911,103 @@ async function renderOracleExplanation(stderrText, container) {
     });
     const data = await res.json();
     renderOracleCard(data, container);
+    if (data.ok) {
+      renderAutoFixButton(stderrText, container);
+    }
   } catch (e) { /* offline explanation is best-effort; never block the terminal */ }
+}
+
+async function renderAutoFixButton(stderrText, container) {
+  const btn = document.createElement('button');
+  btn.className = 'mini-btn';
+  btn.style.cssText = 'background:var(--ai);color:#1A0F00;border:none;font-weight:bold;margin-top:8px;padding:6px 12px;cursor:pointer;margin-right:8px;';
+  btn.innerHTML = '⚙️ Auto-Fix with Oracle';
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.innerHTML = 'Analyzing...';
+    try {
+      const res = await fetchApi('/api/oracle/fix', {
+        method: 'POST',
+        body: JSON.stringify({ code: getEditorValue(), stderr: stderrText })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        renderAutoFixResult(data, container);
+        btn.remove();
+      } else {
+        showToast('Oracle could not automatically fix this error safely.', 'info');
+        btn.innerHTML = 'Auto-Fix (Unavailable)';
+      }
+    } catch (e) {
+      showToast('Error trying to auto-fix: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.innerHTML = '⚙️ Auto-Fix with Oracle';
+    }
+  };
+  container.appendChild(btn);
+}
+
+function renderDiffView(originalCode, fixedCode) {
+  const origLines = originalCode.split('\n');
+  const fixedLines = fixedCode.split('\n');
+  let html = '<div class="diff-view" style="font-family:monospace; font-size:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); padding:8px; border-radius:4px; margin-top:8px; overflow-x:auto;">';
+  const maxLen = Math.max(origLines.length, fixedLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const oLine = origLines[i];
+    const fLine = fixedLines[i];
+    if (oLine !== fLine) {
+      if (oLine !== undefined) {
+        html += `<div style="background:rgba(255,0,0,0.15); color:#ff6666; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(255,0,0,0.4); text-align:right; margin-right:8px;">${i+1} -</span>${escapeHtml(oLine)}</div>`;
+      }
+      if (fLine !== undefined) {
+        html += `<div style="background:rgba(0,255,0,0.15); color:#66ff66; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(0,255,0,0.4); text-align:right; margin-right:8px;">${i+1} +</span>${escapeHtml(fLine)}</div>`;
+      }
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderAutoFixResult(data, container) {
+  const resultCard = document.createElement('div');
+  resultCard.className = 'oracle-card';
+  resultCard.style.borderLeftColor = '#66ff66';
+  resultCard.style.background = 'rgba(0,255,0,0.02)';
+
+  const originalCode = getEditorValue();
+  const diffHtml = renderDiffView(originalCode, data.fixed_code);
+
+  let formattedExplanation = escapeHtml(data.explanation)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.1); padding:2px 4px; border-radius:2px; font-family:monospace;">$1</code>')
+    .replace(/\n/g, '<br>');
+
+  resultCard.innerHTML = `
+    <div class="oracle-head" style="color:#66ff66;">
+      🔮 Zaba Oracle Auto-Fix Response
+      <span class="oracle-badge" style="background:#66ff66; color:#000;">PATCH READY</span>
+    </div>
+    <div class="oracle-what" style="margin-bottom:8px;">${formattedExplanation}</div>
+    <div style="font-weight:bold; font-size:11px; margin-top:12px; color:var(--text-bright);">PROPOSED CHANGES:</div>
+    ${diffHtml}
+  `;
+
+  const applyBtn = document.createElement('button');
+  applyBtn.className = 'mini-btn';
+  applyBtn.style.cssText = 'background:#66ff66;color:#1A0F00;border:none;font-weight:bold;margin-top:12px;padding:8px 16px;cursor:pointer;';
+  applyBtn.innerHTML = '✔️ Apply Fix';
+
+  applyBtn.onclick = () => {
+    setEditorValue(data.fixed_code);
+    saveActiveTab();
+    showToast('Oracle fix applied and saved successfully!', 'success');
+    resultCard.remove();
+  };
+
+  resultCard.appendChild(applyBtn);
+  container.appendChild(resultCard);
 }
 
 async function sendAiMessage() {

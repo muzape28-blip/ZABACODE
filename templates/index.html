@@ -260,6 +260,17 @@
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
   #output-terminal .stderr-block { color: var(--err); border-left: 2px solid var(--err); padding-left: 8px; margin-top: 6px; }
+  /* Charts written by the running script (matplotlib savefig et al). */
+  .output-image { margin: 8px 0; padding: 6px; border: 1px solid var(--border);
+                  border-left: 3px solid var(--ai); border-radius: 4px;
+                  background: rgba(0,0,0,.22); }
+  .output-image-name { color: var(--ai); font-size: 10.5px; margin-bottom: 5px;
+                       letter-spacing: .4px; }
+  .output-image img { display: block; max-width: 100%; height: auto;
+                      border-radius: 3px; cursor: zoom-in;
+                      background: #fff; /* charts are usually transparent PNGs */ }
+  .output-image img.expanded { cursor: zoom-out; max-width: none; width: 100%; }
+
   /* Zaba Oracle — offline error explanation */
   .oracle-card { margin-top: 10px; border: 1px solid var(--ai); border-left: 3px solid var(--ai);
                  background: rgba(255,176,0,0.06); padding: 10px 12px; border-radius: 4px;
@@ -2112,6 +2123,36 @@ function flushOutputItems(items) {
   appendStreamChunk(curType, buf);
 }
 
+/** Render images the running script saved (matplotlib savefig, PIL, ...). */
+function renderOutputImages(images) {
+  if (!outputTerminal || !images) return;
+  for (const img of images) {
+    if (!img || typeof img.data_uri !== 'string') continue;
+    // Only ever render data: URIs we produced ourselves — never inject a
+    // remote src, which would breach the offline-first guarantee and the CSP.
+    if (!img.data_uri.startsWith('data:image/')) continue;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'output-image';
+
+    const caption = document.createElement('div');
+    caption.className = 'output-image-name';
+    caption.textContent = '🖼 ' + (img.name || 'image');
+
+    const el = document.createElement('img');
+    el.src = img.data_uri;
+    el.alt = img.name || 'generated image';
+    el.loading = 'lazy';
+    // Tap to toggle full width for inspecting a dense chart on a small screen.
+    el.onclick = () => el.classList.toggle('expanded');
+
+    wrap.appendChild(caption);
+    wrap.appendChild(el);
+    outputTerminal.appendChild(wrap);
+    outputTerminal.scrollTop = outputTerminal.scrollHeight;
+  }
+}
+
 function finishInteractiveSession(exitCode, note) {
   interactiveActive = false;
   if (interactivePollTimer) { clearInterval(interactivePollTimer); interactivePollTimer = null; }
@@ -2160,6 +2201,10 @@ async function pollInteractiveOutput() {
     const res = await fetchApi('/api/run/interactive/output');
     const data = await res.json();
     if (data.output && data.output.length > 0) flushOutputItems(data.output);
+    // Charts saved by the script (plt.savefig) appear inline as they are
+    // produced. Android has no display, so savefig is the only way to see a
+    // plot at all — the Oracle tells users this works, so it must.
+    if (data.images && data.images.length > 0) renderOutputImages(data.images);
     if (data.done) {
       finishInteractiveSession(typeof data.exit_code === 'number' ? data.exit_code : 1);
     }

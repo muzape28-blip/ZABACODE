@@ -48,6 +48,74 @@ builtins.input = _safe_input
 PRELUDE_LINE_COUNT = SAFE_INPUT_PATCH.count("\n")
 
 
+# ---------------------------------------------------------------------------
+# Generated-image capture
+# ---------------------------------------------------------------------------
+#
+# Both execution modes need this, but for different reasons, so only the
+# *collection* is shared — never the execution flow itself:
+#
+#   * batch (execute_code_isolated) snapshots once, after the process exits;
+#   * interactive polls repeatedly while the process is still alive, because a
+#     long-running script may emit several plots before it finishes.
+#
+# Android has no display, so `plt.show()` is a no-op there and `savefig()` is
+# the only way to see a chart. That makes picking these files up the difference
+# between matplotlib working and silently doing nothing.
+
+IMAGE_SUFFIXES = ("*.png", "*.jpg", "*.jpeg")
+
+# A single 8 MB base64 payload would stall the WebView bridge on a low-end
+# phone, so oversized renders are reported rather than shipped.
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+def _snapshot_images() -> set:
+    """Paths of image files currently in the working directory."""
+    found: set = set()
+    for pattern in IMAGE_SUFFIXES:
+        found |= set(FILES_DIR.glob(pattern))
+    return found
+
+
+def _encode_images(paths) -> list:
+    """Encode image files as data URIs, skipping anything unreadable."""
+    encoded = []
+    for img_path in sorted(paths):
+        try:
+            raw = img_path.read_bytes()
+            if len(raw) > MAX_IMAGE_BYTES:
+                continue
+            mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
+            encoded.append({
+                "name": img_path.name,
+                "data_uri": f"data:{mime};base64,{base64.b64encode(raw).decode('utf-8')}",
+            })
+        except OSError:
+            # Half-written file (the script is still saving it) — it will be
+            # picked up on the next poll.
+            continue
+    return encoded
+
+
+def collect_new_images(baseline: set) -> tuple[list, set]:
+    """Encode images created since ``baseline``.
+
+    Returns ``(encoded_images, new_baseline)`` so a caller polling in a loop can
+    advance its baseline and never send the same plot twice.
+    """
+    current = _snapshot_images()
+    fresh = current - baseline
+    if not fresh:
+        return [], current
+
+    encoded = _encode_images(fresh)
+    # Only files that were actually encoded advance the baseline; a file still
+    # being written stays "new" so the next poll retries it.
+    delivered = {p for p in fresh if any(e["name"] == p.name for e in encoded)}
+    return encoded, baseline | delivered
+
+
 def normalize_code(code: str) -> str:
     """
     Normalize Python code to prevent EOF/syntax errors.
@@ -110,7 +178,7 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
         env["TEMP"] = str(CACHE_DIR)
         env["TMP"] = str(CACHE_DIR)
 
-        existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
+        existing_images = _snapshot_images()
 
         proc = subprocess.Popen(
             [sys.executable, "_active_run.py"],
@@ -146,18 +214,7 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
                 "images": [],
             }
 
-        new_images = (set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))) - existing_images
-        image_data = []
-        for img_path in sorted(new_images):
-            try:
-                b64 = base64.b64encode(img_path.read_bytes()).decode("utf-8")
-                mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
-                image_data.append({
-                    "name": img_path.name,
-                    "data_uri": f"data:{mime};base64,{b64}"
-                })
-            except Exception:
-                pass
+        image_data, _ = collect_new_images(existing_images)
 
         stderr_cleaned = stderr_text.replace('_active_run.py', 'main.py') if stderr_text else ""
 
@@ -192,6 +249,10 @@ class InteractiveSession:
         self.last_activity: float | None = None
         self.total_chars: int = 0
         self.output_truncated: bool = False
+        # Images already present when the run started, plus everything already
+        # delivered to the client. Without this the same plot would be re-sent
+        # on every 150 ms poll.
+        self.image_baseline: set = set()
 
 
 _session = InteractiveSession()
@@ -313,6 +374,9 @@ def start_interactive_session(code: str) -> dict:
             _session.last_activity = time.time()
             _session.total_chars = 0
             _session.output_truncated = False
+            # Snapshot before the child can write anything, so pre-existing
+            # files from an earlier run are never re-reported as new.
+            _session.image_baseline = _snapshot_images()
 
             t_out = threading.Thread(
                 target=_read_stream_char,
@@ -424,6 +488,13 @@ def get_interactive_output() -> dict:
         output_chars = _mask_runner_filename(output_chars)
 
         done = _session.proc.poll() is not None
+
+        # Pick up any chart the script saved. Done while the process is still
+        # running too, so a loop that emits several plots shows them as they
+        # appear rather than all at the end. On the final poll this also
+        # catches images flushed just before exit.
+        images, _session.image_baseline = collect_new_images(_session.image_baseline)
+
         if done:
             _session.active = False
             exit_code = _session.proc.returncode
@@ -432,6 +503,7 @@ def get_interactive_output() -> dict:
                 "done": True,
                 "output": output_chars,
                 "exit_code": exit_code,
+                "images": images,
                 "output_truncated": _session.output_truncated,
             }
 
@@ -439,6 +511,7 @@ def get_interactive_output() -> dict:
             "ok": True,
             "done": False,
             "output": output_chars,
+            "images": images,
             "output_truncated": _session.output_truncated,
         }
 

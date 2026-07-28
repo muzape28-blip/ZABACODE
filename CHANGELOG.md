@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-29 — Charts finally appear when you press RUN
+
+### Fixed — matplotlib silently did nothing on the path the RUN button uses
+
+ZABACODE has two execution modes, and they exist for good reasons:
+
+| | `/api/run` (batch) | `/api/run/interactive/*` |
+|---|---|---|
+| `input()` | stubbed, returns `""` | genuinely blocks and waits |
+| output | one blob at the end | streamed live, polled every 150 ms |
+| **images** | **collected** | **never collected** |
+| used by RUN button | no | **yes** |
+
+Only the batch path ever gathered generated images — and the editor drives the
+interactive one. So a user who followed the Oracle's own advice:
+
+> "Save instead of `show()` on Android — ZABACODE picks the image up automatically"
+
+got nothing. The `.png` was written to `files/` and simply never surfaced.
+Android has no display, so `plt.show()` is a no-op and `savefig()` is the *only*
+way to see a chart — which made this the difference between matplotlib working
+and appearing broken.
+
+The interactive session now captures images too, and the terminal renders them
+inline as they are produced (a loop emitting several plots shows each one as it
+lands, rather than all at the end).
+
+Care taken:
+
+- **No duplicates.** A per-session baseline advances as images are delivered, so
+  the 150 ms poll cannot re-send the same chart forever.
+- **No stale files.** The baseline is snapshotted before the child process can
+  write, so leftovers from an earlier run are not reported as new.
+- **No half-written files.** A file still being flushed fails to encode and
+  stays queued for the next poll instead of arriving corrupt.
+- **Bounded.** Renders over 8 MB are skipped rather than shipped, since a base64
+  blob that size stalls the WebView bridge on a low-end phone.
+- **Only `data:` URIs are rendered** — never a remote `src`, which would breach
+  both the CSP and the offline-first guarantee.
+
+### Changed — `/api/run` documented instead of deleted
+
+It looked like dead code (nothing in the UI calls it), but removing it would
+have deleted the only image-capture logic in the project. It is the legitimate
+non-interactive counterpart — used by automation and 9 tests — and its
+docstring now says so, including why its traceback line needs
+`line_offset=PRELUDE_LINE_COUNT` and the interactive path does not.
+
+Only the image capture is now shared (`collect_new_images()`); the two
+execution flows stay separate on purpose, because their input and timeout
+semantics genuinely differ.
+
+---
+
 ## [Unreleased] - 2026-07-29 — Oracle chat & terminal integration
 
 The engine was fixed in the previous pass; this one connects it to the paths

@@ -173,6 +173,22 @@ def health_check():
 @app.post("/api/run")
 @require_auth
 def run_code():
+    """Batch execution: run to completion, then return everything at once.
+
+    Not what the RUN button uses — the editor drives ``/api/run/interactive/*``
+    so that ``input()`` genuinely blocks and output streams live. This endpoint
+    is the non-interactive counterpart, kept for automation, plugins and tests:
+
+    * ``input()`` is stubbed by ``SAFE_INPUT_PATCH`` (returns ``""``) because
+      nobody is there to type, which is why the reported traceback line needs
+      ``line_offset=PRELUDE_LINE_COUNT`` below;
+    * the whole run is bounded by a single 30 s timeout rather than the
+      interactive session's idle/lifetime limits;
+    * the response is one JSON blob (stdout, stderr, images, explain).
+
+    The two paths deliberately do *not* share an execution flow — only the
+    image capture in ``collect_new_images()`` is common.
+    """
     payload, err = _get_json_payload()
     if err:
         return err

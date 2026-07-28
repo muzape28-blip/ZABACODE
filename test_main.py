@@ -2175,3 +2175,191 @@ class TestOracleCardRendering:
     def test_rate_limit_fallback_does_not_recite_a_canned_example(self):
         html = self._html()
         assert 'For error like "unterminated string literal"' not in html
+
+
+# ===========================================================================
+# Generated-image capture — session of 2026-07-29
+#
+# Android has no display, so plt.show() does nothing and savefig() is the only
+# way to see a chart. The Oracle tells users "ZABACODE picks the image up
+# automatically" — but only the batch path ever collected images, and the RUN
+# button uses the interactive path, so that promise was false in the UI.
+# ===========================================================================
+
+PNG_MAGIC = "89504e470d0a1a0a"
+
+
+def _write_png_snippet(name: str) -> str:
+    return f"with open({name!r}, 'wb') as f:\n    f.write(bytes.fromhex({PNG_MAGIC!r}))\n"
+
+
+class TestInteractiveRunCapturesImages:
+    """The path the RUN button actually drives must surface saved charts."""
+
+    def _clean(self):
+        from zabacode.core.paths import FILES_DIR
+
+        for pattern in ("*.png", "*.jpg", "*.jpeg"):
+            for path in FILES_DIR.glob(pattern):
+                path.unlink()
+
+    def _client(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def _drain(self, client, headers, limit=100):
+        """Poll to completion, returning every image the server delivered."""
+        import time
+
+        images = []
+        for _ in range(limit):
+            body = client.get("/api/run/interactive/output", headers=headers).get_json()
+            images += body.get("images", [])
+            if body.get("done"):
+                break
+            time.sleep(0.03)
+        return images
+
+    def test_saved_image_reaches_the_client(self):
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start",
+            json={"code": _write_png_snippet("chart.png")},
+            headers=headers,
+        )
+        images = self._drain(client, headers)
+        assert [i["name"] for i in images] == ["chart.png"]
+        assert images[0]["data_uri"].startswith("data:image/png;base64,")
+
+    def test_image_is_not_delivered_twice(self):
+        """The 150 ms poll would otherwise re-send the same chart forever."""
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start",
+            json={"code": _write_png_snippet("once.png")},
+            headers=headers,
+        )
+        names = [i["name"] for i in self._drain(client, headers)]
+        assert names.count("once.png") == 1
+
+    def test_pre_existing_files_are_not_reported_as_new(self):
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "stale.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start", json={"code": "print('hi')\n"}, headers=headers
+        )
+        assert self._drain(client, headers) == []
+
+    def test_multiple_images_are_all_captured(self):
+        self._clean()
+        client, headers = self._client()
+        code = _write_png_snippet("a.png") + _write_png_snippet("b.png")
+        client.post("/api/run/interactive/start", json={"code": code}, headers=headers)
+        names = sorted(i["name"] for i in self._drain(client, headers))
+        assert names == ["a.png", "b.png"]
+
+    def test_run_without_images_reports_an_empty_list(self):
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start", json={"code": "print('no charts')\n"}, headers=headers
+        )
+        assert self._drain(client, headers) == []
+
+
+class TestImageCaptureHelper:
+    """`collect_new_images` is the one piece both execution modes share."""
+
+    def _clean(self):
+        from zabacode.core.paths import FILES_DIR
+
+        for pattern in ("*.png", "*.jpg", "*.jpeg"):
+            for path in FILES_DIR.glob(pattern):
+                path.unlink()
+
+    def test_baseline_advances_so_nothing_repeats(self):
+        from zabacode.core.executor import collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        baseline: set = set()
+
+        (FILES_DIR / "first.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+        images, baseline = collect_new_images(baseline)
+        assert [i["name"] for i in images] == ["first.png"]
+
+        images, baseline = collect_new_images(baseline)
+        assert images == [], "already-delivered image was sent again"
+
+        (FILES_DIR / "second.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+        images, baseline = collect_new_images(baseline)
+        assert [i["name"] for i in images] == ["second.png"]
+
+    def test_jpeg_gets_the_right_mime_type(self):
+        from zabacode.core.executor import collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+        images, _ = collect_new_images(set())
+        assert images[0]["data_uri"].startswith("data:image/jpeg;base64,")
+
+    def test_oversized_image_is_skipped_not_shipped(self):
+        """An 8 MB base64 blob would stall the WebView bridge on a cheap phone."""
+        from zabacode.core.executor import MAX_IMAGE_BYTES, collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "huge.png").write_bytes(b"\x00" * (MAX_IMAGE_BYTES + 1))
+        images, _ = collect_new_images(set())
+        assert images == []
+
+    def test_batch_path_still_returns_images(self):
+        """The shared helper must not regress the mode that already worked."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        self._clean()
+        body = app.test_client().post(
+            "/api/run",
+            json={"code": _write_png_snippet("batch.png")},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert [i["name"] for i in body["images"]] == ["batch.png"]
+
+
+class TestImageRenderingInUI:
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_interactive_poll_renders_images(self):
+        html = self._html()
+        assert "renderOutputImages" in html
+        assert "data.images" in html, "the poll loop must consume the images field"
+
+    def test_only_data_uris_are_rendered(self):
+        """A remote src would breach both the CSP and the offline guarantee."""
+        html = self._html()
+        helper = html.split("function renderOutputImages(")[1].split("\n}")[0]
+        assert "data:image/" in helper
+        assert "startsWith" in helper
+
+    def test_csp_allows_inline_data_images(self):
+        import pathlib
+
+        source = (pathlib.Path(__file__).parent / "zabacode" / "web_app.py").read_text(encoding="utf-8")
+        assert "img-src 'self' data:" in source

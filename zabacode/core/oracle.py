@@ -29,6 +29,10 @@ __all__ = ["humanize_traceback", "offline_reply", "analyze_buffer", "ORACLE_SIGN
 
 ORACLE_SIGNATURE = "🔮 Zaba Oracle (offline)"
 
+# Review notes shown before the list is truncated. Tuned for a phone screen:
+# beyond this the real problems scroll out of view.
+MAX_REVIEW_NOTES = 12
+
 
 # ---------------------------------------------------------------------------
 # 1. Traceback Humanizer
@@ -122,6 +126,14 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
         "Check your spelling first! If the spelling is correct, print out the variable's type with `print(type(variable))` to verify if it really is what you think it is. You might have received a different object than expected.",
     ),
     (
+        r"SyntaxError: .*Maybe you meant '==' instead of '='\?",
+        "Assignment Where a Comparison Belongs! ⚖️",
+        "You used a single `=` where Python expected a comparison. `=` *assigns* a value, `==` *asks* whether "
+        "two values are equal — and you can't assign to something inside an `if` or `while` test.",
+        "Double the equals sign: `if x == 5:` instead of `if x = 5:`. Remember the rule of thumb — one `=` "
+        "stores, two `==` compares.",
+    ),
+    (
         r"SyntaxError: (?:invalid syntax|unexpected EOF|'\(' was never closed)",
         "Python Couldn't Parse Your Code! 💥",
         "Ah, a classic structural typo! There is a syntax error somewhere. Usually this means an unclosed parenthesis `(`, bracket `[`, brace `{{`, or you used a single `=` where you meant a comparison `==`.",
@@ -175,7 +187,286 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
         "Hmph, an assertion failed: `{0}`. Your code made a promise or check that turned out to be false. If this was during a test, it means the actual output didn't match what you expected.",
         "Look closely at the expression that triggered the failure. Print or debug the values to see why they are different. Assertions are your guardrails—respect them!",
     ),
+    # --- Everyday runtime errors -------------------------------------------
+    # These used to fall through to the generic "Something went wrong" card,
+    # which just echoed the raw exception back at the user. They are among the
+    # most frequent crashes a beginner actually hits, so each one now gets a
+    # real explanation.
+    (
+        r"TypeError: cannot unpack non-sequence|ValueError: not enough values to unpack \(expected (\d+), got (\d+)\)",
+        "Unpacking Count Mismatch! 📦",
+        "You asked Python to split a value into {0} pieces, but it only had {1}. Something like `a, b, c = [1, 2]` — "
+        "the number of names on the left must match the number of items on the right.",
+        "Count both sides. If the length varies, unpack defensively with a star: `first, *rest = items`. To see what "
+        "you actually got, `print(len(value), value)` right before the line that failed.",
+    ),
+    (
+        r"ValueError: too many values to unpack \(expected (\d+)\)",
+        "Too Many Values to Unpack! 📦",
+        "You gave Python more items than there are names to hold them. You asked for {0} name(s), but the value on the "
+        "right contains more than that.",
+        "Either add the missing names on the left, or collect the leftovers with a star: `first, *rest = items`. When "
+        "looping over a dict use `.items()` so each round yields exactly a key and a value.",
+    ),
+    (
+        r"TypeError: '([^']+)' object is not iterable",
+        "This Value Can't Be Looped Over! 🔁",
+        "You tried to loop over (or unpack) a `{0}`, but a `{0}` isn't a collection of things — there is nothing "
+        "inside it to walk through. This very often means a function returned `None` because it had no `return` "
+        "statement.",
+        "Check where the value came from. If it's `None`, the function that produced it is probably missing a "
+        "`return`. To loop a fixed number of times use `range(n)`; to loop over one value, wrap it in a list: "
+        "`[value]`.",
+    ),
+    (
+        r"TypeError: '([^']+)' object is not callable",
+        "You Called Something That Isn't a Function! 📞",
+        "You wrote `something(...)` with parentheses, but `something` is a `{0}`, not a function. The classic cause is "
+        "a name collision — assigning `list = [1, 2]` overwrites the built-in `list`, and every "
+        "later `list(...)` call breaks.",
+        "Make sure you didn't reuse a built-in name (`list`, `dict`, `str`, `sum`, `print`) as a variable. If you only "
+        "meant to read the value, drop the parentheses.",
+    ),
+    (
+        r"TypeError: can only concatenate str \(not \"([^\"]+)\"\) to str",
+        "Can't Glue a Number Onto Text! 🔗",
+        "You used `+` between a string and a `{0}`. Python refuses to guess whether you meant to join text or add "
+        "numbers, so it stops instead of silently doing the wrong thing.",
+        "Convert explicitly: `\"Total: \" + str(count)`. Better yet, use an f-string and skip the conversion entirely: "
+        "`f\"Total: {{count}}\"`.",
+    ),
+    (
+        r"TypeError: (?:string indices must be integers|list indices must be integers or slices, not ([A-Za-z_]\w*))",
+        "Indexed With the Wrong Kind of Key! 🔢",
+        "You indexed a string or list using a name instead of a number. Lists and strings are positional — they only "
+        "understand `[0]`, `[1]`, `[2]`. Only dictionaries can be looked up by a text key.",
+        "If you expected a dictionary, print the value first: `print(type(data), data)`. A very common cause is "
+        "looping over a list of dicts but accidentally indexing the *outer* list, or reading JSON that "
+        "turned out to be a list, not an object.",
+    ),
+    (
+        r"TypeError: object of type '([^']+)' has no len\(\)",
+        "This Value Has No Length! 📏",
+        "You called `len()` on a `{0}`. Length only makes sense for things that hold items — strings, lists, tuples, "
+        "dicts, sets. A single number or `None` has no length.",
+        "Check what the variable really holds with `print(type(value))`. If you wanted the number of digits in a "
+        "number, convert it first: `len(str(number))`.",
+    ),
+    (
+        r"TypeError: ([A-Za-z_][\w.]*)\(\) takes (?:from \d+ to )?(\d+) "
+        r"positional arguments? but (\d+) (?:was|were) given",
+        "Too Many Arguments Passed! 🧮",
+        "You called `{0}()` with {2} argument(s), but it only accepts {1}. If `{0}` is a method inside a class, "
+        "remember that `self` is passed automatically — so the definition needs `self` as its first parameter.",
+        "Compare your call with the `def {0}(...)` line. Inside a class, methods must be defined as `def {0}(self, "
+        "...)`, and you call them as `obj.{0}(...)` without passing `self` yourself.",
+    ),
+    (
+        r"IndexError: (string|tuple|bytes) index out of range",
+        "Reached Past the End! 🪜",
+        "You asked for a position that doesn't exist in that {0}. Positions start at 0, so the last valid index is "
+        "always `len(value) - 1`.",
+        "Guard the lookup with `if index < len(value):`, or use negative indexing (`value[-1]`) to grab the last item "
+        "safely. Iterating directly with `for item in value:` avoids indexes altogether.",
+    ),
+    (
+        r"TypeError: unhashable type: '([^']+)'",
+        "Can't Use That as a Dictionary Key! 🔑",
+        "You tried to use a `{0}` as a dictionary key or put it inside a set. Only immutable (unchangeable) values can "
+        "be hashed, and a `{0}` can change at any time.",
+        "Convert it to something immutable first: a `tuple` instead of a list (`tuple(my_list)`), or a `frozenset` "
+        "instead of a set. If you wanted to store the value, use a list instead of a set.",
+    ),
+    (
+        r"TypeError: '([^']+)' object does not support item assignment",
+        "This Value Can't Be Modified in Place! 🔒",
+        "You tried something like `value[0] = x`, but a `{0}` is immutable — once created it can never be changed. "
+        "Strings and tuples work this way by design.",
+        "Build a new value instead of editing the old one. For a string: `text = text[:i] + new_char + text[i+1:]`, or "
+        "use `text.replace(old, new)`. For a tuple, convert to a list, change it, then convert back.",
+    ),
+    (
+        r"AttributeError: module '([^']+)' has no attribute '([^']+)'",
+        "That Function Isn't in This Module! 📚",
+        "The module `{0}` has no `{1}`. Usually this is a small spelling slip (`math.sqr` instead of `math.sqrt`), or "
+        "your own file is shadowing the real library.",
+        "Check the exact spelling. Critically: make sure you haven't named your own script `{0}.py` — "
+        "that file would be imported instead of the real library. List what's actually available with "
+        "`import {0}; print(dir({0}))`.",
+    ),
+    (
+        r"(?:requests\.exceptions\.(?:ConnectionError|ConnectTimeout)|urllib\.error\.URLError"
+        r"|socket\.gaierror|ConnectionRefusedError|NewConnectionError)",
+        "Network Unreachable! 📡",
+        "Your code tried to reach the internet and couldn't. On a phone this is usually airplane mode, a dead SIM, "
+        "captive Wi-Fi, or simply no signal — not a bug in your code.",
+        "Check your connection first. Then wrap the call so a dead network doesn't crash the whole program: `try: r = "
+        "requests.get(url, timeout=10)` / `except requests.exceptions.RequestException as e: print('offline:', e)`.",
+    ),
+    (
+        r"(?:socket\.timeout|TimeoutError|requests\.exceptions\.(?:ReadTimeout|Timeout))\b",
+        "The Request Timed Out! ⏱️",
+        "Something took too long to answer and Python gave up waiting. On mobile data this happens "
+        "constantly — a slow server or a weak signal is enough.",
+        "Always pass an explicit timeout (`requests.get(url, timeout=10)`) and catch the failure so your program can "
+        "retry or carry on instead of dying.",
+    ),
+    (
+        r"KeyboardInterrupt",
+        "You Stopped the Program ✋",
+        "This isn't a bug at all — the program was interrupted (Ctrl-C, or the Stop button). Python reports it as an "
+        "exception so any cleanup code still gets a chance to run.",
+        "If you meant to stop it, nothing to fix. If your program should shut down gracefully, catch it: `except "
+        "KeyboardInterrupt: print('bye')`.",
+    ),
+    (
+        r"MemoryError",
+        "Out of Memory! 🧠",
+        "Your program asked for more memory than the device could give. On a phone the ceiling is much lower than on a "
+        "laptop, so an enormous list or an infinite loop that keeps appending will hit it fast.",
+        "Process data in chunks instead of loading everything at once, and prefer generators (`yield`) over building "
+        "giant lists. Also double-check that no loop is appending forever without a stopping condition.",
+    ),
+    (
+        r"OverflowError: (.+)",
+        "Number Got Too Big! 💥",
+        "A calculation produced a number too large for Python to represent as a float ({0}). Plain integers can grow "
+        "forever, but floats have a hard ceiling around 1.8e308.",
+        "Work with integers where you can — they have no limit. For very large or very small magnitudes, use the "
+        "`decimal` module, or rescale using logarithms.",
+    ),
+    (
+        r"StopIteration",
+        "The Iterator Ran Out! 🏁",
+        "You called `next()` on an iterator that had no items left. A generator raises this once it's exhausted.",
+        "Give `next()` a default so it can't blow up: `next(it, None)`. Or just use a `for` loop, which stops cleanly "
+        "on its own when the items run out.",
+    ),
+    (
+        r"NotImplementedError",
+        "This Method Is a Placeholder! 🚧",
+        "You called a method whose body is still `raise NotImplementedError` — a deliberate reminder that the real "
+        "implementation hasn't been written yet.",
+        "Find the method and fill in the actual logic. If you inherited from a base class, you're expected to override "
+        "this method in your own subclass.",
+    ),
+    (
+        r"IsADirectoryError: .*'([^']*)'",
+        "That's a Folder, Not a File! 📂",
+        "You tried to open `{0}` as a file, but it's actually a directory.",
+        "Point at a file inside it instead. To see what's in there: `import os; print(os.listdir('{0}'))`.",
+    ),
+    (
+        r"FileExistsError: .*'([^']*)'",
+        "That File Already Exists! 📄",
+        "You tried to create `{0}`, but something with that name is already there, and the mode you used refuses to "
+        "overwrite it.",
+        "Use `'w'` to overwrite deliberately, or `'a'` to append. To create only when missing, check first: `if not "
+        "os.path.exists('{0}'):`.",
+    ),
 ]
+
+
+# A traceback frame header: '  File "<path>", line N, in <name>'.
+# Only these carry a real source position; "line 5" appearing inside an
+# exception *message* (JSONDecodeError, IndentationError, ...) does not.
+_FRAME_RE = re.compile(r'^\s*File "(?P<path>[^"]*)", line (?P<line>\d+)', re.MULTILINE)
+
+# The executor masks its scratch file to main.py before the Oracle ever sees
+# the traceback, so a user frame is one pointing at that name. Anything under a
+# Python install / site-packages is library code the user cannot edit.
+_USER_FRAME_HINTS = ("main.py", "_active_run.py", "<stdin>", "<string>")
+
+
+def _is_user_frame(path: str) -> bool:
+    """True when a traceback frame points at the user's own buffer.
+
+    Frames inside the standard library or an installed package are useless to
+    show a beginner — they cannot edit `/usr/lib/python3.11/json/decoder.py`,
+    and pointing them there sends them hunting in the wrong file.
+    """
+    normalised = path.replace("\\", "/")
+    tail = normalised.rsplit("/", 1)[-1]
+    if any(hint in tail for hint in _USER_FRAME_HINTS):
+        return True
+    # Anything living in an interpreter/library directory is not user code.
+    library_markers = (
+        "/site-packages/", "/dist-packages/", "/lib/python", "/lib64/python",
+        "/user_packages/", "/importlib/", "/encodings/",
+    )
+    if any(marker in normalised for marker in library_markers):
+        return False
+    # A bare "<frozen importlib._bootstrap>" style frame is interpreter guts.
+    return not (normalised.startswith("<") and normalised.endswith(">"))
+
+
+# Separators CPython prints between chained exceptions.
+_CHAIN_SEPARATORS = (
+    "During handling of the above exception, another exception occurred:",
+    "The above exception was the direct cause of the following exception:",
+)
+
+
+def _last_exception_block(stderr: str) -> str:
+    """Return only the final exception of a chained traceback.
+
+    With ``raise B`` inside ``except A``, the output holds both A and B. The
+    user's program died of B, so B is what to explain — matching A gives a card
+    describing an error that was already handled.
+    """
+    block = stderr
+    for separator in _CHAIN_SEPARATORS:
+        if separator in block:
+            block = block.rsplit(separator, 1)[1]
+    return block
+
+
+def _extract_error_line(stderr: str) -> int | None:
+    """Find the line number in the *user's* code that raised the exception.
+
+    Two traps this deliberately avoids:
+
+    * ``re.finditer(r"line (\\d+)")`` also matches digits inside the exception
+      message itself. ``JSONDecodeError: Expecting value: line 1 column 1``
+      would make the Oracle claim the crash was on line 1 of the editor.
+    * The deepest frame is usually inside the standard library. For
+      ``json.loads('')`` the last frame is ``json/decoder.py`` line 355, which
+      is not a line the user can go and fix.
+
+    So: look only at frame headers, and report the deepest frame that is still
+    the user's own file.
+    """
+    # On a chained traceback only the final block describes the crash that
+    # actually escaped, so the line must come from there too.
+    user_line: int | None = None
+    for match in _FRAME_RE.finditer(_last_exception_block(stderr)):
+        if _is_user_frame(match.group("path")):
+            user_line = int(match.group("line"))
+    return user_line
+
+
+# Exceptions whose *message* refers to a line of the user's source file, and so
+# must be shifted by the prelude offset too. Deliberately excludes
+# JSONDecodeError and friends, where "line 1" describes the *data* being
+# parsed, not the script.
+_SOURCE_LINE_IN_MESSAGE_RE = re.compile(r"\b(?:SyntaxError|IndentationError|TabError)\b")
+
+
+def _shift_source_lines_in_message(error_line: str, line_offset: int) -> str:
+    """Re-map "on line N" inside a SyntaxError message to editor coordinates.
+
+    CPython reports ``expected an indented block after 'if' statement on line 10``
+    against the file it actually compiled — which includes the executor's
+    injected prelude. Left alone, a user with a two-line script is told to look
+    at line 10.
+    """
+    if line_offset <= 0 or not _SOURCE_LINE_IN_MESSAGE_RE.search(error_line):
+        return error_line
+
+    def shift(match: re.Match) -> str:
+        return f"{match.group(1)}{max(1, int(match.group(2)) - line_offset)}"
+
+    return re.sub(r"(\bline )(\d+)", shift, error_line)
 
 
 def humanize_traceback(stderr: str, line_offset: int = 0) -> dict:
@@ -190,34 +481,44 @@ def humanize_traceback(stderr: str, line_offset: int = 0) -> dict:
     if not stderr or not stderr.strip():
         return {"ok": False}
 
-    # The final non-empty line carries the exception type and message.
+    # The final non-empty line carries the exception type and message. On a
+    # chained traceback ("During handling ... another exception occurred")
+    # that is the exception that actually escaped, which is what to explain.
     lines = [ln for ln in stderr.strip().split("\n") if ln.strip()]
     error_line = lines[-1].strip()
 
-    # Locate the offending user line number (last "line N" wins — deepest frame).
-    line_no = None
-    for m in re.finditer(r'line (\d+)', stderr):
-        line_no = int(m.group(1))
+    # A SyntaxError message quotes a line number from the compiled file, which
+    # still contains the executor's prelude. Rebase it onto the editor.
+    error_line = _shift_source_lines_in_message(error_line, line_offset)
+
+    # Locate the offending line in the user's own code (see _extract_error_line).
+    line_no = _extract_error_line(stderr)
     if line_no is not None and line_offset:
         line_no = max(1, line_no - line_offset)
 
-    for pattern, title, what_tpl, fix_tpl in _ERROR_RULES:
-        match = re.search(pattern, stderr)
-        if match:
-            groups = match.groups()
-            try:
-                what = what_tpl.format(*groups)
-                fix = fix_tpl.format(*groups)
-            except (IndexError, KeyError):
-                what, fix = what_tpl, fix_tpl
-            return {
-                "ok": True,
-                "title": title,
-                "what": what,
-                "fix": fix,
-                "line": line_no,
-                "raw_error": error_line,
-            }
+    # Match against the final exception line first, then the last traceback
+    # block. A chained traceback ("During handling of the above exception,
+    # another exception occurred") contains both exceptions; scanning the whole
+    # blob would explain the *handled* one while quoting the line number of the
+    # one that escaped — two different errors welded into one wrong card.
+    for haystack in (error_line, _last_exception_block(stderr)):
+        for pattern, title, what_tpl, fix_tpl in _ERROR_RULES:
+            match = re.search(pattern, haystack)
+            if match:
+                groups = match.groups()
+                try:
+                    what = what_tpl.format(*groups)
+                    fix = fix_tpl.format(*groups)
+                except (IndexError, KeyError):
+                    what, fix = what_tpl, fix_tpl
+                return {
+                    "ok": True,
+                    "title": title,
+                    "what": what,
+                    "fix": fix,
+                    "line": line_no,
+                    "raw_error": error_line,
+                }
 
     # Unknown error: still give the user the useful parts.
     return {
@@ -259,10 +560,19 @@ def analyze_buffer(code: str) -> dict:
     todo_count = len(re.findall(r"#\s*(TODO|FIXME|HACK)", code, re.IGNORECASE))
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            args = len(node.args.args)
+        # `async def` is a different AST node than `def`. Matching only
+        # FunctionDef made every coroutine invisible to the review — no
+        # docstring hint, no argument-count hint, and a wrong function count
+        # in the summary line.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            args = len(node.args.args) + len(node.args.posonlyargs) + len(node.args.kwonlyargs)
             body_len = len(node.body)
-            functions.append({"name": node.name, "line": node.lineno, "args": args})
+            functions.append({
+                "name": node.name,
+                "line": node.lineno,
+                "args": args,
+                "is_async": isinstance(node, ast.AsyncFunctionDef),
+            })
             if args > 5:
                 notes.append(f"`{node.name}()` takes {args} arguments — consider grouping them "
                              f"into a dataclass or dict.")
@@ -290,8 +600,28 @@ def analyze_buffer(code: str) -> dict:
             imports.extend(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom):
             imports.append(node.module or "")
-        elif isinstance(node, ast.ExceptHandler) and node.type is None:
-            bare_excepts += 1
+        elif isinstance(node, ast.ExceptHandler):
+            if node.type is None:
+                bare_excepts += 1
+            # `except ...: pass` is the bug that hides every other bug: the
+            # program keeps going with wrong state and the real error is gone.
+            if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+                notes.append(
+                    f"Line {node.lineno}: This `except` block only does `pass`, so the error "
+                    f"vanishes silently. At minimum print it: `except Exception as e: print(e)`."
+                )
+
+        # `x == None` / `x != None` — identity, not equality, is the Python way.
+        elif isinstance(node, ast.Compare):
+            for op, comparator in zip(node.ops, node.comparators):
+                if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant) \
+                        and comparator.value is None:
+                    suggested = "is None" if isinstance(op, ast.Eq) else "is not None"
+                    notes.append(
+                        f"Line {node.lineno}: Compare to None with `{suggested}`, not "
+                        f"`{'==' if isinstance(op, ast.Eq) else '!='} None`."
+                    )
+                    break
 
         # Static division or modulo by zero check
         elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)):
@@ -324,7 +654,8 @@ def analyze_buffer(code: str) -> dict:
     def depth(node, current=0):
         nonlocal max_loop_depth
         for child in ast.iter_child_nodes(node):
-            nxt = current + 1 if isinstance(child, (ast.For, ast.While)) else current
+            # `async for` nests exactly like `for` does.
+            nxt = current + 1 if isinstance(child, (ast.For, ast.AsyncFor, ast.While)) else current
             max_loop_depth = max(max_loop_depth, nxt)
             depth(child, nxt)
 
@@ -340,6 +671,24 @@ def analyze_buffer(code: str) -> dict:
     if todo_count:
         notes.append(f"{todo_count} TODO/FIXME marker(s) still in the file.")
 
+    # De-duplicate while preserving order: `ast.walk` visits nested scopes more
+    # than once for some shapes, and repeating the same advice reads like a bug.
+    deduped: list[str] = []
+    for note in notes:
+        if note not in deduped:
+            deduped.append(note)
+
+    # A phone screen fits a handful of lines. A 40-function file produced 80
+    # notes, which pushed the actual bugs off-screen and made the review
+    # useless. Cap it and say plainly how many were held back.
+    total_notes = len(deduped)
+    shown = deduped[:MAX_REVIEW_NOTES]
+    if total_notes > MAX_REVIEW_NOTES:
+        shown.append(
+            f"...and {total_notes - MAX_REVIEW_NOTES} more issue(s). Fix these first, "
+            f"then ask me again and I'll show the rest."
+        )
+
     return {
         "ok": True,
         "lines": len(code.split("\n")),
@@ -347,7 +696,8 @@ def analyze_buffer(code: str) -> dict:
         "classes": classes,
         "imports": sorted(set(i for i in imports if i)),
         "loop_depth": loop_depth,
-        "notes": notes,
+        "notes": shown,
+        "note_count": total_notes,
     }
 
 
@@ -388,7 +738,10 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
     ),
     (
         ("read file", "read a file", "open file", "write file", "file handling",
-         "reading file", "writing file", "save file", "load file"),
+         "reading file", "writing file", "save file", "load file",
+         # Phrasings people actually type, which the narrower keywords missed.
+         "from a file", "to a file", "into a file", "in a file",
+         "read from", "write to a", "text file", "csv file", "log file"),
         "Always use a context manager so the file closes even if something raises:\n\n"
         "```python\nwith open('data.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\n```",
     ),
@@ -505,6 +858,117 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
         "```\n"
         "Use `await` to yield control back to the event loop so other tasks can run in the meantime!",
     ),
+    # --- Everyday fundamentals -------------------------------------------
+    # Probing revealed these were among the most likely things to be asked and
+    # among the least likely to be answered: every one of them fell through to
+    # the generic "here's what I can do" card. Indonesian phrasings are
+    # included because the existing entries already mix both languages.
+    (
+        ("sort a list", "sort list", "sorting", "sorted(", "urutkan", "mengurutkan"),
+        "`sorted()` returns a new list; `.sort()` rearranges in place:\n\n"
+        "```python\nnames = ['zaba', 'ana', 'budi']\n"
+        "print(sorted(names))            # new list, original untouched\n"
+        "names.sort(reverse=True)        # in place, returns None\n\n"
+        "# Sort by something other than the value itself:\n"
+        "people = [('ana', 30), ('budi', 25)]\n"
+        "people.sort(key=lambda p: p[1])  # by age\n```\n"
+        "Careful: `x = names.sort()` gives you `None`, not the sorted list.",
+    ),
+    (
+        ("what is a set", "python set", "sets", "unique values", "remove duplicates",
+         "hapus duplikat", "nilai unik"),
+        "A `set` holds unique items, unordered, and tests membership in O(1):\n\n"
+        "```python\nseen = {'a', 'b'}\nseen.add('a')      # already there, no change\n"
+        "print(len(seen))   # 2\n\n"
+        "# The fastest way to drop duplicates from a list:\n"
+        "unique = list(set(['a', 'b', 'a']))\n```\n"
+        "Use a set whenever you catch yourself writing `if x in big_list:` inside a loop — "
+        "on a list that check is O(n) and will crawl on a phone.",
+    ),
+    (
+        ("recursion", "recursive", "rekursi", "fibonacci", "factorial"),
+        "A recursive function calls itself. It needs a **base case** or it will "
+        "blow the stack:\n\n"
+        "```python\ndef factorial(n):\n    if n <= 1:      # base case — stops the recursion\n"
+        "        return 1\n    return n * factorial(n - 1)\n```\n"
+        "Python's recursion limit is about 1000 frames, so for deep problems prefer a loop. "
+        "If you hit `RecursionError`, your base case is missing or never reached.",
+    ),
+    (
+        ("__main__", "name == ", "if __name__", "main guard", "entry point"),
+        "`if __name__ == '__main__':` means *only run this when the file is executed "
+        "directly, not when it's imported*:\n\n"
+        "```python\ndef main():\n    print('running')\n\n"
+        "if __name__ == '__main__':\n    main()\n```\n"
+        "Without the guard, every `import your_file` would execute the whole script as a "
+        "side effect. With it, your file works both as a program and as a library.",
+    ),
+    (
+        ("string method", "uppercase", "lowercase", "strip", "split string", "replace text",
+         "join string", "huruf besar", "huruf kecil", "potong string"),
+        "The methods you'll reach for constantly:\n\n"
+        "```python\ns = '  Hello World  '\n"
+        "s.strip()          # '(Hello World)' — trims whitespace\n"
+        "s.lower()          # lowercase\n"
+        "s.replace('l', 'L')\n"
+        "'a,b,c'.split(',') # ['a', 'b', 'c']\n"
+        "', '.join(['a', 'b'])  # 'a, b'\n```\n"
+        "Strings are immutable — every one of these returns a **new** string, so you must "
+        "assign the result: `s = s.strip()`.",
+    ),
+    (
+        ("slice", "slicing", "substring", "reverse", "reversed", "balikkan", "membalik"),
+        "Slicing is `sequence[start:stop:step]` — `stop` is excluded:\n\n"
+        "```python\nnums = [0, 1, 2, 3, 4]\n"
+        "nums[1:3]    # [1, 2]\n"
+        "nums[:2]     # [0, 1]\n"
+        "nums[-2:]    # [3, 4]  — last two\n"
+        "nums[::-1]   # [4, 3, 2, 1, 0] — reversed\n"
+        "'hello'[::-1]  # 'olleh'\n```\n"
+        "Slicing never raises `IndexError`, which makes it much safer than indexing.",
+    ),
+    (
+        ("random", "random number", "acak", "shuffle", "choice"),
+        "```python\nimport random\n\n"
+        "random.randint(1, 6)         # integer 1..6 inclusive\n"
+        "random.choice(['a', 'b'])    # one random item\n"
+        "random.shuffle(my_list)      # shuffles in place\n"
+        "random.random()              # float 0.0..1.0\n```\n"
+        "`random` is fine for games and simulations. For passwords or tokens use the "
+        "`secrets` module instead — it's cryptographically secure.",
+    ),
+    (
+        ("datetime", "current time", "timestamp", "waktu", "tanggal", "jam berapa"),
+        "```python\nfrom datetime import datetime, timedelta\n\n"
+        "now = datetime.now()\n"
+        "print(now.strftime('%Y-%m-%d %H:%M'))   # formatted text\n"
+        "tomorrow = now + timedelta(days=1)\n"
+        "parsed = datetime.strptime('2026-07-28', '%Y-%m-%d')\n```\n"
+        "`strftime` formats a datetime *to* text; `strptime` parses text *into* a datetime.",
+    ),
+    (
+        ("json", "parse json", "save json", "load json"),
+        "```python\nimport json\n\n"
+        "# Write\nwith open('data.json', 'w', encoding='utf-8') as f:\n"
+        "    json.dump({'name': 'zaba'}, f)\n\n"
+        "# Read\nwith open('data.json', encoding='utf-8') as f:\n"
+        "    data = json.load(f)\n```\n"
+        "`dump`/`load` work with files; `dumps`/`loads` work with strings (the `s` is for "
+        "string). An empty file is invalid JSON — write `{}` first, or catch "
+        "`json.JSONDecodeError`.",
+    ),
+    (
+        ("variable", "what is a variable", "data type", "tipe data", "apa itu variabel"),
+        "A variable is just a name pointing at a value — no declaration needed:\n\n"
+        "```python\nname = 'Zaba'      # str\n"
+        "age = 17           # int\n"
+        "height = 1.75      # float\n"
+        "is_ready = True    # bool\n"
+        "items = [1, 2]     # list\n"
+        "config = {'a': 1}  # dict\n```\n"
+        "Check any value's type with `print(type(x))`. Python infers the type, but it is "
+        "strict about mixing them: `'a' + 1` is an error, `'a' + str(1)` is fine.",
+    ),
     # --- Easter Eggs (surprise update) ---
     (
         ("who are you", "what are you", "siapa kamu", "kamu siapa", "what is oracle",
@@ -550,12 +1014,95 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
+# Words that carry no topic on their own. A keyword made mostly of these is a
+# phrasing hint, not a subject, and must lose to a keyword naming a real thing.
+_FILLER_WORDS = frozenset({
+    "a", "an", "the", "to", "from", "in", "into", "of", "on", "at", "for",
+    "with", "my", "your", "is", "are", "do", "does", "how", "what", "it",
+    "this", "that", "and", "or", "be", "can", "i",
+})
+
+
+def _filler_word_count(keyword: str) -> int:
+    """How many words of ``keyword`` are pure filler."""
+    return sum(1 for word in keyword.split() if word in _FILLER_WORDS)
+
+
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    """Build the word-boundary-anchored matcher for one knowledge keyword."""
+    # \b is meaningless next to punctuation like "@" or "next(", so only anchor
+    # the side that actually starts/ends with a word character. A leading
+    # symbol ("@") must still not fire mid-token, otherwise every email address
+    # asks the Oracle about decorators.
+    left = r"\b" if keyword[0].isalnum() or keyword[0] == "_" else r"(?<![\w.])"
+    # Tolerate the plural the user actually types ("nested loops", "explain
+    # decorators") without re-opening the substring hole.
+    right = r"(?:e?s)?\b" if keyword[-1].isalnum() or keyword[-1] == "_" else ""
+    return re.compile(left + re.escape(keyword) + right)
+
+
+# Precompiled once at import: (pattern, specificity score, answer). The score
+# ranks a technical term ("json") above a keyword made of filler words
+# ("to a file"), so the most specific match wins regardless of list order.
+_KNOWLEDGE_INDEX: list[tuple[re.Pattern[str], int, str]] = [
+    (
+        _keyword_pattern(k),
+        (1000 - 100 * _filler_word_count(k)) + len(k),
+        answer,
+    )
+    for keywords, answer in _KNOWLEDGE
+    for k in (kw.strip().lower() for kw in keywords)
+    if k
+]
+
+
 def _match_knowledge(question: str) -> str | None:
+    """Look up a canned answer, preferring the most specific keyword that hits.
+
+    Matching on whole words rather than substrings.
+
+    Plain ``k in q`` produced absurd hits: "oop" fires inside "l**oop**", so
+    *every* loop question was answered with a lecture on classes; "@" fires on
+    any email address; "class" fires inside "classify". Anchoring each keyword
+    at word boundaries keeps the phrase keywords ("read a file") working while
+    killing the false positives.
+    """
     q = question.lower()
-    for keywords, answer in _KNOWLEDGE:
-        if any(k in q for k in keywords):
-            return answer
-    return None
+    best_answer: str | None = None
+    best_score = 0
+
+    # "save json to a file" matches both the specific "json" and the generic
+    # "to a file". List order alone would hand it to whichever entry comes
+    # first, so the most distinctive keyword wins; ties keep the earlier, more
+    # canonical entry.
+    for pattern, score, answer in _KNOWLEDGE_INDEX:
+        if score > best_score and pattern.search(q):
+            best_score = score
+            best_answer = answer
+
+    return best_answer
+
+
+# Unambiguous traceback markers: an exception class followed by a colon, the
+# traceback header itself, or a frame line. "line 12" on its own is *not* here
+# on purpose — it appears in ordinary English far more often than in pasted
+# errors, and matching it turned questions into bogus error cards.
+_TRACEBACK_MARKERS = (
+    re.compile(r"Traceback \(most recent call last\)"),
+    re.compile(r'^\s*File "[^"]+", line \d+', re.MULTILINE),
+    re.compile(r"^\s*[A-Za-z_][\w.]*(?:Error|Exception|Interrupt|Exit|Warning)\b\s*:", re.MULTILINE),
+    re.compile(r"\b(?:SyntaxError|IndentationError|TabError|KeyboardInterrupt|RecursionError)\b\s*:"),
+    re.compile(r"unterminated string literal|EOL while scanning|unexpected EOF while parsing"),
+)
+
+
+def _looks_like_traceback(text: str) -> bool:
+    """True when the message really contains a Python traceback or exception.
+
+    Kept deliberately strict: a false positive here hijacks a normal question
+    and answers it with an error diagnosis, which is worse than missing one.
+    """
+    return any(marker.search(text) for marker in _TRACEBACK_MARKERS)
 
 
 def offline_reply(message: str, code: str = "") -> dict:
@@ -583,22 +1130,12 @@ def offline_reply(message: str, code: str = "") -> dict:
 
     # 1) If message contains a traceback (from terminal or ASK ZABA button), humanize it directly
     # This is the savior path: provider limit → Oracle answers with specific fix
-    # We look for common traceback markers
-    has_traceback = any(
-        marker in msg
-        for marker in (
-            "Traceback (most recent call last):",
-            "SyntaxError:",
-            "NameError:",
-            "TypeError:",
-            "File \"/",
-            "File \"",
-            "line ",
-            "unterminated string",
-            "EOL while scanning",
-        )
-    )
-    if has_traceback and len(msg) > 30:
+    #
+    # The markers must be things that only ever appear in a real traceback. The
+    # bare substring "line " used to be one of them, so an innocent question
+    # like "how do I read a line from a file?" was answered with an error card
+    # titled "Something went wrong" that just echoed the question back.
+    if _looks_like_traceback(msg):
         human = humanize_traceback(msg)
         if human.get("ok"):
             where = f" (line {human['line']})" if human.get("line") else ""

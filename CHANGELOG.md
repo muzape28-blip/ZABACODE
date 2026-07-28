@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-28 — Oracle diagnosis accuracy & knowledge coverage
+
+A follow-up pass over the Oracle, this time probing it with realistic input
+rather than its own fixtures. The Auto-Fix engine (below) was already safe and
+broad; the *diagnosis* side turned out to be confidently wrong in several
+common situations. 36 new tests, 199 → 235 total.
+
+### Fixed — the error card pointed at the wrong line
+
+Two independent bugs, both of which sent the user hunting in the wrong place:
+
+- **Line numbers were read out of the exception message.** The scan was
+  `re.finditer(r"line (\d+)")` over the whole traceback, taking the last hit.
+  For `json.loads('')` the last "line N" in the text is inside the message
+  (`Expecting value: line 1 column 1`), so a crash on **line 3** was reported as
+  **line 1**. Only real frame headers (`File "...", line N`) are considered now.
+- **The deepest frame is usually library code.** Reporting it pointed users at
+  `/usr/lib/python3.11/json/decoder.py` line 355 — for a subprocess crash the
+  reported line was **1892** in a two-line script. The Oracle now walks to the
+  deepest frame that is still the *user's own file*.
+
+Also fixed: a `SyntaxError` message quotes a line number from the compiled file,
+which includes the executor's injected prelude. `if True:` / `print(1)` was
+explained as *"expected an indented block ... on line 10"* for a two-line
+buffer. Those in-message numbers are now rebased onto editor coordinates, while
+`JSONDecodeError`'s "line 1" (which describes the *data*, not the script) is
+deliberately left alone.
+
+### Fixed — chained tracebacks explained the wrong exception
+
+With `raise B` inside `except A`, both exceptions are printed. The rule scan ran
+over the whole blob and matched **A**, while the line number came from **B** —
+one card describing an already-handled error, pointing at an unrelated line.
+Only the final exception block is considered now.
+
+### Fixed — knowledge lookup matched on substrings
+
+Keywords were tested with `keyword in question`, which produced absurd results:
+
+- `"oop"` is inside `"l**oop**"`, so **every** question about loops was answered
+  with a lecture on object-oriented programming
+- `"class"` fired inside "classify", `"@"` fired on any email address
+
+Matching is now anchored at word boundaries (tolerating plurals), and when
+several entries match, the most *specific* keyword wins — so "save json to a
+file" gets the JSON answer rather than the generic file-handling one. A test
+asserts every entry is still reachable via its own keyword, which catches this
+class of shadowing automatically. The matcher is precompiled at import: 4.4×
+faster than the previous per-call `re.search`.
+
+### Fixed — ordinary questions were answered as crash reports
+
+The traceback detector treated the bare substring `"line "` as evidence of a
+traceback, so *"how do I read a line from a file?"* was answered with an error
+card titled **"Something went wrong"** that just echoed the question back.
+Detection now requires an actual traceback header, frame line, or
+`ExceptionName:` prefix.
+
+### Fixed — `async def` was invisible to code review
+
+`analyze_buffer()` matched only `ast.FunctionDef`, so coroutines were missing
+from the function list and every check (argument count, docstring, mutable
+defaults) silently skipped them. `async def` and `async for` are now handled,
+and keyword-only/positional-only parameters are included in the argument count.
+
+### Fixed — review notes buried the real problem
+
+A 40-function file produced 80 notes, pushing actual bugs off a phone screen.
+Notes are now de-duplicated and capped at 12, with an explicit count of what was
+held back (`note_count` is returned for callers that want the total).
+
+### Added — 21 new error explanations
+
+22 of the 23 most common beginner runtime errors fell through to the generic
+*"Something went wrong"* card, which only repeated the raw exception the
+terminal had already shown. All 23 now get a real explanation and a concrete
+fix, including: unpacking mismatches, `NoneType is not iterable` (usually a
+missing `return`), `str + int`, string/list indexed with a name, `no len()`,
+too many arguments (the missing `self`), unhashable type, item assignment on an
+immutable, `module has no attribute` (often a shadowed stdlib filename),
+network unreachable, timeouts, `KeyboardInterrupt`, `MemoryError`,
+`OverflowError`, `StopIteration`, and `= vs ==` in a condition.
+
+### Added — 10 new knowledge-base topics
+
+Sorting, sets, recursion, `if __name__ == '__main__'`, string methods, slicing,
+`random`, `datetime`, JSON files, and variables/types — each previously fell
+through to the generic "here's what I can do" reply.
+
+---
+
 ## [Unreleased] - 2026-07-28 — Oracle Auto-Fix correctness, safety & coverage
 
 Full analysis in `AUDIT_REPORT.md`.

@@ -28,6 +28,7 @@ Based on community feedback (Claude review pointing out permanent branding patte
 * [x] **Philosophy preserved**: Tools help debug/review, identity stays with community — added explicit note in CONTRIBUTING: "cuma cek/fix bug, jangan nambahin fitur/branding/identitas baru tanpa nanya dulu"
 * [x] **Mypy fix**: `ai_provider.py` mypy-clean (no None assignment to Callable, safe isinstance checks) — `Success: no issues found`
 * [x] **Tests**: 132 passing (neutral)
+* [x] **Zaba Oracle Auto-Fix**: Added local offline Auto-Fix support (`auto_fix_code`). When run exits with a traceback/SyntaxError, users get a `⚙️ Auto-Fix with Oracle` card showing a red/green line-by-line Diff, plus an `Apply Fix` button that modifies the editor and auto-saves. Fully covered with 8 new unit tests (138 tests total).
 
 **Note:** Original Arena offline mode was Oracle re-branded — Oracle remains true offline brain, custom endpoint is optional online extension for self-hosting.
 
@@ -65,7 +66,7 @@ Based on community feedback (Claude review pointing out permanent branding patte
 
 ## 🚧 Postponed / Not Active
 
-* **ZMUX Independent Terminal**: Postponed — needs Termux command branching + `noexec` bypass research. Doc removed from README, future spec in `docs/zmux-spec.md` if revived.
+* **ZMUX Independent Terminal (v2)**: Postponed (Crucial Future Feature) — planned real shell persistent session (`ShellSession`) executing `/system/bin/sh` with concurrent locking (`RLock`), buffer limitations, custom path, and pip/pkg wrapper shims over `lib_manager.py` (offline, non-gimmick).
 * **Arena offline re-branding**: Removed — Oracle is true offline intelligence, no need duplicate labeling
 
 ---

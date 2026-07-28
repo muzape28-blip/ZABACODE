@@ -50,7 +50,7 @@ MARKETPLACE_PLUGINS = {
         "type": "plugin",
         "mode": "offline",
     },
-    
+
     # === New v1.0.0 Plugins ===
     "code_minifier": {
         "id": "code_minifier",
@@ -217,7 +217,7 @@ def toggle_plugin(plugin_id: str) -> dict:
     """Toggle a plugin on/off. Returns updated plugin info."""
     if plugin_id not in MARKETPLACE_PLUGINS:
         return {"ok": False, "message": "Plugin not found"}
-    
+
     if plugin_id in _active_plugins:
         _active_plugins.discard(plugin_id)
         return {"ok": True, "active": False, "message": f"Plugin '{plugin_id}' deactivated"}

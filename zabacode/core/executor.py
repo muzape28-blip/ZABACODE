@@ -12,9 +12,8 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
-from zabacode.core.paths import FILES_DIR, USER_PACKAGES_DIR, CACHE_DIR
+from zabacode.core.paths import CACHE_DIR, FILES_DIR, USER_PACKAGES_DIR
 
 # Limits
 MAX_CODE_BYTES = 512 * 1024   # 512 KB
@@ -97,11 +96,11 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     temp_script = FILES_DIR / "_active_run.py"
-    
+
     try:
         code = normalize_code(code)
         temp_script.write_text(code, encoding="utf-8")
-        
+
         env = os.environ.copy()
         python_path = f"{USER_PACKAGES_DIR}:{FILES_DIR}:{env.get('PYTHONPATH', '')}".strip(":")
         env["PYTHONPATH"] = python_path
@@ -109,9 +108,9 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
         env["TMPDIR"] = str(CACHE_DIR)
         env["TEMP"] = str(CACHE_DIR)
         env["TMP"] = str(CACHE_DIR)
-        
+
         existing_images = set(FILES_DIR.glob("*.png")) | set(FILES_DIR.glob("*.jpg"))
-        
+
         proc = subprocess.Popen(
             [sys.executable, "_active_run.py"],
             stdin=subprocess.PIPE,
@@ -123,7 +122,7 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
             env=env,
             start_new_session=os.name != "nt",
         )
-        
+
         try:
             stdout_text, stderr_text = proc.communicate(input=stdin_data, timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -202,6 +201,29 @@ _session = InteractiveSession()
 _session_lock = threading.RLock()
 
 
+def _mask_runner_filename(chunks: list) -> list:
+    """Rewrite ``_active_run.py`` -> ``main.py`` across a batch of stream chunks.
+
+    The interactive reader emits one character at a time, so the substring is
+    split across items. Join per stream, replace, then re-emit as a single chunk
+    per stream while preserving the original stdout/stderr ordering.
+    """
+    if not chunks:
+        return chunks
+
+    merged: list = []
+    for stream_type, text in chunks:
+        if merged and merged[-1][0] == stream_type:
+            merged[-1][1].append(text)
+        else:
+            merged.append((stream_type, [text]))
+
+    return [
+        (stream_type, "".join(parts).replace("_active_run.py", "main.py"))
+        for stream_type, parts in merged
+    ]
+
+
 def _read_stream_char(stream, session: InteractiveSession, stream_type: str):
     """Asynchronously read characters from subprocess output streams — bounded."""
     try:
@@ -209,7 +231,7 @@ def _read_stream_char(stream, session: InteractiveSession, stream_type: str):
             char = stream.read(1)
             if not char:
                 break
-            
+
             # Bound total output to prevent memory bloat from tight printing loops
             with _session_lock:
                 if session.total_chars >= MAX_OUTPUT_CHARS:
@@ -394,6 +416,11 @@ def get_interactive_output() -> dict:
                 output_chars.append(item)
             except queue.Empty:
                 break
+
+        # Match the isolated runner and hide the internal scratch filename, so
+        # tracebacks read "main.py" in both execution modes. Output is streamed
+        # character by character, so rewrite the reassembled batch instead.
+        output_chars = _mask_runner_filename(output_chars)
 
         done = _session.proc.poll() is not None
         if done:

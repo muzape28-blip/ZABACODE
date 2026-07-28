@@ -4,42 +4,44 @@ ZABACODE v1.0.0 — Comprehensive Unit Tests (WebView Edition)
 Run: pytest test_main.py -v
 """
 
-import json
-import pytest
-import os
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+
+import pytest
 
 # Ensure the project root is in sys.path
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 from zabacode import __version__
+from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS, PROVIDER_INFO
+from zabacode.core.checker import check_code
 from zabacode.core.executor import (
     execute_code_isolated,
-    normalize_code,
-    MAX_CODE_BYTES,
-    start_interactive_session,
-    send_interactive_input,
     get_interactive_output,
-    stop_interactive_session
+    normalize_code,
+    send_interactive_input,
+    start_interactive_session,
+    stop_interactive_session,
 )
-from zabacode.core.checker import check_code
-from zabacode.core.file_manager import (
-    secure_filename, list_files, save_file, read_file, delete_file, FILES_DIR
-)
-from zabacode.core.security import AUTH_TOKEN, verify_token, load_keys, save_key
+from zabacode.core.file_manager import delete_file, read_file, save_file, secure_filename
+from zabacode.core.security import AUTH_TOKEN, verify_token
 from zabacode.lib_manager import (
-    KNOWN_LIBRARIES, is_package_installed, get_all_libraries, install_library,
-    get_library_info, _PACKAGE_NAME_RE
+    _PACKAGE_NAME_RE,
+    KNOWN_LIBRARIES,
+    get_all_libraries,
+    get_library_info,
+    install_library,
 )
-from zabacode.themes.definitions import THEMES, DEFAULT_THEME, get_theme, list_themes
+
 # Translations removed
 from zabacode.plugins.registry import (
-    get_all_plugins, toggle_plugin, is_plugin_active, get_snippets, MARKETPLACE_PLUGINS
+    MARKETPLACE_PLUGINS,
+    get_all_plugins,
+    get_snippets,
+    is_plugin_active,
+    toggle_plugin,
 )
-from zabacode.core.ai_provider import PROVIDER_HANDLERS, PROVIDER_INFO, ALLOWED_PROVIDERS
-
+from zabacode.themes.definitions import DEFAULT_THEME, THEMES, get_theme, list_themes
 
 # ===================================================================
 # Test Code Execution Engine
@@ -47,26 +49,26 @@ from zabacode.core.ai_provider import PROVIDER_HANDLERS, PROVIDER_INFO, ALLOWED_
 
 class TestCodeExecution:
     """Test code execution & isolation."""
-    
+
     def test_simple_print(self):
         result = execute_code_isolated('print("hello")')
         assert result["ok"] is True
         assert "hello" in result["stdout"]
-    
+
     def test_syntax_error(self):
         result = execute_code_isolated('print("missing quote')
         assert result["ok"] is False
         assert "SyntaxError" in result["stderr"] or "syntax" in result["stderr"].lower()
-    
+
     def test_timeout(self):
         result = execute_code_isolated('while True: pass', timeout=2)
         assert result["timeout"] is True
         assert result["ok"] is False
-    
+
     def test_import_standard_lib(self):
         result = execute_code_isolated('import sys, os\nprint("ok:", os.path.exists("_active_run.py"))')
         assert result["ok"] is True
-    
+
     def test_windows_line_endings_normalized(self):
         code_windows = 'print("test 1")\r\nprint("test 2")\r\n'
         normalized = normalize_code(code_windows)
@@ -74,7 +76,7 @@ class TestCodeExecution:
         assert '\r' not in normalized
         result = execute_code_isolated(code_windows)
         assert result["ok"] is True
-    
+
     def test_trailing_whitespace_normalized(self):
         code = 'print("test")   \nprint("next")   \n'
         normalized = normalize_code(code)
@@ -88,15 +90,15 @@ class TestCodeExecution:
         normalized = normalize_code(code_with_bom)
         assert not normalized.startswith('\ufeff')
         assert 'print("hello")' in normalized
-    
+
     def test_code_too_large(self):
         result = execute_code_isolated("x = 1\n" * 100000)  # Large code
         assert result["ok"] is False
-    
+
     def test_non_string_code(self):
         result = execute_code_isolated(12345)
         assert result["ok"] is False
-    
+
     def test_file_resolution(self):
         result = execute_code_isolated('from pathlib import Path\nprint(Path(__file__).name)')
         assert result["ok"] is True
@@ -108,26 +110,26 @@ class TestCodeExecution:
 
 class TestCodeChecker:
     """Test code syntax validation."""
-    
+
     def test_valid_code(self):
         result = check_code("print('hello')\nprint('world')")
         assert result["valid"] is True
         assert len(result["issues"]) == 0
-    
+
     def test_unbalanced_parens(self):
         result = check_code("print('hello'")
         assert result["valid"] is False
         assert any("Parenthesis" in i or "()" in i for i in result["issues"])
-    
+
     def test_unbalanced_brackets(self):
         result = check_code("x = [1, 2, 3")
         assert result["valid"] is False
         assert any("[]" in i or "Brackets" in i for i in result["issues"])
-    
+
     def test_unbalanced_braces(self):
         result = check_code("d = {1: 2")
         assert result["valid"] is False
-    
+
     def test_unbalanced_quotes(self):
         result = check_code("x = 'hello")
         assert result["valid"] is False
@@ -139,44 +141,44 @@ class TestCodeChecker:
 
 class TestFileManager:
     """Test file operations and path traversal prevention."""
-    
+
     def test_secure_filename_valid(self):
         assert secure_filename("test") == "test.py"
         assert secure_filename("script.py") == "script.py"
-    
+
     def test_secure_filename_path_traversal(self):
         assert secure_filename("../etc/passwd") is None
         assert secure_filename("..\\secret") is None
-    
+
     def test_secure_filename_dotfile(self):
         assert secure_filename(".zabacode_keys") is None
         assert secure_filename(".env") is None
-    
+
     def test_secure_filename_null_bytes(self):
         assert secure_filename("test\x00.py") is None
-    
+
     def test_secure_filename_empty(self):
         assert secure_filename("") is None
         assert secure_filename(".py") is None
-    
+
     def test_secure_filename_system_file(self):
         assert secure_filename("_active_run") is None
-    
+
     def test_save_and_read_file(self):
         result = save_file("test_unit_file", "print('hello from test')")
         assert result["ok"] is True
-        
+
         read_result = read_file("test_unit_file.py")
         assert read_result["ok"] is True
         assert "hello from test" in read_result["content"]
-        
+
         # Cleanup
         delete_file("test_unit_file.py")
-    
+
     def test_delete_nonexistent_file(self):
         result = delete_file("nonexistent_xyz_12345.py")
         assert result["ok"] is False
-    
+
     def test_read_nonexistent_file(self):
         result = read_file("nonexistent_xyz_12345.py")
         assert result["ok"] is False
@@ -188,14 +190,14 @@ class TestFileManager:
 
 class TestSecurity:
     """Test authentication and encryption."""
-    
+
     def test_auth_token_exists(self):
         assert AUTH_TOKEN is not None
         assert len(AUTH_TOKEN) >= 16
-    
+
     def test_verify_valid_token(self):
         assert verify_token(AUTH_TOKEN) is True
-    
+
     def test_verify_invalid_token(self):
         assert verify_token("invalid_token_12345") is False
         assert verify_token("") is False
@@ -207,10 +209,10 @@ class TestSecurity:
 
 class TestLibraryManager:
     """Test library management system."""
-    
+
     def test_known_libraries_not_empty(self):
         assert len(KNOWN_LIBRARIES) >= 30  # We expanded significantly
-    
+
     def test_libraries_have_required_fields(self):
         for name, info in KNOWN_LIBRARIES.items():
             assert "tier" in info, f"Missing 'tier' in {name}"
@@ -219,55 +221,55 @@ class TestLibraryManager:
             assert "reason" in info, f"Missing 'reason' in {name}"
             assert info["tier"] in ["runtime", "buildtime"], f"Invalid tier in {name}"
             assert info["mode"] in ["offline", "online", "hybrid"], f"Invalid mode in {name}"
-    
+
     def test_required_libraries_present(self):
         required = ["requests", "beautifulsoup4", "numpy", "tinydb", "fastapi", "rich",
                     "flask", "sympy", "pydantic", "pillow", "pyjwt"]
         for lib in required:
             assert lib in KNOWN_LIBRARIES, f"Missing library: {lib}"
-    
+
     def test_get_all_libraries(self):
         libs = get_all_libraries()
         assert isinstance(libs, dict)
         assert len(libs) >= 30
         for name, info in libs.items():
             assert "installed" in info
-    
+
     def test_get_library_info(self):
         info = get_library_info("requests")
         assert info is not None
         assert info["mode"] == "online"
-    
+
     def test_get_nonexistent_library(self):
         info = get_library_info("nonexistent_package_xyz")
         assert info is None
-    
+
     def test_offline_libraries_exist(self):
         offline_libs = [name for name, info in KNOWN_LIBRARIES.items() if info["mode"] == "offline"]
         assert len(offline_libs) >= 5  # At least 5 offline libs
-    
+
     def test_online_libraries_exist(self):
         online_libs = [name for name, info in KNOWN_LIBRARIES.items() if info["mode"] == "online"]
         assert len(online_libs) >= 5  # At least 5 online libs
-    
+
     def test_hybrid_libraries_exist(self):
         hybrid_libs = [name for name, info in KNOWN_LIBRARIES.items() if info["mode"] == "hybrid"]
         assert len(hybrid_libs) >= 3  # At least 3 hybrid libs
-    
+
     def test_buildtime_libraries(self):
         buildtime = [name for name, info in KNOWN_LIBRARIES.items() if info["tier"] == "buildtime"]
         assert len(buildtime) >= 3
-    
+
     def test_package_name_regex(self):
         assert _PACKAGE_NAME_RE.fullmatch("requests") is not None
         assert _PACKAGE_NAME_RE.fullmatch("my-package") is not None
         assert _PACKAGE_NAME_RE.fullmatch("") is None
         assert _PACKAGE_NAME_RE.fullmatch("../../../etc") is None
-    
+
     def test_install_invalid_package(self):
         result = install_library("")
         assert result["ok"] is False
-    
+
     def test_install_buildtime_package(self):
         result = install_library("numpy")
         assert result["ok"] is False
@@ -280,13 +282,13 @@ class TestLibraryManager:
 
 class TestThemes:
     """Test theme system."""
-    
+
     def test_themes_not_empty(self):
         assert len(THEMES) >= 6
-    
+
     def test_default_theme_exists(self):
         assert DEFAULT_THEME in THEMES
-    
+
     def test_theme_has_required_colors(self):
         required_keys = ["bg", "bg_panel", "border", "border_bright", "text",
                         "text_bright", "text_dim", "err", "ai", "editor_bg",
@@ -294,28 +296,28 @@ class TestThemes:
         for name, theme in THEMES.items():
             for key in required_keys:
                 assert key in theme, f"Missing '{key}' in theme '{name}'"
-    
+
     def test_theme_colors_are_tuples(self):
         for name, theme in THEMES.items():
             for key, value in theme.items():
                 if key not in ["display_name", "icon"]:
                     assert isinstance(value, tuple), f"{name}.{key} is not tuple"
                     assert len(value) == 4, f"{name}.{key} doesn't have 4 components"
-    
+
     def test_get_theme(self):
         theme = get_theme("retro")
         assert theme is not None
         assert "bg" in theme
-    
+
     def test_get_nonexistent_theme(self):
         assert get_theme("nonexistent_theme") is None
-    
+
     def test_list_themes(self):
         themes = list_themes()
         assert isinstance(themes, dict)
         assert "retro" in themes
         assert "cyberpunk" in themes
-    
+
     def test_new_themes_present(self):
         """v1.0.0 added new themes."""
         for t in ["tokyo_night", "one_dark", "gruvbox", "catppuccin"]:
@@ -328,21 +330,21 @@ class TestThemes:
 
 class TestPlugins:
     """Test plugin registry and marketplace."""
-    
+
     def test_plugins_not_empty(self):
         assert len(MARKETPLACE_PLUGINS) >= 4
-    
+
     def test_core_plugins_present(self):
         core = ["auto_formatter", "snippet_pack", "syntax_linter", "symbol_bar"]
         for pid in core:
             assert pid in MARKETPLACE_PLUGINS, f"Core plugin '{pid}' missing"
-    
+
     def test_new_v1_plugins(self):
         """v1.0.0 added new plugins."""
         new_plugins = ["code_minifier", "json_formatter", "regex_tester", "todo_manager"]
         for pid in new_plugins:
             assert pid in MARKETPLACE_PLUGINS, f"New plugin '{pid}' missing"
-    
+
     def test_plugin_has_required_fields(self):
         for pid, info in MARKETPLACE_PLUGINS.items():
             assert "id" in info
@@ -350,36 +352,36 @@ class TestPlugins:
             assert "description" in info
             assert "version" in info
             assert "mode" in info
-    
+
     def test_toggle_plugin(self):
         # Toggle off
         result = toggle_plugin("auto_formatter")
         assert result["ok"] is True
         assert result["active"] is False
-        
+
         # Toggle back on
         result = toggle_plugin("auto_formatter")
         assert result["ok"] is True
         assert result["active"] is True
-    
+
     def test_toggle_nonexistent_plugin(self):
         result = toggle_plugin("nonexistent_plugin")
         assert result["ok"] is False
-    
+
     def test_is_plugin_active(self):
         assert is_plugin_active("auto_formatter") is True
-    
+
     def test_get_all_plugins(self):
         plugins = get_all_plugins()
         assert isinstance(plugins, dict)
         for pid, info in plugins.items():
             assert "active" in info
-    
+
     def test_snippets_available(self):
         snippets = get_snippets()
         assert isinstance(snippets, dict)
         assert len(snippets) >= 5
-    
+
     def test_snippets_have_code(self):
         for sid, snippet in get_snippets().items():
             assert "name" in snippet
@@ -393,29 +395,29 @@ class TestPlugins:
 
 class TestAIProviders:
     """Test AI provider configuration."""
-    
+
     def test_providers_not_empty(self):
         assert len(PROVIDER_HANDLERS) >= 4
-    
+
     def test_core_providers(self):
         for p in ["openrouter", "gemini", "groq", "mistral"]:
             assert p in PROVIDER_HANDLERS, f"Provider '{p}' missing"
-    
+
     def test_new_v1_providers(self):
         """v1.0.0 added DeepSeek and Ollama."""
         assert "deepseek" in PROVIDER_HANDLERS
         assert "ollama" in PROVIDER_HANDLERS
-    
+
     def test_provider_info(self):
         for pid, info in PROVIDER_INFO.items():
             assert "name" in info
             assert "mode" in info
             assert info["mode"] in ["online", "offline"]
-    
+
     def test_allowed_providers(self):
         for p in PROVIDER_HANDLERS:
             assert p in ALLOWED_PROVIDERS
-    
+
     def test_ollama_is_offline(self):
         assert PROVIDER_INFO["ollama"]["mode"] == "offline"
 
@@ -426,7 +428,7 @@ class TestAIProviders:
 
 class TestVersion:
     """Test version info."""
-    
+
     def test_version_is_1_0_0(self):
         # After Arena integration, version is 1.2.0-arena, but still valid semver-like
         assert __version__ in ("1.0.0", "1.1.0", "1.2.0-arena") or __version__.startswith("1.")
@@ -548,7 +550,7 @@ class TestApiKeysClearing:
     # Test empty API key clearing.
 
     def test_clear_api_key(self):
-        from zabacode.core.security import save_key, load_keys
+        from zabacode.core.security import load_keys, save_key
         # Save a valid key
         save_key("openrouter", "my-test-api-key")
         assert load_keys().get("openrouter") == "my-test-api-key"
@@ -567,8 +569,9 @@ class TestTLSHardening:
     """Guards the Android CA-bundle fix and forbids unverified SSL fallbacks."""
 
     def test_ssl_context_verifies_certificates(self):
-        from zabacode.core.net import get_ssl_context
         import ssl as _ssl
+
+        from zabacode.core.net import get_ssl_context
         ctx = get_ssl_context()
         assert ctx.verify_mode == _ssl.CERT_REQUIRED
         assert ctx.check_hostname is True
@@ -585,7 +588,9 @@ class TestTLSHardening:
 
     def test_all_ai_providers_use_shared_context(self):
         """Every urlopen must pass context= or Android fails to verify certs."""
-        import pathlib, re
+        import pathlib
+        import re
+
         from zabacode.core.ai_provider import ALLOWED_PROVIDERS
         src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "ai_provider.py").read_text()
         calls = re.findall(r"urllib\.request\.urlopen\([^)]*\)", src)
@@ -595,6 +600,7 @@ class TestTLSHardening:
 
     def test_tls_error_returns_actionable_message(self):
         import ssl as _ssl
+
         from zabacode.core.ai_provider import _handle_url_error
         res = _handle_url_error(_ssl.SSLCertVerificationError("certificate verify failed"), "OpenRouter")
         assert res["ok"] is False
@@ -612,8 +618,8 @@ class TestNoServerErrors:
     """Every route must respond without a 5xx (regression: /api/translations)."""
 
     def test_no_route_returns_5xx(self):
-        from zabacode.web_app import app
         from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
         client = app.test_client()
         headers = {"X-Zabacode-Token": AUTH_TOKEN}
         failures = []
@@ -687,6 +693,7 @@ class TestKeystoreEncryption:
 
     def test_tampered_payload_rejected(self):
         import json
+
         from zabacode.core.keystore import decrypt_payload, encrypt_payload
         env = json.loads(encrypt_payload({"groq": "gsk_real"}))
         flipped = bytearray(bytes.fromhex(env["data"]))
@@ -723,6 +730,7 @@ class TestCleanupAndConcurrency:
 
     def test_concurrent_stop_calls_are_safe(self):
         import threading
+
         from zabacode.core.executor import stop_interactive_session
         errors = []
 
@@ -799,6 +807,7 @@ class TestOracleTracebackHumanizer:
 
     def test_every_rule_is_a_valid_regex_and_formats(self):
         import re
+
         from zabacode.core.oracle import _ERROR_RULES
         for pattern, title, what, fix in _ERROR_RULES:
             re.compile(pattern)          # must not raise
@@ -896,7 +905,7 @@ class TestOracleOfflineAssistant:
         def boom(*a, **k):
             raise AssertionError("Oracle attempted a network connection")
         monkeypatch.setattr(socket.socket, "connect", boom)
-        from zabacode.core.oracle import humanize_traceback, offline_reply, analyze_buffer
+        from zabacode.core.oracle import analyze_buffer, humanize_traceback, offline_reply
         assert offline_reply("review my code", "x=1")["ok"]
         assert humanize_traceback("KeyError: 'a'")["ok"]
         assert analyze_buffer("x = 1")["ok"]
@@ -905,8 +914,8 @@ class TestOracleOfflineAssistant:
 class TestOracleEndpoints:
 
     def _client(self):
-        from zabacode.web_app import app
         from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
         return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
 
     def test_explain_endpoint(self):
@@ -974,8 +983,8 @@ class TestOracleLineMapping:
     """Reported line numbers must match the editor, not the injected prelude."""
 
     def test_line_number_matches_user_editor(self):
-        from zabacode.web_app import app
         from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
         c = app.test_client()
         body = c.post("/api/run", json={"code": "prices = [1, 2]\nprint(prices[9])"},
                       headers={"X-Zabacode-Token": AUTH_TOKEN}).get_json()
@@ -1036,8 +1045,8 @@ class TestOracleAutoFix:
         assert r.status_code == 401
 
     def test_fix_endpoint_success(self):
-        from zabacode.web_app import app
         from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
         c = app.test_client()
         r = c.post(
             "/api/oracle/fix",
@@ -1055,3 +1064,190 @@ class TestOracleAutoFix:
         assert "renderAutoFixButton" in html
         assert "renderDiffView" in html
         assert "renderAutoFixResult" in html
+
+
+# ===========================================================================
+# Regression coverage for the audit findings (AUDIT_REPORT.md F-01 .. F-08)
+# ===========================================================================
+
+
+class TestJsonContentTypeContract:
+    """F-01: a body sent without Content-Type must never be read as empty.
+
+    The browser helper used to omit the header, so Flask's get_json() returned
+    None and the payload was silently discarded — the Oracle then reported
+    "the editor is empty" for a buffer that was full.
+    """
+
+    def _client(self):
+        from zabacode.web_app import app
+
+        return app.test_client()
+
+    def _auth(self):
+        from zabacode.core.security import AUTH_TOKEN
+
+        return {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def test_unparseable_body_is_rejected_not_silently_emptied(self):
+        import json as _json
+
+        r = self._client().post(
+            "/api/oracle/fix",
+            headers=self._auth(),
+            data=_json.dumps({"code": "print(hello world)"}),
+            content_type="text/plain",
+        )
+        assert r.status_code == 400
+        body = r.get_json()
+        assert body["ok"] is False
+        assert body["code"] == "invalid_json"
+        # The reply must name the real cause, not blame the user's buffer.
+        assert "Content-Type" in body["message"]
+        assert "empty" not in body["message"].lower()
+
+    def test_genuinely_empty_body_still_allowed(self):
+        r = self._client().post("/api/check", headers=self._auth())
+        assert r.status_code == 200
+
+    def test_correct_content_type_still_works(self):
+        r = self._client().post(
+            "/api/oracle/fix",
+            headers=self._auth(),
+            json={"code": "print(hello world)"},
+        )
+        assert r.status_code == 200
+        assert r.get_json()["ok"] is True
+
+
+class TestFrontendSendsJsonHeader:
+    """F-01: every POST issued by the UI must carry a JSON content type."""
+
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_fetch_helper_sets_content_type_for_bodies(self):
+        html = self._html()
+        helper = html.split("function fetchApi(")[1].split("\n}")[0]
+        assert "Content-Type" in helper, "fetchApi must default Content-Type for JSON bodies"
+        assert "application/json" in helper
+
+    def test_no_post_call_relies_on_browser_default_mimetype(self):
+        """Either the caller sets the header or the shared helper must."""
+        html = self._html()
+        helper = html.split("function fetchApi(")[1].split("\n}")[0]
+        centrally_handled = "Content-Type" in helper and "options.body" in helper
+        assert centrally_handled, (
+            "fetchApi no longer guarantees Content-Type; every POST caller must "
+            "now set it explicitly or the request body will be dropped."
+        )
+
+
+class TestAutoFixSafety:
+    """F-02/F-03/F-04: the fixer must never corrupt working code."""
+
+    VALID_SNIPPETS = [
+        "prices = [1, 2]\nprint(prices[9])",
+        "x = 5\nprint(x + 1)",
+        "import math\nprint(math.pi)",
+        "def f():\n    return 1\nprint(f())",
+        "a = 1\nb = 0\nprint(a / b)",
+        "print(len([1, 2, 3]))",
+        "d = {}\nprint(d['k'])",
+        "name = 'bob'\nprint(f'hi {name}')",
+        "if d.get('k', default=1):\n    pass",
+        "while retry(timeout=5):\n    pass",
+    ]
+
+    def test_syntactically_valid_code_is_never_rewritten(self):
+        from zabacode.core.oracle import auto_fix_code
+
+        for snippet in self.VALID_SNIPPETS:
+            result = auto_fix_code(snippet, "IndexError: list index out of range")
+            assert result["fixed_code"] == snippet, f"auto-fix mutated valid code: {snippet!r}"
+            assert result["ok"] is False
+            assert result["applied_fixes"] == []
+
+    def test_runtime_error_is_reported_as_such(self):
+        from zabacode.core.oracle import auto_fix_code
+
+        result = auto_fix_code("prices = [1, 2]\nprint(prices[9])")
+        assert result.get("runtime_error") is True
+
+    def test_keyword_arguments_are_not_turned_into_comparisons(self):
+        from zabacode.core.oracle import auto_fix_code
+
+        result = auto_fix_code("if f(timeout=5)\n    pass")
+        assert "timeout==5" not in result["fixed_code"]
+
+    def test_ok_implies_result_actually_parses(self):
+        from zabacode.core.oracle import _is_valid_python, auto_fix_code
+
+        samples = [
+            "print(hello world)",
+            "if x = 5:",
+            "if x == 5",
+            'print("hello',
+            "x = [1, 2",
+            'def f(:\n    print("a"\n',
+            "for i in range(3)\n    print(i)",
+        ]
+        for snippet in samples:
+            result = auto_fix_code(snippet)
+            if result["ok"]:
+                # A block header the user hasn't filled in yet is incomplete,
+                # not broken, so use the same tolerance the fixer applies.
+                assert _is_valid_python(result["fixed_code"]), (
+                    f"claimed success but result does not parse: {result['fixed_code']!r}"
+                )
+                assert result["applied_fixes"]
+
+    def test_hash_inside_string_is_not_treated_as_comment(self):
+        from zabacode.core.oracle import auto_fix_code
+
+        result = auto_fix_code('print("a#b"')
+        if result["ok"]:
+            assert "a#b" in result["fixed_code"]
+
+
+class TestCheckerLineNumbers:
+    """F-07: reported lines must match the user's buffer, not the prelude."""
+
+    def test_indentation_issue_points_at_real_line(self):
+        from zabacode.core.checker import check_code
+
+        issues = check_code("if True:\nprint('x')")["issues"]
+        assert issues, "missing indentation should be reported"
+        assert "Line 2" in issues[0]
+        assert "line 1" in issues[0]
+
+    def test_valid_code_reports_no_issues(self):
+        from zabacode.core.checker import check_code
+
+        assert check_code("x = 1\nprint(x)")["issues"] == []
+
+
+class TestInteractiveTracebackMasking:
+    """F-08: the scratch filename must not leak in interactive mode."""
+
+    def test_streamed_chunks_are_masked(self):
+        from zabacode.core.executor import _mask_runner_filename
+
+        streamed = [("stderr", ch) for ch in '  File "_active_run.py", line 2']
+        out = _mask_runner_filename(streamed)
+        joined = "".join(text for _, text in out)
+        assert "_active_run.py" not in joined
+        assert "main.py" in joined
+
+    def test_stream_ordering_and_types_preserved(self):
+        from zabacode.core.executor import _mask_runner_filename
+
+        out = _mask_runner_filename([("stdout", "a"), ("stdout", "b"), ("stderr", "x")])
+        assert out == [("stdout", "ab"), ("stderr", "x")]
+
+    def test_empty_batch_is_safe(self):
+        from zabacode.core.executor import _mask_runner_filename
+
+        assert _mask_runner_filename([]) == []

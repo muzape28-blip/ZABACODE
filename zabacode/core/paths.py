@@ -35,7 +35,7 @@ def resolve_app_dir() -> Path:
         # Check if parent of current file's project root logic would cause double files
         # We keep as-is, but FILES_DIR logic below will handle deduplication
         return p
-    
+
     # 2. Kivy Android activity files dir
     try:
         from jnius import autoclass
@@ -44,7 +44,7 @@ def resolve_app_dir() -> Path:
         return Path(activity.getFilesDir().getAbsolutePath())
     except Exception:
         pass
-    
+
     # 3. Desktop fallback: project root (where main.py lives)
     # __file__ = .../zabacode/core/paths.py -> parent = core, parent.parent = zabacode, parent.parent.parent = project root
     return Path(__file__).resolve().parent.parent.parent

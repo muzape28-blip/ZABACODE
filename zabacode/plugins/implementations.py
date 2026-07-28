@@ -10,7 +10,7 @@ Includes:
 """
 
 import ast
-import re
+
 
 class AutoImportOptimizer:
     """Finds and comments/removes unused imports in Python code using AST parsing."""

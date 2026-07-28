@@ -37,8 +37,8 @@ def test_invalid_library_name_type_returns_controlled_error() -> None:
 
 
 def test_library_install_endpoint_rejects_non_string_name() -> None:
-    from zabacode.web_app import app
     from zabacode.core.security import AUTH_TOKEN
+    from zabacode.web_app import app
 
     client = app.test_client()
     response = client.post(

@@ -29,7 +29,7 @@ echo "[4b/5] Mypy wider sweep (non-blocking)"
 mypy --ignore-missing-imports zabacode/ --exclude 'zabacode/(files|cache|logs|user_packages)/' || true
 
 echo "[5/5] Pytest Unit Tests"
-python -m pytest test_main.py -v
+python -m pytest -v
 
 echo "[6/5] Security checks (no unverified SSL, Ace bundled, CSP, certifi, no CDN)"
 if grep -R "ssl._create_unverified_context" zabacode/ --exclude-dir=user_packages; then

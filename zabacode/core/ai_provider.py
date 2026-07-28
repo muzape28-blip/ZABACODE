@@ -6,8 +6,8 @@ Philosophy: Tools stay as tools, not permanent branding. Custom endpoint is genu
 
 import json
 import ssl
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Any, Dict
 
 from zabacode.core.net import TLS_HELP_MESSAGE, get_ssl_context

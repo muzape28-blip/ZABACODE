@@ -8,23 +8,23 @@ from flask import Flask, jsonify, render_template, request
 from waitress import serve
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
+from zabacode.core.checker import check_code
 from zabacode.core.executor import (
-    PRELUDE_LINE_COUNT,
     MAX_CODE_BYTES,
+    PRELUDE_LINE_COUNT,
     execute_code_isolated,
-    start_interactive_session,
-    send_interactive_input,
     get_interactive_output,
+    send_interactive_input,
+    start_interactive_session,
     stop_interactive_session,
 )
-from zabacode.core.checker import check_code
-from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
-from zabacode.core.oracle import analyze_buffer, humanize_traceback, offline_reply, auto_fix_code
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
+from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
+from zabacode.core.oracle import analyze_buffer, auto_fix_code, humanize_traceback, offline_reply
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
-from zabacode.plugins.registry import get_all_plugins
 from zabacode.plugins.implementations import PluginExecutor
+from zabacode.plugins.registry import get_all_plugins
 from zabacode.themes.definitions import get_theme, list_themes
 
 APP_VERSION = "1.2.0"
@@ -82,8 +82,24 @@ def _get_json_payload() -> Tuple[Union[Dict[str, Any], None], Union[tuple[Any, i
     """
     data = request.get_json(silent=True)
     if data is None:
-        # No JSON or invalid — treat as empty object for routes that have defaults,
-        # but callers should still validate required fields
+        # A body that was sent but could not be parsed must never be treated as
+        # empty: that turns a client bug (e.g. a missing Content-Type header)
+        # into a misleading "field is empty" reply. Fail loudly instead.
+        if request.get_data(cache=True, as_text=True).strip():
+            return None, (
+                jsonify(
+                    {
+                        "ok": False,
+                        "message": (
+                            "Request body could not be parsed as JSON. "
+                            "Send it with the header 'Content-Type: application/json'."
+                        ),
+                        "code": "invalid_json",
+                    }
+                ),
+                400,
+            )
+        # Genuinely empty body — routes with defaults may proceed.
         return {}, None
     if not isinstance(data, dict):
         # JSON arrays or primitives are not allowed — previously treated as {} silently
@@ -648,13 +664,13 @@ def run_webview_server():
 
         try:
             print(f"[INFO] Starting ZABACODE WebView server on 127.0.0.1:{port}")
-            print(f"[INFO] Loopback-only: exposure reduction, not full app-private boundary (see SECURITY.md #27)")
-            print(f"[INFO] Token delivery: AUTH_TOKEN embedded in root HTML JS, validated via constant-time compare, sensitive routes require X-Zabacode-Token")
+            print("[INFO] Loopback-only: exposure reduction, not full app-private boundary (see SECURITY.md #27)")
+            print("[INFO] Token delivery: AUTH_TOKEN embedded in root HTML JS, validated via constant-time compare, sensitive routes require X-Zabacode-Token")
             serve(app, host="127.0.0.1", port=port, threads=4)
             break
         except OSError as e:
             print(f"[WARN] Failed to start on port {port}: {e}, trying next...")
             if port == 5010:
-                print(f"[ERROR] All ports 5000-5010 occupied. Clear recovery: check other ZABACODE instances or run `lsof -i :5000` / `netstat -tulpn` and kill conflicting process.")
+                print("[ERROR] All ports 5000-5010 occupied. Clear recovery: check other ZABACODE instances or run `lsof -i :5000` / `netstat -tulpn` and kill conflicting process.")
                 raise
             continue

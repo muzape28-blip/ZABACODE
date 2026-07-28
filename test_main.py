@@ -1584,3 +1584,981 @@ class TestAutoFixRefusalRendering:
         helper = html.split("function renderAutoFixRefusal(")[1].split("\n}")[0]
         assert "<pre" in helper, "the caret pointer needs pre-formatted whitespace to line up"
         assert "white-space:pre" in helper
+
+
+# ===========================================================================
+# Oracle repair & expansion — session of 2026-07-28
+#
+# Six defects found by probing the Oracle against realistic input rather than
+# against its own fixtures. Each class below pins one of them so it cannot
+# silently come back.
+# ===========================================================================
+
+
+class TestTracebackLineNumberPointsAtUserCode:
+    """The reported line must be a line the user can actually go and edit.
+
+    Two separate bugs produced confidently wrong line numbers:
+
+    * ``re.finditer(r"line (\\d+)")`` also matched digits inside the exception
+      *message*. ``JSONDecodeError: ... line 1 column 1`` made the Oracle
+      announce "Line 1" for a crash on line 3.
+    * The deepest frame is normally inside the standard library, so the Oracle
+      pointed at ``/usr/lib/python3.11/json/decoder.py`` line 355 — a file the
+      user cannot open, let alone fix.
+    """
+
+    def test_line_from_message_text_is_not_mistaken_for_a_frame(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        stderr = (
+            'Traceback (most recent call last):\n'
+            '  File "main.py", line 3, in <module>\n'
+            '    json.loads(data)\n'
+            '  File "/usr/lib/python3.11/json/decoder.py", line 355, in raw_decode\n'
+            '    raise JSONDecodeError("Expecting value", s, err.value) from None\n'
+            'json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\n'
+        )
+        assert humanize_traceback(stderr)["line"] == 3
+
+    def test_stdlib_frames_are_skipped_in_favour_of_user_frames(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        stderr = (
+            'Traceback (most recent call last):\n'
+            '  File "main.py", line 7, in <module>\n'
+            '    total = sum(int(v) for v in vals)\n'
+            '  File "/usr/lib/python3.11/site-packages/lib.py", line 1892, in helper\n'
+            '    raise ValueError("boom")\n'
+            'ValueError: boom\n'
+        )
+        assert humanize_traceback(stderr)["line"] == 7
+
+    def test_deepest_user_frame_wins_over_shallower_one(self):
+        """A crash inside the user's own helper should point at the helper."""
+        from zabacode.core.oracle import humanize_traceback
+
+        stderr = (
+            'Traceback (most recent call last):\n'
+            '  File "main.py", line 14, in <module>\n'
+            '    helper(x)\n'
+            '  File "main.py", line 11, in helper\n'
+            "    return d['missing']\n"
+            "KeyError: 'missing'\n"
+        )
+        assert humanize_traceback(stderr)["line"] == 11
+
+    def test_end_to_end_stdlib_crash_reports_the_editor_line(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        body = app.test_client().post(
+            "/api/run",
+            json={"code": "import json\ndata = ''\njson.loads(data)\n"},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert body["explain"]["line"] == 3, "must point at the user's json.loads() call"
+
+    def test_syntax_error_message_line_is_rebased_onto_the_editor(self):
+        """`expected an indented block after 'if' on line 10` for a 2-line file.
+
+        The prelude the executor injects shifts every line number in the
+        compiled file, and the number embedded in a SyntaxError *message* was
+        never rebased — only the frame line was.
+        """
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        body = app.test_client().post(
+            "/api/run",
+            json={"code": "if True:\nprint('x')\n"},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        explain = body["explain"]
+        assert "line 10" not in explain["what"], "prelude line leaked into the explanation"
+        assert "line 1" in explain["what"]
+
+    def test_data_line_numbers_are_left_alone(self):
+        """JSONDecodeError's "line 1" describes the *data*, not the script."""
+        from zabacode.core.oracle import humanize_traceback
+
+        stderr = (
+            'Traceback (most recent call last):\n'
+            '  File "main.py", line 12, in <module>\n'
+            '    json.loads(d)\n'
+            'json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\n'
+        )
+        result = humanize_traceback(stderr, line_offset=9)
+        assert result["line"] == 3
+        assert "line 1" in result["what"], "the JSON payload's own line must not be shifted"
+
+
+class TestChainedTracebackExplainsTheEscapingError:
+    """`raise B` inside `except A` prints both; only B actually escaped."""
+
+    STDERR = (
+        'Traceback (most recent call last):\n'
+        '  File "main.py", line 3, in <module>\n'
+        '    v = int(s)\n'
+        "ValueError: invalid literal for int() with base 10: 'abc'\n"
+        '\n'
+        'During handling of the above exception, another exception occurred:\n'
+        '\n'
+        'Traceback (most recent call last):\n'
+        '  File "main.py", line 5, in <module>\n'
+        '    raise RuntimeError("conversion failed")\n'
+        'RuntimeError: conversion failed\n'
+    )
+
+    def test_line_comes_from_the_final_block(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        assert humanize_traceback(self.STDERR)["line"] == 5
+
+    def test_explanation_is_not_the_already_handled_exception(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        result = humanize_traceback(self.STDERR)
+        assert "RuntimeError" in result["raw_error"]
+        assert "isn't a number" not in result["what"].lower(), (
+            "explained the handled ValueError while quoting the RuntimeError's line"
+        )
+
+
+class TestKnowledgeMatchingUsesWordBoundaries:
+    """Substring matching answered loop questions with a lecture on classes.
+
+    ``"oop" in "loop"`` is True, so every single question containing the word
+    "loop" matched the object-orientation entry.
+    """
+
+    def test_loop_question_gets_the_loop_answer(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        answer = _match_knowledge("how do i loop over a list?")
+        assert answer is not None
+        assert "for item in items" in answer, "'oop' inside 'loop' hijacked the answer"
+
+    def test_plural_still_matches(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        assert _match_knowledge("explain decorators") is not None
+        assert _match_knowledge("nested loops") is not None
+
+    def test_class_keyword_does_not_fire_inside_classify(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        assert _match_knowledge("how do i classify images?") is None
+
+    def test_at_sign_does_not_fire_on_an_email_address(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        assert _match_knowledge("email me at bob@example.com") is None
+
+    def test_at_sign_still_matches_a_real_decorator_question(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        assert _match_knowledge("what does @property do?") is not None
+
+    def test_genuine_class_question_still_answered(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        assert _match_knowledge("explain the class keyword") is not None
+
+
+class TestTracebackDetectionDoesNotHijackQuestions:
+    """The bare marker "line " turned ordinary questions into error cards."""
+
+    def test_question_mentioning_a_line_is_answered_as_a_question(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("how do I read a line from a file and print each line?")["reply"]
+        assert "Something went wrong" not in reply
+        assert "with open" in reply, "should have matched the file-handling entry"
+
+    def test_real_traceback_is_still_detected(self):
+        from zabacode.core.oracle import offline_reply
+
+        result = offline_reply(
+            'Traceback (most recent call last):\n'
+            '  File "main.py", line 3, in <module>\n'
+            "NameError: name 'qty' is not defined\n"
+        )
+        assert result.get("savior") is True
+        assert "qty" in result["reply"]
+
+    def test_bare_exception_line_is_still_detected(self):
+        from zabacode.core.oracle import _looks_like_traceback
+
+        assert _looks_like_traceback("ZeroDivisionError: division by zero")
+        assert _looks_like_traceback("ModuleNotFoundError: No module named 'requests'")
+
+    def test_prose_about_errors_is_not_a_traceback(self):
+        from zabacode.core.oracle import _looks_like_traceback
+
+        assert not _looks_like_traceback("how do I write a line of text to a log file?")
+        assert not _looks_like_traceback("what is exception handling in python")
+
+
+class TestAnalyzeBufferSeesAsyncFunctions:
+    """`async def` is an AsyncFunctionDef — matching only FunctionDef missed it."""
+
+    CODE = (
+        "import asyncio\n"
+        "\n"
+        "async def fetch(a, b, c, d, e, f):\n"
+        "    return 1\n"
+    )
+
+    def test_async_function_is_listed(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        names = [f["name"] for f in analyze_buffer(self.CODE)["functions"]]
+        assert "fetch" in names
+
+    def test_async_function_smells_are_reported(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        joined = " ".join(analyze_buffer(self.CODE)["notes"])
+        assert "6 arguments" in joined
+        assert "docstring" in joined
+
+    def test_async_for_counts_towards_loop_depth(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        code = (
+            "async def f(items):\n"
+            "    async for a in items:\n"
+            "        for b in a:\n"
+            "            for c in b:\n"
+            "                print(c)\n"
+        )
+        assert analyze_buffer(code)["loop_depth"] == 3
+
+
+class TestAnalyzeBufferNewChecks:
+    def test_silent_except_pass_is_flagged(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        code = "def f():\n    try:\n        risky()\n    except Exception:\n        pass\n"
+        assert any("vanishes silently" in n for n in analyze_buffer(code)["notes"])
+
+    def test_comparison_to_none_is_flagged(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        notes = analyze_buffer("def f(x):\n    if x == None:\n        return 1\n")["notes"]
+        assert any("is None" in n for n in notes)
+
+    def test_is_none_is_not_flagged(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        notes = analyze_buffer("def f(x):\n    if x is None:\n        return 1\n")["notes"]
+        assert not any("is None" in n for n in notes)
+
+    def test_clean_code_stays_clean(self):
+        """The new checks must not start nagging about correct code."""
+        from zabacode.core.oracle import analyze_buffer
+
+        code = (
+            'def add(a, b):\n'
+            '    """Add two numbers."""\n'
+            '    return a + b\n'
+        )
+        assert analyze_buffer(code)["notes"] == []
+
+
+class TestAnalyzeBufferNoteFlood:
+    """80 notes on a phone screen buries the real bug under boilerplate."""
+
+    def test_notes_are_capped_and_the_remainder_is_counted(self):
+        from zabacode.core.oracle import MAX_REVIEW_NOTES, analyze_buffer
+
+        code = "\n".join(f"def f{i}(a, b, c, d, e, g):\n    pass" for i in range(40))
+        result = analyze_buffer(code)
+        assert result["note_count"] > MAX_REVIEW_NOTES
+        assert len(result["notes"]) == MAX_REVIEW_NOTES + 1
+        assert "more issue" in result["notes"][-1]
+
+    def test_short_files_are_not_truncated(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        result = analyze_buffer("def f(x=[]):\n    pass\n")
+        assert not any("more issue" in n for n in result["notes"])
+        assert result["note_count"] == len(result["notes"])
+
+    def test_notes_are_deduplicated(self):
+        from zabacode.core.oracle import analyze_buffer
+
+        notes = analyze_buffer("x = 1 / 0\ny = 2 / 0\nz = 1 / 0\n")["notes"]
+        assert len(notes) == len(set(notes))
+
+
+class TestEverydayRuntimeErrorsAreExplained:
+    """22 of the 23 most common beginner crashes hit the generic card.
+
+    "Something went wrong" plus the raw exception text is exactly what the
+    terminal already showed — the Oracle added nothing.
+    """
+
+    CASES = [
+        ("TypeError: 'NoneType' object is not iterable", "Looped Over"),
+        ('TypeError: can only concatenate str (not "int") to str', "Glue a Number"),
+        ("TypeError: string indices must be integers", "Wrong Kind of Key"),
+        ("ValueError: too many values to unpack (expected 2)", "Too Many Values"),
+        ("ValueError: not enough values to unpack (expected 3, got 2)", "Unpacking Count"),
+        ("TypeError: object of type 'int' has no len()", "No Length"),
+        ("TypeError: greet() takes 1 positional argument but 2 were given", "Too Many Arguments"),
+        ("IndexError: string index out of range", "Reached Past the End"),
+        ("TypeError: unhashable type: 'list'", "Dictionary Key"),
+        ("TypeError: 'str' object does not support item assignment", "Modified in Place"),
+        ("AttributeError: module 'math' has no attribute 'sqr'", "Isn't in This Module"),
+        ("socket.gaierror: [Errno -2] Name or service not known", "Network Unreachable"),
+        ("TimeoutError: timed out", "Timed Out"),
+        ("KeyboardInterrupt", "You Stopped the Program"),
+        ("MemoryError", "Out of Memory"),
+        ("OverflowError: math range error", "Too Big"),
+        ("StopIteration", "Iterator Ran Out"),
+        ("TypeError: 'int' object is not callable", "Isn't a Function"),
+    ]
+
+    def test_each_common_error_gets_a_real_explanation(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        for stderr, expected in self.CASES:
+            result = humanize_traceback(stderr)
+            assert result["ok"]
+            assert expected in result["title"], (
+                f"{stderr!r} fell through to {result['title']!r}"
+            )
+            assert result["fix"]
+
+    def test_qualified_method_names_are_matched(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        result = humanize_traceback(
+            "TypeError: A.greet() takes 0 positional arguments but 1 was given"
+        )
+        assert "Too Many Arguments" in result["title"]
+        assert "A.greet" in result["what"]
+
+    def test_previously_covered_errors_did_not_regress(self):
+        """New rules are appended, but regex order still decides the winner."""
+        from zabacode.core.oracle import humanize_traceback
+
+        pinned = [
+            ("TypeError: unsupported operand type(s) for +: 'int' and 'str'", "Incompatible Types"),
+            ("TypeError: 'int' object is not subscriptable", "Cannot Be Indexed"),
+            ("IndexError: list index out of range", "End of a List"),
+            ("TypeError: greet() missing 1 required positional argument: 'n'", "Missing Function Arguments"),
+            ("AttributeError: 'str' object has no attribute 'foo'", "Method or Property"),
+            ("FileNotFoundError: [Errno 2] No such file or directory: 'a.txt'", "File Not Found"),
+            ("ModuleNotFoundError: No module named 'pandas'", "Library Not Installed"),
+            ("KeyError: 'name'", "Missing Dictionary Key"),
+            ("ZeroDivisionError: division by zero", "Division by Zero"),
+        ]
+        for stderr, expected in pinned:
+            assert expected in humanize_traceback(stderr)["title"], f"regressed: {stderr!r}"
+
+    def test_single_equals_in_condition_is_explained(self):
+        from zabacode.core.oracle import humanize_traceback
+
+        result = humanize_traceback(
+            "SyntaxError: invalid syntax. Maybe you meant '==' instead of '='?"
+        )
+        assert "Comparison" in result["title"]
+
+    def test_end_to_end_none_iteration_points_at_the_loop(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        body = app.test_client().post(
+            "/api/run",
+            json={"code": "def get_items():\n    pass\n\nfor i in get_items():\n    print(i)\n"},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert body["explain"]["line"] == 4
+        assert "Looped Over" in body["explain"]["title"]
+
+
+class TestKnowledgeBaseCoversEverydayQuestions:
+    """These all fell through to the generic "here's what I can do" card."""
+
+    QUESTIONS = {
+        "how do I sort a list?": "sorted(",
+        "what is a set?": "unique",
+        "explain recursion": "base case",
+        "what does __name__ == '__main__' mean?": "imported",
+        "how do I get the current time?": "datetime",
+        "how do I save json to a file?": "json",
+        "how do I reverse a string?": "[::-1]",
+        "how do I generate a random number?": "randint",
+        "what is a variable?": "type(",
+        "how do I strip whitespace from a string?": "strip",
+    }
+
+    def test_each_question_gets_a_specific_answer(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        for question, needle in self.QUESTIONS.items():
+            answer = _match_knowledge(question)
+            assert answer is not None, f"no knowledge entry matched {question!r}"
+            assert needle in answer, f"{question!r} matched the wrong entry: {answer[:60]!r}"
+
+    def test_answers_reach_the_user_through_offline_reply(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("how do I sort a list?")["reply"]
+        assert "savior when you're boncos" not in reply
+        assert "sorted(" in reply
+
+    def test_no_knowledge_entry_shadows_another(self):
+        """Every entry must still be reachable via its own first keyword.
+
+        Keywords are matched in list order, so a broad keyword added near the
+        top can silently swallow a later, more specific entry.
+        """
+        from zabacode.core.oracle import _KNOWLEDGE, _match_knowledge
+
+        for keywords, answer in _KNOWLEDGE:
+            probe = keywords[0]
+            matched = _match_knowledge(probe)
+            assert matched == answer, (
+                f"keyword {probe!r} no longer reaches its own entry — "
+                f"an earlier entry shadows it"
+            )
+
+
+# ===========================================================================
+# Oracle chat/UI integration — session of 2026-07-29
+#
+# The engine was correct but the paths the user actually touches were not
+# wired to it: "fix my code" re-implemented a worse fixer inline, and the
+# terminal card threw away the line number the engine had just resolved.
+# ===========================================================================
+
+
+class TestFixMyCodeUsesTheRealRepairEngine:
+    """The chat path hand-rolled regexes instead of calling auto_fix_code().
+
+    It searched for the literal string "hello world", so it could describe
+    exactly one mistake and never produced actual corrected code.
+    """
+
+    def test_returns_the_corrected_source(self):
+        from zabacode.core.oracle import offline_reply
+
+        result = offline_reply("fix my code", "print(hello world)\n")
+        assert result["fixed_code"].strip() == 'print("hello world")'
+        assert 'print("hello world")' in result["reply"]
+        assert result["applied_fixes"]
+
+    def test_works_for_mistakes_other_than_the_hardcoded_example(self):
+        """The old branch only recognised `print(hello world)`."""
+        from zabacode.core.oracle import offline_reply
+
+        for broken, expected in [
+            ("if x = 5:\n    pass\n", "if x == 5:"),
+            ("for i range(3):\n    print(i)\n", "for i in range(3):"),
+            ("print 'hi'\n", "print('hi')"),
+        ]:
+            result = offline_reply("fix my code", broken)
+            assert expected in result["reply"], f"no patch offered for {broken!r}"
+
+    def test_patch_offered_is_always_valid_python(self):
+        from zabacode.core.oracle import _is_valid_python, offline_reply
+
+        for broken in ("print(hello world)", "x = [1, 2", 'print("hi'):
+            result = offline_reply("fix my code", broken)
+            if "fixed_code" in result:
+                assert _is_valid_python(result["fixed_code"])
+
+    def test_valid_code_is_not_claimed_to_be_a_missing_buffer(self):
+        """Regression: valid code with no smells said "I don't see your code".
+
+        `analysis.get("notes")` was falsy for clean code, so control fell
+        through to the no-buffer branch and told users staring at their own
+        program that the editor was empty.
+        """
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("fix my code", "prices = [1, 2]\nprint(prices[9])\n")["reply"]
+        assert "don't see your code" not in reply
+        assert "don’t see your code" not in reply
+        assert "runtime" in reply.lower() or "logic" in reply.lower()
+
+    def test_genuinely_empty_buffer_still_asks_for_code(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("fix my code", "   ")["reply"]
+        assert "empty" in reply.lower()
+
+    def test_refusal_reports_the_parser_diagnosis(self):
+        from zabacode.core.oracle import offline_reply
+
+        result = offline_reply("fix my code", "def f(:\n    pass\n")
+        assert result["ok"] is True
+        if not result.get("fixed_code"):
+            assert result.get("error_line")
+            assert str(result["error_line"]) in result["reply"]
+
+
+class TestReviewPathMessaging:
+    def test_syntax_error_message_is_not_printed_twice(self):
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("review my code", "print(hello world)\n")["reply"]
+        assert reply.count("Perhaps you forgot a comma") == 1
+
+    def test_empty_editor_does_not_render_a_blank_line_number(self):
+        """Was: "Line ?: The editor is empty." — a line number for no code."""
+        from zabacode.core.oracle import offline_reply
+
+        reply = offline_reply("review my code", "")["reply"]
+        assert "Line ?" not in reply
+        assert "empty" in reply.lower()
+
+
+class TestAnalyzeEndpointExposesNoteTotal:
+    """The UI can only be honest about truncation if the API sends the total."""
+
+    def test_note_count_is_returned(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        code = "\n".join(f"def f{i}(a, b, c, d, e, g):\n    pass" for i in range(40))
+        body = app.test_client().post(
+            "/api/oracle/analyze",
+            json={"code": code},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert body["note_count"] > len(body["notes"])
+
+
+class TestOracleCardRendering:
+    """F-01's lesson again: a diagnosis the user cannot see is not a diagnosis."""
+
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_card_shows_the_offending_source_line(self):
+        html = self._html()
+        assert "oracle-src" in html, "the card should echo the offending source line"
+        assert "focusEditorLine" in html, "the line number should be tappable"
+
+    def test_every_css_variable_used_is_defined(self):
+        """.oracle-what used var(--fg), which this stylesheet never defines.
+
+        Undefined custom properties fail silently — the green "Fix:" emphasis
+        simply never rendered.
+        """
+        import re
+
+        html = self._html()
+        used = set(re.findall(r"var\((--[a-z-]+)\)", html))
+        defined = set(re.findall(r"(--[a-z-]+)\s*:", html))
+        assert used <= defined, f"undefined CSS variables: {sorted(used - defined)}"
+
+    def test_analyze_fallback_reports_the_real_parser_message(self):
+        """It used to append a fixed 'add ""' hint to every syntax error.
+
+        Checked against code lines only — the comment explaining the old bug
+        naturally quotes the very string being banned.
+        """
+        code = "\n".join(
+            line for line in self._html().split("\n")
+            if not line.lstrip().startswith("//")
+        )
+        assert 'there is no "" at column, add ""' not in code
+
+    def test_rate_limit_fallback_does_not_recite_a_canned_example(self):
+        html = self._html()
+        assert 'For error like "unterminated string literal"' not in html
+
+
+# ===========================================================================
+# Generated-image capture — session of 2026-07-29
+#
+# Android has no display, so plt.show() does nothing and savefig() is the only
+# way to see a chart. The Oracle tells users "ZABACODE picks the image up
+# automatically" — but only the batch path ever collected images, and the RUN
+# button uses the interactive path, so that promise was false in the UI.
+# ===========================================================================
+
+PNG_MAGIC = "89504e470d0a1a0a"
+
+
+def _write_png_snippet(name: str) -> str:
+    return f"with open({name!r}, 'wb') as f:\n    f.write(bytes.fromhex({PNG_MAGIC!r}))\n"
+
+
+class TestInteractiveRunCapturesImages:
+    """The path the RUN button actually drives must surface saved charts."""
+
+    def _clean(self):
+        from zabacode.core.paths import FILES_DIR
+
+        for pattern in ("*.png", "*.jpg", "*.jpeg"):
+            for path in FILES_DIR.glob(pattern):
+                path.unlink()
+
+    def _client(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def _drain(self, client, headers, limit=100):
+        """Poll to completion, returning every image the server delivered."""
+        import time
+
+        images = []
+        for _ in range(limit):
+            body = client.get("/api/run/interactive/output", headers=headers).get_json()
+            images += body.get("images", [])
+            if body.get("done"):
+                break
+            time.sleep(0.03)
+        return images
+
+    def test_saved_image_reaches_the_client(self):
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start",
+            json={"code": _write_png_snippet("chart.png")},
+            headers=headers,
+        )
+        images = self._drain(client, headers)
+        assert [i["name"] for i in images] == ["chart.png"]
+        assert images[0]["data_uri"].startswith("data:image/png;base64,")
+
+    def test_image_is_not_delivered_twice(self):
+        """The 150 ms poll would otherwise re-send the same chart forever."""
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start",
+            json={"code": _write_png_snippet("once.png")},
+            headers=headers,
+        )
+        names = [i["name"] for i in self._drain(client, headers)]
+        assert names.count("once.png") == 1
+
+    def test_pre_existing_files_are_not_reported_as_new(self):
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "stale.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start", json={"code": "print('hi')\n"}, headers=headers
+        )
+        assert self._drain(client, headers) == []
+
+    def test_multiple_images_are_all_captured(self):
+        self._clean()
+        client, headers = self._client()
+        code = _write_png_snippet("a.png") + _write_png_snippet("b.png")
+        client.post("/api/run/interactive/start", json={"code": code}, headers=headers)
+        names = sorted(i["name"] for i in self._drain(client, headers))
+        assert names == ["a.png", "b.png"]
+
+    def test_run_without_images_reports_an_empty_list(self):
+        self._clean()
+        client, headers = self._client()
+        client.post(
+            "/api/run/interactive/start", json={"code": "print('no charts')\n"}, headers=headers
+        )
+        assert self._drain(client, headers) == []
+
+
+class TestImageCaptureHelper:
+    """`collect_new_images` is the one piece both execution modes share."""
+
+    def _clean(self):
+        from zabacode.core.paths import FILES_DIR
+
+        for pattern in ("*.png", "*.jpg", "*.jpeg"):
+            for path in FILES_DIR.glob(pattern):
+                path.unlink()
+
+    def test_baseline_advances_so_nothing_repeats(self):
+        from zabacode.core.executor import collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        baseline: set = set()
+
+        (FILES_DIR / "first.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+        images, baseline = collect_new_images(baseline)
+        assert [i["name"] for i in images] == ["first.png"]
+
+        images, baseline = collect_new_images(baseline)
+        assert images == [], "already-delivered image was sent again"
+
+        (FILES_DIR / "second.png").write_bytes(bytes.fromhex(PNG_MAGIC))
+        images, baseline = collect_new_images(baseline)
+        assert [i["name"] for i in images] == ["second.png"]
+
+    def test_jpeg_gets_the_right_mime_type(self):
+        from zabacode.core.executor import collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+        images, _ = collect_new_images(set())
+        assert images[0]["data_uri"].startswith("data:image/jpeg;base64,")
+
+    def test_oversized_image_is_skipped_not_shipped(self):
+        """An 8 MB base64 blob would stall the WebView bridge on a cheap phone."""
+        from zabacode.core.executor import MAX_IMAGE_BYTES, collect_new_images
+        from zabacode.core.paths import FILES_DIR
+
+        self._clean()
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        (FILES_DIR / "huge.png").write_bytes(b"\x00" * (MAX_IMAGE_BYTES + 1))
+        images, _ = collect_new_images(set())
+        assert images == []
+
+    def test_batch_path_still_returns_images(self):
+        """The shared helper must not regress the mode that already worked."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        self._clean()
+        body = app.test_client().post(
+            "/api/run",
+            json={"code": _write_png_snippet("batch.png")},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        ).get_json()
+        assert [i["name"] for i in body["images"]] == ["batch.png"]
+
+
+class TestImageRenderingInUI:
+    def _html(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    def test_interactive_poll_renders_images(self):
+        html = self._html()
+        assert "renderOutputImages" in html
+        assert "data.images" in html, "the poll loop must consume the images field"
+
+    def test_only_data_uris_are_rendered(self):
+        """A remote src would breach both the CSP and the offline guarantee."""
+        html = self._html()
+        helper = html.split("function renderOutputImages(")[1].split("\n}")[0]
+        assert "data:image/" in helper
+        assert "startsWith" in helper
+
+    def test_csp_allows_inline_data_images(self):
+        import pathlib
+
+        source = (pathlib.Path(__file__).parent / "zabacode" / "web_app.py").read_text(encoding="utf-8")
+        assert "img-src 'self' data:" in source
+
+
+# ===========================================================================
+# Wider sweep — session of 2026-07-29 (beyond the Oracle)
+#
+# Auditing the modules the earlier sessions never touched: the plugins that
+# rewrite user code, and the guard that decides whether code may run at all.
+# ===========================================================================
+
+
+class TestCodeBeautifierNeverBreaksValidCode:
+    """A "beautifier" that produces unparseable code is worse than no plugin.
+
+    It padded operators one character at a time, so any multi-character token
+    it did not know about was split and re-spaced: `->` became `- >`, breaking
+    *every* annotated function; `//=` became `// =`; `>>=` became `> >=`.
+    """
+
+    OPERATOR_CASES = [
+        "def f(a: int = 1) -> int:\n    return a\n",
+        "n = 4\nn //= 2\n",
+        "n = 4\nn **= 2\n",
+        "n = 4\nn >>= 1\n",
+        "n = 4\nn <<= 1\n",
+        "n = 4\nn &= 1\n",
+        "n = 4\nn |= 1\n",
+        "n = 4\nn ^= 1\n",
+        "n = 4\nn %= 3\n",
+        "x = 7 // 2\n",
+        "y = 2 ** 8\n",
+        "if (v := 10) > 5:\n    print(v)\n",
+        "s = [1, 2, 3][::-1]\n",
+        "q = 10 ** -2\n",
+    ]
+
+    def test_output_always_parses(self):
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        for source in self.OPERATOR_CASES:
+            out = PluginExecutor.execute_plugin("code_beautifier_pro", source)["code"]
+            try:
+                ast.parse(out)
+            except SyntaxError as exc:
+                raise AssertionError(
+                    f"beautifier broke valid code: {source!r} -> {out!r} ({exc.msg})"
+                ) from exc
+
+    def test_output_is_semantically_identical(self):
+        """Parsing is not enough — the AST must be unchanged."""
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        for source in self.OPERATOR_CASES:
+            out = PluginExecutor.execute_plugin("code_beautifier_pro", source)["code"]
+            assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(out)), (
+                f"beautifier changed the meaning of {source!r} -> {out!r}"
+            )
+
+    def test_return_annotation_survives_intact(self):
+        from zabacode.plugins.implementations import PluginExecutor
+
+        out = PluginExecutor.execute_plugin(
+            "code_beautifier_pro", "def f() -> int:\n    return 1\n"
+        )["code"]
+        assert "->" in out and "- >" not in out
+
+    def test_operator_table_is_ordered_longest_first(self):
+        """A prefix listed before the full token would re-introduce the bug."""
+        from zabacode.plugins.implementations import _OPERATORS
+
+        lengths = [len(op) for op in _OPERATORS]
+        assert lengths == sorted(lengths, reverse=True), (
+            "_OPERATORS must be longest-first so '//=' matches before '//' and '/'"
+        )
+
+
+class TestAllTransformPluginsPreserveValidity:
+    """Every plugin that rewrites the buffer must hand back parseable code."""
+
+    SAMPLES = [
+        "import os\nimport sys\nprint(os.getcwd(), sys.platform)\n",
+        "name = 'z'\nprint(f'hi {name}')\n",
+        "class A:\n    def m(self) -> int:\n        return 1\n",
+        "x = [\n    1,\n    2,\n]\nprint(x)\n",
+        "try:\n    pass\nexcept ValueError as e:\n    print(e)\n",
+        "s = 'has # hash'\nprint(s)\n",
+        "def f(*args, **kw):\n    return args, kw\n",
+        "count: int = 0\nprint(count)\n",
+        "f = lambda x=1: x * 2\nprint(f())\n",
+        "data = [1, 2]\nprint(data[::-1])\n",
+    ]
+
+    PLUGINS = [
+        "auto_import_optimizer",
+        "duplicate_line_detector",
+        "smart_comment_generator",
+        "code_beautifier_pro",
+        "variable_type_hint_generator",
+    ]
+
+    def test_no_plugin_corrupts_any_sample(self):
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        failures = []
+        for plugin_id in self.PLUGINS:
+            for source in self.SAMPLES:
+                try:
+                    out = PluginExecutor.execute_plugin(plugin_id, source).get("code", "")
+                except Exception as exc:  # noqa: BLE001 - report, don't mask
+                    failures.append(f"{plugin_id} raised {type(exc).__name__} on {source!r}")
+                    continue
+                try:
+                    ast.parse(out)
+                except SyntaxError as exc:
+                    failures.append(f"{plugin_id} broke {source!r}: {exc.msg}")
+        assert not failures, "plugins corrupted user code:\n" + "\n".join(failures)
+
+
+class TestSyntaxGuardDoesNotBlockValidCode:
+    """The RUN gate refused code containing a bracket inside a string.
+
+    `(code.match(/\\(/g)).length !== (code.match(/\\)/g)).length` counts
+    parentheses inside strings and comments too, so `print('a smiley :)')`
+    could not be run at all. /api/check strips strings and comments first.
+    """
+
+    def _client(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def test_bracket_inside_string_is_not_an_imbalance(self):
+        client, headers = self._client()
+        for code in (
+            "print('a smiley :)')",
+            'print("emoticon :-(")',
+            "s = ')'\nprint(s)",
+            "x = 1  # note (unbalanced",
+        ):
+            body = client.post("/api/check", json={"code": code}, headers=headers).get_json()
+            assert body["valid"] is True, f"valid code rejected: {code!r} -> {body['issues']}"
+
+    def test_genuine_imbalance_is_still_caught(self):
+        client, headers = self._client()
+        body = client.post("/api/check", json={"code": "print('hi'"}, headers=headers).get_json()
+        assert body["valid"] is False
+
+    def test_ui_guard_defers_to_the_server_checker(self):
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        guard = html.split("installedPlugins['syntax_linter']")[1][:900]
+        assert "/api/check" in guard, "the guard must use the checker that understands strings"
+        assert "match(/\\(/g)" not in guard, "naive paren counting is back"
+
+    def test_guard_never_hard_blocks_on_its_own_failure(self):
+        """If the check errors, the user must still be able to run their code."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        guard = html.split("installedPlugins['syntax_linter']")[1][:900]
+        assert "catch" in guard
+
+
+class TestOracleClaimsMatchReality:
+    """The Oracle must not promise behaviour the app does not have.
+
+    The matplotlib claim was false until images were wired into the
+    interactive runner; these pin the remaining claims to the code.
+    """
+
+    def test_no_claim_of_bypassing_tls(self):
+        """SECURITY.md documents that --trusted-host was deliberately removed."""
+        from zabacode.core.oracle import _KNOWLEDGE
+
+        for _keywords, answer in _KNOWLEDGE:
+            lowered = answer.lower()
+            assert "bypassed tls" not in lowered
+            assert "trusted-host" not in lowered
+
+    def test_pip_answer_describes_verified_tls(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        answer = _match_knowledge("how do I install a library with pip?")
+        assert answer and "verified TLS" in answer
+
+    def test_input_answer_matches_the_actual_ui(self):
+        """There is no separate "Interactive Run mode" to switch on — RUN is it."""
+        from zabacode.core.oracle import _match_knowledge
+
+        answer = _match_knowledge("how do I use input()?")
+        assert answer and "Interactive Run mode" not in answer
+        assert "RUN" in answer

@@ -260,6 +260,17 @@
   .prompt-line .user { color: var(--text-dim); }
   #output-terminal .stdout-line { color: var(--text); }
   #output-terminal .stderr-block { color: var(--err); border-left: 2px solid var(--err); padding-left: 8px; margin-top: 6px; }
+  /* Charts written by the running script (matplotlib savefig et al). */
+  .output-image { margin: 8px 0; padding: 6px; border: 1px solid var(--border);
+                  border-left: 3px solid var(--ai); border-radius: 4px;
+                  background: rgba(0,0,0,.22); }
+  .output-image-name { color: var(--ai); font-size: 10.5px; margin-bottom: 5px;
+                       letter-spacing: .4px; }
+  .output-image img { display: block; max-width: 100%; height: auto;
+                      border-radius: 3px; cursor: zoom-in;
+                      background: #fff; /* charts are usually transparent PNGs */ }
+  .output-image img.expanded { cursor: zoom-out; max-width: none; width: 100%; }
+
   /* Zaba Oracle — offline error explanation */
   .oracle-card { margin-top: 10px; border: 1px solid var(--ai); border-left: 3px solid var(--ai);
                  background: rgba(255,176,0,0.06); padding: 10px 12px; border-radius: 4px;
@@ -269,10 +280,21 @@
                  display:flex; align-items:center; gap:6px; margin-bottom:6px; }
   .oracle-badge { font-size:9px; border:1px solid var(--ai); border-radius:3px; padding:1px 5px;
                   opacity:.85; font-weight:normal; }
-  .oracle-what { color: var(--fg); font-size: 12.5px; line-height:1.55; margin-bottom:6px; }
-  .oracle-fix  { color: var(--ok); font-size: 12.5px; line-height:1.55; }
-  .oracle-fix b { color: var(--ok); }
-  .oracle-line { color: var(--dim); font-size: 11px; margin-top:6px; }
+  /* These referenced --fg/--ok/--dim, which this stylesheet never defines, so
+     the card silently inherited its colours and the green "Fix:" emphasis was
+     invisible. The real variables are --text / --text-bright / --text-dim. */
+  .oracle-what { color: var(--text); font-size: 12.5px; line-height:1.55; margin-bottom:6px; }
+  .oracle-fix  { color: var(--text-bright); font-size: 12.5px; line-height:1.55; }
+  .oracle-fix b { color: var(--text-bright); }
+  .oracle-line { color: var(--text-dim); font-size: 11px; margin-top:6px; }
+  /* Offending source line, echoed under the explanation so the user doesn't
+     have to scroll the editor to see what the Oracle is talking about. */
+  .oracle-src { margin:4px 0 0; padding:6px 8px; background:rgba(0,0,0,.28);
+                border-left:2px solid var(--ai); border-radius:3px;
+                font-family:inherit; font-size:11.5px; line-height:1.5;
+                color: var(--text); white-space:pre; overflow-x:auto; }
+  .oracle-jump { color: var(--ai); cursor:pointer; text-decoration:underline;
+                 margin-left:4px; }
   #output-terminal .exit-line { margin-top: 10px; color: var(--text-dim); }
   #output-terminal .exit-line.ok { color: var(--text-bright); }
   #output-terminal .exit-line.err { color: var(--err); }
@@ -2101,6 +2123,36 @@ function flushOutputItems(items) {
   appendStreamChunk(curType, buf);
 }
 
+/** Render images the running script saved (matplotlib savefig, PIL, ...). */
+function renderOutputImages(images) {
+  if (!outputTerminal || !images) return;
+  for (const img of images) {
+    if (!img || typeof img.data_uri !== 'string') continue;
+    // Only ever render data: URIs we produced ourselves — never inject a
+    // remote src, which would breach the offline-first guarantee and the CSP.
+    if (!img.data_uri.startsWith('data:image/')) continue;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'output-image';
+
+    const caption = document.createElement('div');
+    caption.className = 'output-image-name';
+    caption.textContent = '🖼 ' + (img.name || 'image');
+
+    const el = document.createElement('img');
+    el.src = img.data_uri;
+    el.alt = img.name || 'generated image';
+    el.loading = 'lazy';
+    // Tap to toggle full width for inspecting a dense chart on a small screen.
+    el.onclick = () => el.classList.toggle('expanded');
+
+    wrap.appendChild(caption);
+    wrap.appendChild(el);
+    outputTerminal.appendChild(wrap);
+    outputTerminal.scrollTop = outputTerminal.scrollHeight;
+  }
+}
+
 function finishInteractiveSession(exitCode, note) {
   interactiveActive = false;
   if (interactivePollTimer) { clearInterval(interactivePollTimer); interactivePollTimer = null; }
@@ -2149,6 +2201,10 @@ async function pollInteractiveOutput() {
     const res = await fetchApi('/api/run/interactive/output');
     const data = await res.json();
     if (data.output && data.output.length > 0) flushOutputItems(data.output);
+    // Charts saved by the script (plt.savefig) appear inline as they are
+    // produced. Android has no display, so savefig is the only way to see a
+    // plot at all — the Oracle tells users this works, so it must.
+    if (data.images && data.images.length > 0) renderOutputImages(data.images);
     if (data.done) {
       finishInteractiveSession(typeof data.exit_code === 'number' ? data.exit_code : 1);
     }
@@ -2178,10 +2234,27 @@ if (runBtnEl) {
     let code = getEditorValue();
 
     if (installedPlugins['syntax_linter']) {
-      const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
-      if (unclosedParen) {
-        alert('🔍 Syntax Guard: Unbalanced parentheses ( )!');
-        return;
+      // Counting raw "(" vs ")" also counts the ones inside strings and
+      // comments, so `print('a smiley :)')` was refused outright — valid code
+      // the user could not run at all. /api/check already strips strings and
+      // comments before balancing, so defer to it instead of guessing here.
+      try {
+        const chk = await fetchApi('/api/check', {
+          method: 'POST',
+          body: JSON.stringify({ code: code })
+        });
+        const chkData = await chk.json();
+        if (chkData.ok && chkData.valid === false && chkData.issues && chkData.issues.length) {
+          const proceed = confirm(
+            '🔍 Syntax Guard found:\n\n' +
+            chkData.issues.slice(0, 5).map(i => '• ' + i).join('\n') +
+            '\n\nRun anyway?'
+          );
+          if (!proceed) return;
+        }
+      } catch (e) {
+        // The guard must never be the reason you cannot run your code.
+        console.log('Syntax Guard check skipped:', e);
       }
     }
 
@@ -2832,7 +2905,29 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
           }
         }
       } catch {}
-      return `🔮 Zaba Oracle (offline savior)\n\nProvider ${provider} limit/quota reached (boncos). I'm taking over!\n\nYour code has ${getEditorValue().split('\n').length} lines. For error like "unterminated string literal", fix is: add missing \"\" at column where detected.\nExample: print (hello world) → print('hello world')\n\nType "fix my code" or "review my code" and I'll read your editor directly.`;
+      // Last resort: rather than reciting a canned example about a mistake
+      // the user may not even have made, actually analyse their buffer.
+      try {
+        const anaRes = await fetchApi('/api/oracle/analyze', {
+          method: 'POST',
+          body: JSON.stringify({ code: getEditorValue() })
+        });
+        const ana = await anaRes.json();
+        const head = `🔮 Zaba Oracle (offline savior)\n\nProvider ${provider} limit/quota reached (boncos). I'm taking over!\n\n`;
+        if (ana.ok === false && ana.message) {
+          const at = ana.line ? ` (line ${ana.line})` : '';
+          return head + `**Your editor doesn't parse:** ${ana.message}${at}\n\nType "fix my code" and I'll try to patch it for you.`;
+        }
+        if (ana.ok && ana.notes && ana.notes.length) {
+          const total = ana.note_count || ana.notes.length;
+          const more = total > ana.notes.length ? ` (${total} total, showing ${ana.notes.length})` : '';
+          return head + `**I reviewed your ${ana.lines} line(s)${more}:**\n` + ana.notes.map(n => `- ${n}`).join('\n');
+        }
+        if (ana.ok) {
+          return head + `I checked your ${ana.lines} line(s): no syntax error, no obvious smells.\n\nIf it crashed, paste the traceback and I'll pinpoint the line — no key, no quota.`;
+        }
+      } catch {}
+      return `🔮 Zaba Oracle (offline savior)\n\nProvider ${provider} limit/quota reached (boncos). I'm taking over!\n\nType "fix my code" or "review my code" and I'll read your editor directly.`;
     }
 
     if (!data.ok) {
@@ -2858,10 +2953,21 @@ async function callAiWithFallback(message, originalProvider, originalModel) {
         });
         const oracleData = await oracleRes.json();
         if (oracleData.ok === false && oracleData.message) {
-          return `🔮 Oracle says: ${oracleData.message} (line ${oracleData.line || '?'}) — Your error is there is no "" at column, add ""`;
+          // Report the parser's actual complaint. This used to append a
+          // hardcoded 'there is no "" at column, add ""' to *every* syntax
+          // error, which is only true for one specific mistake.
+          const at = oracleData.line ? ` (line ${oracleData.line})` : '';
+          return `🔮 Oracle says: ${oracleData.message}${at}`;
         }
         if (oracleData.ok && oracleData.notes && oracleData.notes.length > 0) {
-          return `🔮 Oracle review (savior mode):\n` + oracleData.notes.map(n => `- ${n}`).join('\n');
+          // analyze_buffer caps the list for small screens; note_count is the
+          // true total, so say how many were held back instead of implying
+          // the shown list is everything.
+          const total = oracleData.note_count || oracleData.notes.length;
+          const header = total > oracleData.notes.length
+            ? `🔮 Oracle review (savior mode) — ${total} issues, showing first ${oracleData.notes.length}:`
+            : `🔮 Oracle review (savior mode):`;
+          return header + `\n` + oracleData.notes.map(n => `- ${n}`).join('\n');
         }
       } catch {}
       addMsg("Error: " + (data.message || "Unknown error") + " — Oracle tried but no code in editor?", "system-hint");
@@ -2897,13 +3003,58 @@ function renderOracleCard(exp, container) {
   }
   const card = document.createElement('div');
   card.className = 'oracle-card';
-  const where = exp.line ? ('<div class="oracle-line">Line ' + exp.line + '</div>') : '';
+
+  // The Oracle now resolves the line in the *user's* buffer (skipping stdlib
+  // frames and digits that only appear in the exception message), so it is
+  // worth showing the offending source line rather than a bare number.
+  let where = '';
+  if (exp.line) {
+    const srcLines = getEditorValue().split('\n');
+    const src = srcLines[exp.line - 1];
+    if (typeof src === 'string' && src.trim()) {
+      where =
+        '<div class="oracle-line">Line ' + exp.line +
+          ' <span class="oracle-jump" role="button" tabindex="0">tap to jump</span></div>' +
+        '<pre class="oracle-src">' + escapeHtml(src.replace(/\t/g, '    ')) + '</pre>';
+    } else {
+      where = '<div class="oracle-line">Line ' + exp.line + '</div>';
+    }
+  }
+
   card.innerHTML =
     '<div class="oracle-head">\uD83D\uDD2E ' + escapeHtml(exp.title) +
       '<span class="oracle-badge">OFFLINE</span></div>' +
     '<div class="oracle-what">' + escapeHtml(exp.what) + '</div>' +
     '<div class="oracle-fix"><b>Fix:</b> ' + escapeHtml(exp.fix) + '</div>' + where;
+
+  const jump = card.querySelector('.oracle-jump');
+  if (jump) {
+    const goToLine = () => focusEditorLine(exp.line);
+    jump.onclick = goToLine;
+    jump.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToLine(); } };
+  }
   container.appendChild(card);
+}
+
+/** Scroll the editor to a 1-based line and put the caret on it. */
+function focusEditorLine(lineNo) {
+  if (!lineNo) return;
+  try {
+    if (activeEditorMode === 'ace' && editor) {
+      editor.gotoLine(lineNo, 0, true);
+      editor.focus();
+      return;
+    }
+    if (nativeCodeArea) {
+      const lines = nativeCodeArea.value.split('\n');
+      if (lineNo > lines.length) return;
+      const start = lines.slice(0, lineNo - 1).join('\n').length + (lineNo > 1 ? 1 : 0);
+      nativeCodeArea.focus();
+      nativeCodeArea.setSelectionRange(start, start + lines[lineNo - 1].length);
+    }
+  } catch (e) {
+    console.log('focusEditorLine failed', e);
+  }
 }
 
 async function renderOracleExplanation(stderrText, container) {

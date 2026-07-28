@@ -7,6 +7,258 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-29 — Audit beyond the Oracle: plugins & RUN gate
+
+A deliberate sweep of the modules the previous sessions never touched — the
+plugins that rewrite user code, and the guard that decides whether code is
+allowed to run at all. 260 → 272 tests.
+
+### Fixed — "Code Beautifier Pro" corrupted every annotated function
+
+The beautifier padded operators one character at a time, so any token it did
+not recognise was split and re-spaced into something that no longer parses:
+
+| you wrote | it produced |
+|---|---|
+| `def f() -> int:` | `def f() - > int:` |
+| `n //= 2` | `n // = 2` |
+| `n >>= 1` | `n > >= 1` |
+| `n &= 1` / `n \|= 1` / `n ^= 1` / `n %= 3` | `n & = 1` etc. |
+
+Any user with a type-annotated function got broken code back. Operators are now
+matched longest-first from one complete table (`//=` before `//` before `/`),
+and a test asserts that ordering so a prefix can never shadow the full token.
+Verified across 125 plugin × sample combinations: the output not only parses,
+its **AST is identical** to the input.
+
+### Fixed — Syntax Guard blocked code it should not have
+
+The RUN button's linter plugin (active by default) compared raw `(` and `)`
+counts, which also counts brackets inside strings and comments. So this was
+refused outright, with no way to run it:
+
+```python
+print('a smiley :)')
+```
+
+`/api/check` has always stripped strings and comments before balancing, but the
+UI never called it. The guard now defers to that endpoint, reports the real
+issues, and offers "Run anyway?" instead of a hard block — and if the check
+itself fails, execution proceeds rather than trapping the user.
+
+### Fixed — two more Oracle claims that were not true
+
+- The pip answer boasted *"We bypassed TLS issues automatically"*. That bypass
+  (`--trusted-host`) was **deliberately removed** in v1.2.0 as security fix #22
+  and is documented in `SECURITY.md`. The answer now describes verified TLS with
+  the bundled `certifi` store, and points at the real remedy (check the device
+  clock first — a wrong date invalidates every certificate).
+- The `input()` answer told users to *"use the Interactive Run mode"*, which
+  does not exist as a mode. It now describes what actually happens: press RUN,
+  the terminal pauses at `input()`, and the box at the bottom activates.
+
+Tests now pin the Oracle's claims to the code, so a promise cannot drift out of
+sync with the app again.
+
+---
+
+## [Unreleased] - 2026-07-29 — Charts finally appear when you press RUN
+
+### Fixed — matplotlib silently did nothing on the path the RUN button uses
+
+ZABACODE has two execution modes, and they exist for good reasons:
+
+| | `/api/run` (batch) | `/api/run/interactive/*` |
+|---|---|---|
+| `input()` | stubbed, returns `""` | genuinely blocks and waits |
+| output | one blob at the end | streamed live, polled every 150 ms |
+| **images** | **collected** | **never collected** |
+| used by RUN button | no | **yes** |
+
+Only the batch path ever gathered generated images — and the editor drives the
+interactive one. So a user who followed the Oracle's own advice:
+
+> "Save instead of `show()` on Android — ZABACODE picks the image up automatically"
+
+got nothing. The `.png` was written to `files/` and simply never surfaced.
+Android has no display, so `plt.show()` is a no-op and `savefig()` is the *only*
+way to see a chart — which made this the difference between matplotlib working
+and appearing broken.
+
+The interactive session now captures images too, and the terminal renders them
+inline as they are produced (a loop emitting several plots shows each one as it
+lands, rather than all at the end).
+
+Care taken:
+
+- **No duplicates.** A per-session baseline advances as images are delivered, so
+  the 150 ms poll cannot re-send the same chart forever.
+- **No stale files.** The baseline is snapshotted before the child process can
+  write, so leftovers from an earlier run are not reported as new.
+- **No half-written files.** A file still being flushed fails to encode and
+  stays queued for the next poll instead of arriving corrupt.
+- **Bounded.** Renders over 8 MB are skipped rather than shipped, since a base64
+  blob that size stalls the WebView bridge on a low-end phone.
+- **Only `data:` URIs are rendered** — never a remote `src`, which would breach
+  both the CSP and the offline-first guarantee.
+
+### Changed — `/api/run` documented instead of deleted
+
+It looked like dead code (nothing in the UI calls it), but removing it would
+have deleted the only image-capture logic in the project. It is the legitimate
+non-interactive counterpart — used by automation and 9 tests — and its
+docstring now says so, including why its traceback line needs
+`line_offset=PRELUDE_LINE_COUNT` and the interactive path does not.
+
+Only the image capture is now shared (`collect_new_images()`); the two
+execution flows stay separate on purpose, because their input and timeout
+semantics genuinely differ.
+
+---
+
+## [Unreleased] - 2026-07-29 — Oracle chat & terminal integration
+
+The engine was fixed in the previous pass; this one connects it to the paths
+the user actually touches. 13 new tests, 235 → 248 total.
+
+### Fixed — "fix my code" never used the real repair engine
+
+The chat branch re-implemented its own fixer inline: a regex hunting for the
+literal string `hello world`. It therefore described exactly one mistake, and
+**never produced corrected code** — while `auto_fix_code()`, the verified engine
+already behind the Auto-Fix button, sat unused two functions away. The branch
+now calls that engine, so "fix my code" answers with the actual patched source
+(and, when it refuses, with CPython's exact line and complaint).
+
+### Fixed — Oracle told users with a full editor that it was empty
+
+`analysis.get("notes")` is falsy for clean code, so valid code with no smells
+fell through to the no-buffer branch: *"I don't see your code buffer"* while the
+user was looking straight at their program. Valid code now gets a runtime/logic
+answer, and only a genuinely blank editor is reported as empty.
+
+### Fixed — Oracle card threw away the line number it had just resolved
+
+The previous pass made line numbers accurate; the terminal card still rendered a
+bare `Line 3`. It now echoes the offending source line beneath the explanation
+and makes it tappable to jump the editor there (Ace and native), which is what
+the accuracy work was for. Out-of-range and blank lines degrade gracefully, and
+the echoed source is HTML-escaped.
+
+### Fixed — Oracle card styling silently did nothing
+
+`.oracle-what`, `.oracle-fix` and `.oracle-line` referenced `var(--fg)`,
+`var(--ok)` and `var(--dim)` — none of which this stylesheet defines. Undefined
+custom properties fail silently, so the green **Fix:** emphasis never rendered.
+Repointed at the real variables (`--text`, `--text-bright`, `--text-dim`); a
+test now asserts every `var(--x)` used is defined.
+
+### Fixed — two canned messages that were wrong most of the time
+
+- The analyze fallback appended `— Your error is there is no "" at column, add ""`
+  to **every** syntax error, regardless of what the parser actually said.
+- The rate-limit fallback recited a fixed example about unterminated strings
+  instead of looking at the buffer. It now reports the real analysis.
+
+### Changed — truncated reviews are honest about it
+
+`/api/oracle/analyze` returns `note_count` (the true total before the 12-note
+cap), and the UI shows "N issues, showing first 12" rather than implying the
+visible list is everything.
+
+---
+
+## [Unreleased] - 2026-07-28 — Oracle diagnosis accuracy & knowledge coverage
+
+A follow-up pass over the Oracle, this time probing it with realistic input
+rather than its own fixtures. The Auto-Fix engine (below) was already safe and
+broad; the *diagnosis* side turned out to be confidently wrong in several
+common situations. 36 new tests, 199 → 235 total.
+
+### Fixed — the error card pointed at the wrong line
+
+Two independent bugs, both of which sent the user hunting in the wrong place:
+
+- **Line numbers were read out of the exception message.** The scan was
+  `re.finditer(r"line (\d+)")` over the whole traceback, taking the last hit.
+  For `json.loads('')` the last "line N" in the text is inside the message
+  (`Expecting value: line 1 column 1`), so a crash on **line 3** was reported as
+  **line 1**. Only real frame headers (`File "...", line N`) are considered now.
+- **The deepest frame is usually library code.** Reporting it pointed users at
+  `/usr/lib/python3.11/json/decoder.py` line 355 — for a subprocess crash the
+  reported line was **1892** in a two-line script. The Oracle now walks to the
+  deepest frame that is still the *user's own file*.
+
+Also fixed: a `SyntaxError` message quotes a line number from the compiled file,
+which includes the executor's injected prelude. `if True:` / `print(1)` was
+explained as *"expected an indented block ... on line 10"* for a two-line
+buffer. Those in-message numbers are now rebased onto editor coordinates, while
+`JSONDecodeError`'s "line 1" (which describes the *data*, not the script) is
+deliberately left alone.
+
+### Fixed — chained tracebacks explained the wrong exception
+
+With `raise B` inside `except A`, both exceptions are printed. The rule scan ran
+over the whole blob and matched **A**, while the line number came from **B** —
+one card describing an already-handled error, pointing at an unrelated line.
+Only the final exception block is considered now.
+
+### Fixed — knowledge lookup matched on substrings
+
+Keywords were tested with `keyword in question`, which produced absurd results:
+
+- `"oop"` is inside `"l**oop**"`, so **every** question about loops was answered
+  with a lecture on object-oriented programming
+- `"class"` fired inside "classify", `"@"` fired on any email address
+
+Matching is now anchored at word boundaries (tolerating plurals), and when
+several entries match, the most *specific* keyword wins — so "save json to a
+file" gets the JSON answer rather than the generic file-handling one. A test
+asserts every entry is still reachable via its own keyword, which catches this
+class of shadowing automatically. The matcher is precompiled at import: 4.4×
+faster than the previous per-call `re.search`.
+
+### Fixed — ordinary questions were answered as crash reports
+
+The traceback detector treated the bare substring `"line "` as evidence of a
+traceback, so *"how do I read a line from a file?"* was answered with an error
+card titled **"Something went wrong"** that just echoed the question back.
+Detection now requires an actual traceback header, frame line, or
+`ExceptionName:` prefix.
+
+### Fixed — `async def` was invisible to code review
+
+`analyze_buffer()` matched only `ast.FunctionDef`, so coroutines were missing
+from the function list and every check (argument count, docstring, mutable
+defaults) silently skipped them. `async def` and `async for` are now handled,
+and keyword-only/positional-only parameters are included in the argument count.
+
+### Fixed — review notes buried the real problem
+
+A 40-function file produced 80 notes, pushing actual bugs off a phone screen.
+Notes are now de-duplicated and capped at 12, with an explicit count of what was
+held back (`note_count` is returned for callers that want the total).
+
+### Added — 21 new error explanations
+
+22 of the 23 most common beginner runtime errors fell through to the generic
+*"Something went wrong"* card, which only repeated the raw exception the
+terminal had already shown. All 23 now get a real explanation and a concrete
+fix, including: unpacking mismatches, `NoneType is not iterable` (usually a
+missing `return`), `str + int`, string/list indexed with a name, `no len()`,
+too many arguments (the missing `self`), unhashable type, item assignment on an
+immutable, `module has no attribute` (often a shadowed stdlib filename),
+network unreachable, timeouts, `KeyboardInterrupt`, `MemoryError`,
+`OverflowError`, `StopIteration`, and `= vs ==` in a condition.
+
+### Added — 10 new knowledge-base topics
+
+Sorting, sets, recursion, `if __name__ == '__main__'`, string methods, slicing,
+`random`, `datetime`, JSON files, and variables/types — each previously fell
+through to the generic "here's what I can do" reply.
+
+---
+
 ## [Unreleased] - 2026-07-28 — Oracle Auto-Fix correctness, safety & coverage
 
 Full analysis in `AUDIT_REPORT.md`.

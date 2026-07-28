@@ -429,9 +429,8 @@ class TestAIProviders:
 class TestVersion:
     """Test version info."""
 
-    def test_version_is_1_0_0(self):
-        # After Arena integration, version is 1.2.0-arena, but still valid semver-like
-        assert __version__ in ("1.0.0", "1.1.0", "1.2.0-arena") or __version__.startswith("1.")
+    def test_version_is_1_2_0(self):
+        assert __version__ == "1.2.0"
 
 
 if __name__ == "__main__":
@@ -592,8 +591,8 @@ class TestTLSHardening:
         import re
 
         from zabacode.core.ai_provider import ALLOWED_PROVIDERS
-        src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "ai_provider.py").read_text()
-        calls = re.findall(r"urllib\.request\.urlopen\([^)]*\)", src)
+        src = (pathlib.Path(__file__).parent / "zabacode" / "core" / "ai_provider.py").read_text(encoding="utf-8")
+        calls = re.findall(r"urllib\.request\.urlopen\([^)]*\)", src.replace("\n", " "))
         assert len(calls) == len(ALLOWED_PROVIDERS), f"expected {len(ALLOWED_PROVIDERS)} provider calls (one per provider), found {len(calls)}: {calls}"
         for call in calls:
             assert "context=get_ssl_context()" in call, f"missing context: {call}"

@@ -71,7 +71,7 @@ def verify():
     tpl = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
     tpl_checks = [
         ("custom" in tpl.lower(), "custom in index.html"),
-        ("arena" not in tpl.lower() or "arena" not in tpl.split("ai-provider")[1][:500].lower(), "no arena branding in provider selector"),
+        (("ai-provider" not in tpl) or ("arena" not in tpl.lower() or "arena" not in tpl.split("ai-provider")[1][:500].lower()), "no arena branding in provider selector"),
         ("custom-default" in tpl, "custom models exist"),
     ]
     for passed, desc in tpl_checks:
@@ -111,7 +111,7 @@ def verify():
 
 
 def test():
-    r = run("python -m pytest test_main.py -q")
+    r = run("python -m pytest -q")
     print(r.stdout[-2000:])
     print(r.stderr[-500:])
     return r.returncode == 0

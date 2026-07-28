@@ -26,13 +26,12 @@ git checkout -b fix/bug-yang-mau-diperbaiki
 
 ### 4. Code & Test
 ```bash
-# Jalanin tests
-pytest test_main.py -v
+# Jalanin semua tests
+pytest -v
 
-# Check format
-black main.py
-flake8 main.py
-isort main.py
+# Check format (ruff aja, sesuai CI)
+ruff check . --select=E9,F821
+ruff check . --select=E,F,W,I
 ```
 
 ### 5. Commit & Push
@@ -74,7 +73,7 @@ footer (optional)
 
 ### 1. **Library Recipes** 📦
 - Check p4a official recipes
-- Tambah ke `KNOWN_LIBRARIES` di `main.py`
+- Tambah ke `KNOWN_LIBRARIES` di `zabacode/lib_manager.py`
 - Update tier (runtime vs buildtime)
 
 ### 2. **UI/UX Improvements** 🎨
@@ -84,7 +83,7 @@ footer (optional)
 
 ### 3. **AI Providers** 🤖
 - Implementasi provider baru
-- Follow pola `_call_openrouter()` di `main.py`
+- Follow pola `_call_openrouter()` di `zabacode/core/ai_provider.py`
 
 ### 4. **Security & Performance** 🔐
 - Security audit suggestions
@@ -119,13 +118,12 @@ Before submitting PR:
 
 ✅ **Unit Tests Pass**
 ```bash
-pytest test_main.py -v --cov=main
+pytest -v --cov=zabacode
 ```
 
 ✅ **No Linting Errors**
 ```bash
-flake8 main.py
-black --check main.py
+ruff check . --select=E9,F821
 ```
 
 ✅ **Code Works Locally**

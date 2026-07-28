@@ -21,6 +21,9 @@ Two capabilities:
 
 import ast
 import re
+from collections.abc import Callable
+
+from zabacode.core.checker import strip_comments_and_strings
 
 __all__ = ["humanize_traceback", "offline_reply", "analyze_buffer", "ORACLE_SIGNATURE", "auto_fix_code"]
 
@@ -1018,7 +1021,7 @@ def _expand_leading_tabs(line: str, width: int = 4) -> str:
     return prefix.replace("\t", " " * width) + stripped
 
 
-def _replace_outside_strings(text: str, transform) -> tuple[str, bool]:
+def _replace_outside_strings(text: str, transform: Callable[[str], str]) -> tuple[str, bool]:
     """Apply ``transform`` to the code parts of ``text``, skipping strings/comments.
 
     ``transform`` receives the raw segment and returns the rewritten segment.
@@ -1434,8 +1437,6 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
     * A candidate patch is only kept when it actually makes the file parse.
     * ``ok`` is True only when the resulting code is valid Python.
     """
-    from zabacode.core.checker import strip_comments_and_strings
-
     if not code or not code.strip():
         return {
             "ok": False,

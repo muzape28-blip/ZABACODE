@@ -104,7 +104,6 @@ def check_code(code: str) -> dict:
         code = code[1:]
     code = "\n".join(line.rstrip() for line in code.split("\n"))
 
-
     # Strip comments and string literals to prevent bracket/quote imbalances inside them
     clean_code, string_issues = strip_comments_and_strings(code)
     issues = list(string_issues)

@@ -13,15 +13,14 @@ import io
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import urllib.request
-import ssl
 import zipfile
-from pathlib import Path
 
-from zabacode.core.paths import USER_PACKAGES_DIR, CACHE_DIR
 from zabacode.core.net import TLS_HELP_MESSAGE, get_ssl_context
+from zabacode.core.paths import CACHE_DIR, USER_PACKAGES_DIR
 
 _PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
@@ -72,7 +71,7 @@ KNOWN_LIBRARIES = {
         "mode": "online",
         "reason": "Browser automation framework. Memerlukan internet & browser."
     },
-    
+
     # === Web Scraping ===
     "beautifulsoup4": {
         "tier": "runtime", "category": "Web & Scraping",
@@ -94,7 +93,7 @@ KNOWN_LIBRARIES = {
         "mode": "online",
         "reason": "RSS/Atom feed parser. Fetch feed perlu internet."
     },
-    
+
     # === Data, Math & Science ===
     "numpy": {
         "tier": "buildtime", "category": "Data & Math",
@@ -131,7 +130,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Built-in complex math module. 100% offline (stdlib)."
     },
-    
+
     # === Database & Storage ===
     "tinydb": {
         "tier": "runtime", "category": "Database",
@@ -163,7 +162,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Built-in SQLite3 module. 100% offline (stdlib)."
     },
-    
+
     # === AI & Automation ===
     "openai": {
         "tier": "runtime", "category": "AI & Automation",
@@ -190,7 +189,7 @@ KNOWN_LIBRARIES = {
         "mode": "hybrid",
         "reason": "Speech recognition library. Google API mode online, Sphinx mode offline."
     },
-    
+
     # === Formatting & Utilities ===
     "rich": {
         "tier": "runtime", "category": "Utilities",
@@ -247,7 +246,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Backport of pathlib. 100% offline."
     },
-    
+
     # === Cryptography & Security ===
     "cryptography": {
         "tier": "buildtime", "category": "Security",
@@ -269,7 +268,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Built-in hash functions. 100% offline (stdlib)."
     },
-    
+
     # === Media, Image & Audio ===
     "pillow": {
         "tier": "buildtime", "category": "Media & Images",
@@ -291,7 +290,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Audio metadata reader/writer. 100% offline."
     },
-    
+
     # === Testing ===
     "pytest": {
         "tier": "runtime", "category": "Testing",
@@ -308,7 +307,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Mock object library. 100% offline."
     },
-    
+
     # === Serialization & Data Format ===
     "orjson": {
         "tier": "buildtime", "category": "Data Format",
@@ -330,7 +329,7 @@ KNOWN_LIBRARIES = {
         "mode": "offline",
         "reason": "Built-in CSV reader/writer. 100% offline (stdlib)."
     },
-    
+
     # === Networking & Protocol ===
     "paramiko": {
         "tier": "runtime", "category": "Networking",
@@ -395,7 +394,7 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
     try:
         ctx = get_ssl_context()
         pypi_url = f"https://pypi.org/pypi/{name}/json"
-        req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/1.0.0"})
+        req = urllib.request.Request(pypi_url, headers={"User-Agent": "Zabacode/1.2.0"})
 
         with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
@@ -411,7 +410,7 @@ def _fallback_pypi_download(name: str) -> tuple[bool, str]:
         if not target_wheel_url:
             return False, f"'{name}' requires a compiled C-extension. Please add it to buildozer.spec and rebuild the APK."
 
-        wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/1.0.0"})
+        wheel_req = urllib.request.Request(target_wheel_url, headers={"User-Agent": "Zabacode/1.2.0"})
         with urllib.request.urlopen(wheel_req, timeout=60, context=ctx) as resp_wheel:
             wheel_bytes = resp_wheel.read()
 
@@ -446,27 +445,27 @@ def install_library(name: str) -> dict:
     if not isinstance(name, str):
         return {"ok": False, "message": "Package name must be a string."}
     name = name.strip().lower()
-    
+
     if not name or not _PACKAGE_NAME_RE.fullmatch(name):
         return {"ok": False, "message": "Invalid package name."}
-    
+
     info = KNOWN_LIBRARIES.get(name)
-    
+
     if info and info.get("tier") == "buildtime":
         return {
             "ok": False,
             "needs_rebuild": True,
             "message": f"'{name}' requires a compiled C-extension. Please add it to buildozer.spec and rebuild the APK.",
         }
-    
+
     if is_package_installed(name):
         return {"ok": True, "message": f"'{name}' is already installed & ready to use!"}
-    
+
     # Try Direct PyPI Extractor first (bypass SIGSEGV)
     ok, msg = _fallback_pypi_download(name)
     if ok:
         return {"ok": True, "message": msg}
-    
+
     # Fallback to pip subprocess
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -474,7 +473,7 @@ def install_library(name: str) -> dict:
         env["TMPDIR"] = str(CACHE_DIR)
         env["PIP_NO_CACHE_DIR"] = "1"
         env["PYTHONKEYRINGBACKEND"] = "keyring.backends.null.Keyring"
-        
+
         # Fix #22: Preserve TLS verification — no --trusted-host bypass
         # Previously: --trusted-host pypi.org + files.pythonhosted.org disabled TLS verification for those hosts
         # Now: Verified TLS retained, with actionable CA-bundle error via TLS_HELP_MESSAGE
@@ -486,7 +485,7 @@ def install_library(name: str) -> dict:
             "--target", str(USER_PACKAGES_DIR),
             name
         ]
-        
+
         res = subprocess.run(
             cmd, env=env, capture_output=True, text=True,
             errors="replace", timeout=180

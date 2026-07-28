@@ -3,15 +3,13 @@ ZABACODE Core — Security: Auth Token, Encryption, Key Storage
 Handles local session auth tokens, XOR-Base64 encryption, and Android Keystore integration.
 """
 
-import base64
-import json
 import secrets
 import sys
 
 from zabacode.core.keystore import decrypt_payload, encrypt_payload
 from zabacode.core.paths import KEYS_FILE, TOKEN_FILE, USER_PACKAGES_DIR
 
-# ---------------------------------------------------------------------------  
+# ---------------------------------------------------------------------------
 # Auth Token Management
 # ---------------------------------------------------------------------------
 
@@ -24,7 +22,7 @@ def _load_or_create_token() -> str:
                 return token
         except Exception:
             pass
-    
+
     token = secrets.token_hex(16)
     try:
         TOKEN_FILE.write_text(token, encoding="utf-8")
@@ -63,7 +61,7 @@ def _try_keystore_load() -> dict:
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         MasterKey = autoclass('androidx.security.crypto.MasterKey')
         EncryptedSharedPreferences = autoclass('androidx.security.crypto.EncryptedSharedPreferences')
-        
+
         activity = PythonActivity.mActivity
         masterKey = MasterKey.Builder(activity).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
         prefs = EncryptedSharedPreferences.create(
@@ -90,7 +88,7 @@ def _try_keystore_save(provider: str, api_key: str) -> bool:
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         MasterKey = autoclass('androidx.security.crypto.MasterKey')
         EncryptedSharedPreferences = autoclass('androidx.security.crypto.EncryptedSharedPreferences')
-        
+
         activity = PythonActivity.mActivity
         masterKey = MasterKey.Builder(activity).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
         prefs = EncryptedSharedPreferences.create(
@@ -156,7 +154,8 @@ def save_key(provider: str, api_key: str) -> None:
     try:
         KEYS_FILE.write_text(encrypt_payload(_MEMORY_KEYS), encoding="utf-8")
         try:
-            import os, stat
+            import os
+            import stat
             os.chmod(KEYS_FILE, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
             pass

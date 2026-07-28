@@ -1,4 +1,4 @@
-# Zabacode Development Requirements (v1.0.0 — WebView Edition)
+# Zabacode Development Requirements (v1.2.0 — WebView Edition)
 
 # WebView shell
 Flask>=2.3.3

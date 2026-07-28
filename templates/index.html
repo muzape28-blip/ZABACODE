@@ -894,6 +894,13 @@ function escapeHtml(str) {
 function fetchApi(url, options = {}) {
   options.headers = options.headers || {};
   options.headers['X-Zabacode-Token'] = ZABACODE_TOKEN;
+  // Every POST body in this app is JSON. Without this header the browser sends
+  // `text/plain`, Flask's get_json() returns None, and the payload is silently
+  // dropped — the server then sees an empty body (see AUDIT_REPORT.md F-01).
+  // Set it centrally so no caller can forget; explicit headers still win.
+  if (options.body !== undefined && options.body !== null && !options.headers['Content-Type']) {
+    options.headers['Content-Type'] = 'application/json';
+  }
   return fetch(url, options);
 }
 
@@ -2933,8 +2940,14 @@ async function renderAutoFixButton(stderrText, container) {
       if (data.ok) {
         renderAutoFixResult(data, container);
         btn.remove();
+      } else if (data.runtime_error) {
+        // Syntax is fine — this is a logic bug. Say so plainly instead of
+        // implying the Oracle failed, and never rewrite valid source.
+        renderAutoFixRefusal(data, container);
+        btn.remove();
       } else {
-        showToast('Oracle could not automatically fix this error safely.', 'info');
+        // Surface the server's actual reason rather than a generic line.
+        showToast(data.message || 'Oracle could not automatically fix this error safely.', 'info');
         btn.innerHTML = 'Auto-Fix (Unavailable)';
       }
     } catch (e) {
@@ -2944,6 +2957,21 @@ async function renderAutoFixButton(stderrText, container) {
     }
   };
   container.appendChild(btn);
+}
+
+function renderAutoFixRefusal(data, container) {
+  const card = document.createElement('div');
+  card.className = 'oracle-card';
+  card.style.borderLeftColor = 'var(--ai)';
+  const text = escapeHtml(data.explanation || data.message || '')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.1); padding:2px 4px; border-radius:2px; font-family:monospace;">$1</code>')
+    .replace(/\n/g, '<br>');
+  card.innerHTML =
+    '<div class="oracle-head">\uD83D\uDD2E Zaba Oracle ' +
+      '<span class="oracle-badge">RUNTIME ERROR</span></div>' +
+    '<div class="oracle-what">' + text + '</div>';
+  container.appendChild(card);
 }
 
 function renderDiffView(originalCode, fixedCode) {

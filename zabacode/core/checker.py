@@ -3,7 +3,6 @@ ZABACODE Core — Code Syntax & Structure Checker
 Pre-execution validation to prevent EOFError and common syntax issues.
 """
 
-import re
 
 
 def strip_comments_and_strings(code: str) -> tuple[str, list[str]]:
@@ -97,31 +96,37 @@ def check_code(code: str) -> dict:
     
     Returns dict with: ok, valid, issues, hint
     """
-    from zabacode.core.executor import normalize_code
-    code = normalize_code(code)
-    
+    # Normalise line endings/BOM only. normalize_code() also injects the
+    # SAFE_INPUT_PATCH prelude, which shifted every reported line number by
+    # PRELUDE_LINE_COUNT and made "Line 11" point at the user's line 2.
+    code = code.replace("\r\n", "\n").replace("\r", "\n")
+    if code.startswith("\ufeff"):
+        code = code[1:]
+    code = "\n".join(line.rstrip() for line in code.split("\n"))
+
+
     # Strip comments and string literals to prevent bracket/quote imbalances inside them
     clean_code, string_issues = strip_comments_and_strings(code)
     issues = list(string_issues)
-    
+
     # Check balanced parentheses
     paren_open = clean_code.count('(')
     paren_close = clean_code.count(')')
     if paren_open != paren_close:
         issues.append(f"Parenthesis () imbalance: {paren_open} '(' vs {paren_close} ')'")
-    
+
     # Check balanced brackets
     bracket_open = clean_code.count('[')
     bracket_close = clean_code.count(']')
     if bracket_open != bracket_close:
         issues.append(f"Brackets [] imbalance: {bracket_open} '[' vs {bracket_close} ']'")
-    
+
     # Check balanced braces
     brace_open = clean_code.count('{')
     brace_close = clean_code.count('}')
     if brace_open != brace_close:
         issues.append(f"Braces {{}} imbalance: {brace_open} '{{' vs {brace_close} '}}'")
-    
+
     # Check for missing indentation after a colon (likely IndentationError)
     lines = code.split('\n')
     for i, line in enumerate(lines, 1):
@@ -132,7 +137,7 @@ def check_code(code: str) -> dict:
             if ns and not next_line.startswith(' ') and not next_line.startswith('\t'):
                 if not ns.startswith('#') and not ns.startswith('"""') and not ns.startswith("'''"):
                     issues.append(f"Line {i+1}: missing indentation after ':' on line {i}")
-    
+
     return {
         "ok": True,
         "valid": len(issues) == 0,

@@ -797,9 +797,157 @@ def offline_reply(message: str, code: str = "") -> dict:
     }
 
 
+def _is_valid_python(source: str) -> bool:
+    """True when ``source`` parses cleanly as a Python module.
+
+    A trailing block header with no body yet (``if x == 5:`` on its own, which
+    the user is still typing) reports "expected an indented block". That is an
+    *incomplete* file rather than a broken one, so we retry with a ``pass`` body
+    and accept it — otherwise the fixer would never recognise its own repair of
+    a one-line snippet as successful.
+    """
+    try:
+        ast.parse(source)
+        return True
+    except SyntaxError as exc:
+        if exc.msg and "expected an indented block" in exc.msg:
+            try:
+                ast.parse(source.rstrip() + "\n    pass\n")
+                return True
+            except SyntaxError:
+                return False
+            except Exception:
+                return False
+        return False
+    except Exception:
+        # Very deep nesting can raise MemoryError/RecursionError instead.
+        return False
+
+
+def _is_valid_expression(snippet: str) -> bool:
+    """True when ``snippet`` is a syntactically valid Python expression.
+
+    Used to decide whether ``print(...)`` contents are real code (leave alone)
+    or loose prose that the user forgot to quote (safe to wrap).
+    """
+    try:
+        ast.parse(snippet.strip(), mode="eval")
+        return True
+    except SyntaxError:
+        return False
+    except Exception:
+        return False
+
+
+def _split_trailing_comment(line: str) -> tuple[str, str]:
+    """Split a line into (code, trailing_comment) without breaking strings.
+
+    A naive ``re.search(r"#.*$")`` would treat the ``#`` inside ``print("a#b")``
+    as a comment and truncate the string, so we track quote state instead.
+    """
+    in_single = in_double = escaped = False
+    for idx, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+        elif char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double:
+            return line[:idx], line[idx:]
+    return line, ""
+
+
+def _replace_bare_equals(text: str) -> tuple[str, int]:
+    """Replace ``=`` with ``==`` only at bracket depth 0, outside strings.
+
+    Keyword arguments (``f(timeout=5)``), subscripts and dict displays live at a
+    deeper depth and must be preserved, otherwise valid code is corrupted.
+    """
+    out: list[str] = []
+    depth = 0
+    in_single = in_double = escaped = False
+    replacements = 0
+    i = 0
+    n = len(text)
+
+    while i < n:
+        char = text[i]
+
+        if escaped:
+            out.append(char)
+            escaped = False
+            i += 1
+            continue
+        if char == "\\":
+            out.append(char)
+            escaped = True
+            i += 1
+            continue
+        if char == "'" and not in_double:
+            in_single = not in_single
+            out.append(char)
+            i += 1
+            continue
+        if char == '"' and not in_single:
+            in_double = not in_double
+            out.append(char)
+            i += 1
+            continue
+        if in_single or in_double:
+            out.append(char)
+            i += 1
+            continue
+
+        if char in "([{":
+            depth += 1
+            out.append(char)
+            i += 1
+            continue
+        if char in ")]}":
+            depth = max(0, depth - 1)
+            out.append(char)
+            i += 1
+            continue
+
+        if char == "=":
+            prev = text[i - 1] if i else ""
+            nxt = text[i + 1] if i + 1 < n else ""
+            # Skip ==, !=, <=, >=, +=, -=, *=, /=, %=, := and friends.
+            if nxt == "=" or prev in "!=<>+-*/%:&|^~":
+                out.append(char)
+                if nxt == "=":
+                    out.append(nxt)
+                    i += 2
+                    continue
+                i += 1
+                continue
+            if depth == 0:
+                out.append("==")
+                replacements += 1
+                i += 1
+                continue
+
+        out.append(char)
+        i += 1
+
+    return "".join(out), replacements
+
+
 def auto_fix_code(code: str, stderr: str = "") -> dict:
-    """Offline Auto-Fix engine for common Python errors.
-    Uses iterative AST/Syntax validation to safely patch code.
+    """Offline Auto-Fix engine for *syntax* errors.
+
+    Safety contract (see AUDIT_REPORT.md F-02/F-03/F-04):
+
+    * Code that already parses is never rewritten. A crash in syntactically
+      valid code is a runtime/logic error — rewriting the source there turns a
+      visible failure into a silent wrong answer (``print(prices[9])`` becoming
+      ``print("prices[9]")``), which is strictly worse than no fix at all.
+    * A candidate patch is only kept when it actually makes the file parse.
+    * ``ok`` is True only when the resulting code is valid Python.
     """
     from zabacode.core.checker import strip_comments_and_strings
 
@@ -807,6 +955,29 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
         return {
             "ok": False,
             "message": "The editor is empty. Write some code first, dummy!",
+            "fixed_code": code,
+            "applied_fixes": [],
+            "explanation": "There's nothing in the editor for me to look at. Write some code first!",
+        }
+
+    # --- Safety gate -------------------------------------------------------
+    # Only syntax errors are auto-fixable. Runtime errors (IndexError, KeyError,
+    # ZeroDivisionError, ...) need a logic change the Oracle must not guess.
+    if _is_valid_python(code):
+        return {
+            "ok": False,
+            "fixed_code": code,
+            "applied_fixes": [],
+            "runtime_error": True,
+            "message": "This code is syntactically valid — the crash is a runtime/logic error, not a typo.",
+            "explanation": (
+                "Hmph. I checked your code and the syntax is perfectly fine, so there's "
+                "nothing for me to safely patch. This is a **runtime error** — the code "
+                "runs, then hits a bad value or a bad assumption partway through.\n\n"
+                "Rewriting your source here would just hide the crash instead of fixing "
+                "it, and I refuse to do that to you. Read my diagnostic card above: it "
+                "tells you the line and the actual cause. Fix the *logic*, dummy! 🙄"
+            ),
         }
 
     # Extract target line from stderr/traceback if provided
@@ -815,49 +986,37 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
         stderr_line = int(m.group(1))
 
     lines = code.split("\n")
-    applied_fixes = []
+    applied_fixes: list[str] = []
 
     def try_fix_line(line_content: str, line_idx: int) -> tuple[str, str | None]:
-        # 1. Missing Quotes inside Print: print(hello world) or print(hello_world)
-        # Avoid print(x) if it is a single valid identifier, but if there are spaces or NameError in stderr on this line, we wrap it.
-        # We look for: print( ... )
-        # E.g., print(hello world) -> print("hello world")
-        print_match = re.search(r"print\s*\(\s*([^\"'\s][^\"')]*[^\"'\s]|[a-zA-Z_][a-zA-Z0-9_]*)\s*\)", line_content)
-        if print_match:
-            inner = print_match.group(1).strip()
-            # If inner is not empty and not numeric, boolean, or None
-            is_keyword = inner in ("True", "False", "None") or inner.replace(".", "", 1).isdigit()
-            # If it's a bare word with spaces, or matches NameError in stderr
-            has_spaces = " " in inner
-            is_name_error_candidate = stderr_line == line_idx and "NameError" in (stderr or "")
-            if not is_keyword and (has_spaces or is_name_error_candidate or not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", inner)):
-                # Wrap inner in double quotes
-                fixed = line_content.replace(print_match.group(0), f'print("{inner}")')
-                if fixed != line_content:
-                    return fixed, f"Wrapped missing quotes in print() on line {line_idx}"
-
-        # Get trailing comment
-        comment_match = re.search(r"(\s*#.*)$", line_content)
-        comment = comment_match.group(1) if comment_match else ""
-        non_comment = line_content[: -len(comment)] if comment else line_content
+        non_comment, comment = _split_trailing_comment(line_content)
         stripped_nc = non_comment.rstrip()
 
-        # 2. Single equals in comparison (if x = 5: -> if x == 5:)
+        # 1. Unquoted prose inside print(): print(hello world) -> print("hello world")
+        #    Only when the contents are NOT a valid Python expression, so that
+        #    print(x + 1), print(math.pi) and print(f()) are left untouched.
+        print_match = re.search(r"print\s*\(\s*([^()\"']*?)\s*\)\s*$", stripped_nc)
+        if print_match:
+            inner = print_match.group(1).strip()
+            if inner and not _is_valid_expression(inner):
+                fixed = stripped_nc[: print_match.start()] + f'print("{inner}")'
+                if fixed != stripped_nc:
+                    return fixed + comment, f"Wrapped missing quotes in print() on line {line_idx}"
+
+        # 2. Single '=' used as comparison, only at bracket depth 0 so that
+        #    keyword arguments such as f(timeout=5) survive intact.
         if re.match(r"^\s*(if|elif|while)\b", non_comment):
-            fixed_nc, count = re.subn(r"(?<![!=<>+\-*/%])=(?![=])", "==", non_comment)
+            fixed_nc, count = _replace_bare_equals(non_comment)
             if count > 0:
                 return fixed_nc + comment, f"Replaced single '=' with '==' on line {line_idx}"
 
-        # 3. Missing colon in blocks: if x == 5 -> if x == 5:
-        if re.match(r"^\s*(if|elif|else|for|while|def|class)\b", stripped_nc):
-            if not stripped_nc.endswith(":"):
+        # 3. Missing colon after a block opener
+        if re.match(r"^\s*(if|elif|else|for|while|def|class|try|except|finally|with)\b", stripped_nc):
+            if not stripped_nc.endswith(":") and not stripped_nc.endswith("\\"):
                 return stripped_nc + ":" + comment, f"Added missing ':' on line {line_idx}"
 
         # 4. Unterminated string literal
-        # Scan quotes
-        in_single = False
-        in_double = False
-        escaped = False
+        in_single = in_double = escaped = False
         for char in non_comment:
             if escaped:
                 escaped = False
@@ -869,14 +1028,25 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
             elif char == '"' and not in_single:
                 in_double = not in_double
 
-        if in_single:
-            return non_comment + "'" + comment, f"Closed unterminated single-quoted string on line {line_idx}"
-        if in_double:
-            return non_comment + '"' + comment, f"Closed unterminated double-quoted string on line {line_idx}"
+        if in_single or in_double:
+            quote = "'" if in_single else '"'
+            closed = non_comment.rstrip() + quote
+            # The same line often also has the call's ')' missing
+            # (``print("hello`` needs both), so balance brackets in one pass.
+            tail, _ = strip_comments_and_strings(closed)
+            pending: list[str] = []
+            for ch in tail:
+                if ch in "([{":
+                    pending.append(ch)
+                elif ch in ")]}" and pending and pending[-1] == {")": "(", "]": "[", "}": "{"}[ch]:
+                    pending.pop()
+            closed += "".join({"(": ")", "[": "]", "{": "}"}[c] for c in reversed(pending))
+            kind = "single" if in_single else "double"
+            return closed + comment, f"Closed unterminated {kind}-quoted string on line {line_idx}"
 
-        # 5. Unbalanced brackets/parentheses on this line
+        # 5. Unbalanced brackets on this line
         clean_line, _ = strip_comments_and_strings(non_comment)
-        stack = []
+        stack: list[str] = []
         matching = {")": "(", "]": "[", "}": "{"}
         reverse_matching = {"(": ")", "[": "]", "{": "}"}
         for char in clean_line:
@@ -891,109 +1061,91 @@ def auto_fix_code(code: str, stderr: str = "") -> dict:
 
         return line_content, None
 
-    # Let's run iterative AST parse and fix
-    max_iterations = 10
-    current_code = code
-    for iteration in range(max_iterations):
-        try:
-            ast.parse(current_code)
-            # If it compiles, we are good!
-            break
-        except SyntaxError as e:
-            err_line = e.lineno
-            if not err_line or err_line > len(lines):
-                # If we don't have a valid line, fallback to checking target line
-                if stderr_line and 0 < stderr_line <= len(lines):
-                    err_line = stderr_line
-                else:
-                    break
-
-            # Try to fix that specific line
-            line_idx = err_line - 1
-            orig_line = lines[line_idx]
-            fixed_line, msg = try_fix_line(orig_line, err_line)
-            if msg and fixed_line != orig_line:
-                lines[line_idx] = fixed_line
+    def attempt(line_idx: int) -> bool:
+        """Try to patch one line, keeping it only if it doesn't regress the parse."""
+        if not (0 <= line_idx < len(lines)):
+            return False
+        original = lines[line_idx]
+        candidate, msg = try_fix_line(original, line_idx + 1)
+        if not msg or candidate == original:
+            return False
+        trial = list(lines)
+        trial[line_idx] = candidate
+        # Keep the patch when it either fully fixes the file or moves the first
+        # syntax error further down (progress on multi-error files).
+        if _is_valid_python("\n".join(trial)) or _first_error_line("\n".join(trial)) > _first_error_line("\n".join(lines)):
+            lines[line_idx] = candidate
+            if msg not in applied_fixes:
                 applied_fixes.append(msg)
-                current_code = "\n".join(lines)
-            else:
-                # If no fix matched, but it's a syntax error, try to balance brackets file-wide or append bracket
-                # Or try general quote close or colon check
-                # If we cannot fix it, break to avoid infinite loop
+            return True
+        return False
+
+    def _first_error_line(source: str) -> int:
+        try:
+            ast.parse(source)
+            return 10**9  # no error at all
+        except SyntaxError as exc:
+            return exc.lineno or 0
+        except Exception:
+            return 0
+
+    # Iteratively repair whichever line the parser complains about.
+    for _ in range(10):
+        current = "\n".join(lines)
+        if _is_valid_python(current):
+            break
+        try:
+            ast.parse(current)
+            break
+        except SyntaxError as exc:
+            err_line = exc.lineno
+            if not err_line or err_line > len(lines):
+                err_line = stderr_line if (stderr_line and 0 < stderr_line <= len(lines)) else None
+            if not err_line:
+                break
+            if not attempt(err_line - 1):
                 break
 
-    # If parsing is successful or we have targeted runtime line, check if we can fix that runtime line too
-    if stderr_line and 0 < stderr_line <= len(lines):
-        line_idx = stderr_line - 1
-        orig_line = lines[line_idx]
-        fixed_line, msg = try_fix_line(orig_line, stderr_line)
-        if msg and fixed_line != orig_line:
-            # Verify if applying this change doesn't break syntax
-            test_lines = list(lines)
-            test_lines[line_idx] = fixed_line
-            test_code = "\n".join(test_lines)
-            try:
-                ast.parse(test_code)
-                lines[line_idx] = fixed_line
-                current_code = test_code
-                if msg not in applied_fixes:
-                    applied_fixes.append(msg)
-            except SyntaxError:
-                pass
+    # Targeted retry on the traceback line, if one was supplied.
+    if not _is_valid_python("\n".join(lines)) and stderr_line:
+        attempt(stderr_line - 1)
 
-    fixed_code = current_code
-    is_success = False
-    try:
-        ast.parse(fixed_code)
-        is_success = True
-    except SyntaxError:
-        pass
+    # Last resort: sweep every line, keeping only patches that help.
+    if not _is_valid_python("\n".join(lines)):
+        for idx in range(len(lines)):
+            if _is_valid_python("\n".join(lines)):
+                break
+            attempt(idx)
 
-    # If no changes were applied but it doesn't parse, see if we can do a global fix or fallback
-    if not applied_fixes:
-        # Check if we can do anything on the whole code
-        # For example, let's try to fix standard errors line by line
-        for idx, line in enumerate(lines):
-            fixed, msg = try_fix_line(line, idx + 1)
-            if msg and fixed != line:
-                # Try to apply and test
-                test_lines = list(lines)
-                test_lines[idx] = fixed
-                try:
-                    ast.parse("\n".join(test_lines))
-                    lines[idx] = fixed
-                    applied_fixes.append(msg)
-                    fixed_code = "\n".join(test_lines)
-                    is_success = True
-                except SyntaxError:
-                    pass
+    fixed_code = "\n".join(lines)
+    is_success = _is_valid_python(fixed_code)
 
-    # Let's generate a lovely tsundere-lore reply explanation!
-    import random
-    from zabacode.core.oracle import _TSUNDERE_OPENERS
     opener = _TSUNDERE_OPENERS[len(applied_fixes) % len(_TSUNDERE_OPENERS)]
 
-    if applied_fixes:
+    if is_success and applied_fixes:
         explanation = (
             f"{opener}\n\n"
-            f"Hmph! You completely messed up your code, and it crashed. "
-            f"Luckily for you, I analysed the Syntax/Runtime trace and patched it:\n\n"
+            "Hmph! Your code wouldn't even parse, and it crashed. "
+            "Luckily for you, I analysed the syntax error and patched it:\n\n"
             + "\n".join(f"- **{fix}**" for fix in applied_fixes)
             + "\n\n"
-            f"Click **Apply Fix** below to load the corrected code back into your editor. "
-            f"And make sure you pay more attention next time, dummy! 🙄"
+            "I re-parsed the result to make sure it's actually valid Python before "
+            "showing it to you. Click **Apply Fix** below to load the corrected code "
+            "into your editor. And pay more attention next time, dummy! 🙄"
         )
     else:
         explanation = (
-            "Hmph. I looked over your code and the error trace, but it's either too "
-            "convoluted for an automatic safe-patch, or it requires manual rewriting. "
-            "Check my diagnostic card above, double check your logic, and don't expect me "
-            "to solve every single one of your bugs!"
+            "Hmph. I looked over your code and the error trace, but I couldn't "
+            "produce a patch that I'm confident is correct — so I'm not going to "
+            "guess and hand you something broken.\n\n"
+            "Check my diagnostic card above for the line number and cause, then fix "
+            "it by hand. I'm not solving every single one of your bugs!"
         )
 
     return {
-        "ok": len(applied_fixes) > 0,
-        "fixed_code": fixed_code,
+        # Only claim success when the patched source actually parses.
+        "ok": is_success and len(applied_fixes) > 0,
+        "fixed_code": fixed_code if is_success else code,
         "explanation": explanation,
-        "applied_fixes": applied_fixes,
+        "applied_fixes": applied_fixes if is_success else [],
     }

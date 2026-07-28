@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-28 — Oracle Auto-Fix correctness & safety
+
+Full analysis in `AUDIT_REPORT.md`.
+
+### Fixed
+- **Oracle Auto-Fix and traceback cards were completely non-functional (critical).**
+  `fetchApi()` never set `Content-Type: application/json`, so the browser sent
+  `text/plain`, Flask's `get_json()` returned `None`, and `_get_json_payload()`
+  silently substituted `{}`. The Oracle received an empty buffer and replied
+  "the editor is empty", which the UI displayed as *"could not automatically fix
+  this error safely"*. Affected `/api/oracle/fix` and `/api/oracle/explain`.
+  The header is now applied centrally so no caller can omit it.
+- **Auto-Fix corrupted syntactically valid code (critical).** Any expression
+  inside `print(...)` was wrapped in quotes, so a runtime crash such as
+  `print(prices[9])` became `print("prices[9]")` — converting a visible
+  `IndexError` into a program that silently prints the wrong thing. Verified
+  against `print(math.pi)`, `print(x + 1)`, `print(f())` and `print(a/b)`.
+  Auto-Fix now refuses to touch any source that already parses and reports the
+  crash as a runtime error instead.
+- **Auto-Fix reported success on patches that still failed to parse.** The
+  computed `is_success` flag was discarded and `ok` was derived purely from the
+  patch count, so `def f(:` was "fixed" to `def f(:):` and offered as
+  *PATCH READY*. `ok` now requires the result to parse.
+- **`=` → `==` rewriting corrupted keyword arguments.** The regex ignored
+  bracket depth, turning `if f(timeout=5):` into `if f(timeout==5):`.
+  Replacement is now depth- and string-aware.
+- **`check_code()` reported line numbers shifted by 9.** It validated the
+  prelude-injected source, so a problem on line 2 was reported as line 11.
+- **Interactive tracebacks leaked the internal `_active_run.py` filename**,
+  while the isolated runner correctly showed `main.py`.
+- Unparseable request bodies now return an explicit `400 invalid_json`
+  identifying the missing header, rather than being treated as empty.
+
+### Added
+- 15 regression tests covering the browser's real content-type path, auto-fix
+  safety invariants, checker line numbers and traceback masking (144 → 159).
+- `pyproject.toml` with ruff (`line-length = 120`) and pytest configuration.
+
+### Changed
+- CI and `tools/check.sh` run `pytest` with auto-discovery instead of only
+  `test_main.py`; `test_hardening_regressions.py` (6 security regression tests,
+  including the TLS `--trusted-host` guard) had never been executed.
+- Removed unused imports and dead code flagged by ruff; aligned stale `1.0.0`
+  version strings in `main.py`, `requirements-dev.txt` and the PyPI User-Agent
+  with the actual `1.2.0` release.
+
+---
+
 ## [1.2.0] - 2026-07-26 — Custom Endpoint + Philosophy Cleanup (final)
 
 ### Philosophy

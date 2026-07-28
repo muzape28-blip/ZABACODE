@@ -1,4 +1,4 @@
-"""ZABACODE v1.0.0 — WebView shell entry point for the native Python core."""
+"""ZABACODE v1.2.0 — WebView shell entry point for the native Python core."""
 
 import os
 import traceback

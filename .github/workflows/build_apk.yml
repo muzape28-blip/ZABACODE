@@ -107,9 +107,9 @@ jobs:
         print('✅ Provider registry OK')
         "
 
-    - name: Run Unit Tests with Pytest
+    - name: Run Unit Tests with Pytest (all test files)
       run: |
-        python3 -m pytest test_main.py -v
+        python3 -m pytest -v
 
     - name: Set up Android SDK
       # Pinned: android-actions/setup-android@v3 -> v3 commit

@@ -868,6 +868,19 @@ print('Try running libraries or executing code here!')
     </div>
   </div>
 
+  <!-- IN-APP DIALOG — replaces native alert()/confirm().
+       The p4a/Kivy WebView has no JS dialog handler, so native alert() and
+       confirm() never render on Android: confirm() silently returns false,
+       which is exactly what made the RUN button look dead on syntax errors.
+       Every user decision must go through this dialog instead. -->
+  <div id="app-dialog-backdrop" class="dialog-backdrop" style="z-index: 95;">
+    <div class="dialog-box" style="max-width: 420px;">
+      <h4 id="app-dialog-title">&gt; notice _</h4>
+      <p id="app-dialog-message" style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.6;margin:0 0 16px;max-height:45vh;overflow-y:auto;word-break:break-word;"></p>
+      <div class="dialog-actions" id="app-dialog-actions"></div>
+    </div>
+  </div>
+
 </div>
 
 
@@ -1149,6 +1162,64 @@ window.addEventListener('pageshow', (e) => {
   }
 })();
 
+// ---------- In-App Dialog System (replaces native alert/confirm) ----------
+// Native alert()/confirm()/prompt() never render inside the p4a/Kivy WebView
+// on Android — confirm() silently returns false without showing anything,
+// which killed the RUN button whenever Syntax Guard found an issue. All
+// modal decisions go through showAppDialog() now. The helpers always resolve
+// (never trap the caller) and fail open if the dialog DOM is missing.
+function showAppDialog({ title, message, buttons }) {
+  return new Promise((resolve) => {
+    const backdrop = document.getElementById('app-dialog-backdrop');
+    const titleEl = document.getElementById('app-dialog-title');
+    const msgEl = document.getElementById('app-dialog-message');
+    const actionsEl = document.getElementById('app-dialog-actions');
+    const opts = (buttons && buttons.length) ? buttons : [{ label: 'OK', value: true, primary: true }];
+    if (!backdrop || !titleEl || !msgEl || !actionsEl) {
+      // Dialog DOM missing — never block the user flow on that.
+      console.warn('app-dialog DOM missing; resolving with default choice');
+      resolve(opts[opts.length - 1].value);
+      return;
+    }
+    titleEl.textContent = title || '> notice _';
+    msgEl.textContent = message || '';
+    actionsEl.innerHTML = '';
+    opts.forEach((b) => {
+      const btn = document.createElement('button');
+      btn.className = 'mini-btn';
+      btn.textContent = b.label;
+      if (b.danger) btn.style.cssText = 'background:var(--err);color:#000000;border:none;font-weight:bold;';
+      else if (b.primary) btn.style.cssText = 'background:var(--text-bright);color:#00190A;border:none;';
+      btn.onclick = () => {
+        backdrop.classList.remove('open');
+        resolve(b.value);
+      };
+      actionsEl.appendChild(btn);
+    });
+    backdrop.classList.add('open');
+  });
+}
+
+function appAlert(message, title) {
+  return showAppDialog({
+    title: title || '> notice _',
+    message: message,
+    buttons: [{ label: 'OK', value: true, primary: true }],
+  });
+}
+
+function appConfirm(message, opts) {
+  const o = opts || {};
+  return showAppDialog({
+    title: o.title || '> confirm _',
+    message: message,
+    buttons: [
+      { label: o.cancelLabel || 'cancel', value: false },
+      { label: o.okLabel || 'OK', value: true, primary: !o.danger, danger: !!o.danger },
+    ],
+  });
+}
+
 // ---------- Multi-Tab File System Manager + Privacy Controls (Fix #21) ----------
 function isPersistEnabled() {
   // Default: true for backward compat, but user can opt-out via toggle
@@ -1219,8 +1290,11 @@ function loadTabsFromStorage() {
   return false;
 }
 
-function clearLocalDrafts() {
-  if (confirm('Clear all locally persisted drafts from localStorage?\n\nThis will delete zabacode-tabs and active tab id from this device only. Editor content in memory will stay until reload.')) {
+async function clearLocalDrafts() {
+  const ok = await appConfirm('Clear all locally persisted drafts from localStorage?\n\nThis will delete zabacode-tabs and active tab id from this device only. Editor content in memory will stay until reload.', {
+    title: '> privacy: local drafts _', okLabel: 'clear', cancelLabel: 'keep', danger: true,
+  });
+  if (ok) {
     localStorage.removeItem('zabacode-tabs');
     localStorage.removeItem('zabacode-active-tab-id');
     showToast('✓ Local drafts cleared from device (localStorage)', 'success');
@@ -1228,13 +1302,16 @@ function clearLocalDrafts() {
   }
 }
 
-function togglePersistence() {
+async function togglePersistence() {
   const currentlyEnabled = isPersistEnabled();
   const newValue = !currentlyEnabled;
   localStorage.setItem('zabacode-persist-drafts', newValue ? 'true' : 'false');
   if (!newValue) {
     // When disabling, offer to clear existing drafts
-    if (confirm('Persistence disabled — Private/No-Persistence Mode.\n\nDo you also want to clear existing drafts from this device now?\n\n(Recommended on shared devices)')) {
+    const clearNow = await appConfirm('Persistence disabled — Private/No-Persistence Mode.\n\nDo you also want to clear existing drafts from this device now?\n\n(Recommended on shared devices)', {
+      title: '> privacy: local drafts _', okLabel: 'clear now', cancelLabel: 'keep',
+    });
+    if (clearNow) {
       localStorage.removeItem('zabacode-tabs');
       localStorage.removeItem('zabacode-active-tab-id');
       showToast('✓ Persistence OFF & drafts cleared — private mode', 'success');
@@ -1248,6 +1325,14 @@ function togglePersistence() {
   }
   updatePrivacyUI();
 }
+
+// Wire the privacy buttons — both functions existed but were never attached
+// to the buttons, so "Clear Local Drafts" and "Toggle Persistence" silently
+// did nothing. (Found during the dead-button audit.)
+const privacyClearBtn = document.getElementById('privacy-clear-btn');
+if (privacyClearBtn) privacyClearBtn.onclick = clearLocalDrafts;
+const privacyToggleBtn = document.getElementById('privacy-toggle-btn');
+if (privacyToggleBtn) privacyToggleBtn.onclick = togglePersistence;
 
 // Load tabs from storage immediately on startup
 loadTabsFromStorage();
@@ -1317,7 +1402,7 @@ function switchTab(id) {
 
 function closeTab(id) {
   if (tabs.length <= 1) {
-    alert('At least one tab must remain active!');
+    appAlert('At least one tab must remain active!', '> tabs _');
     return;
   }
 
@@ -1404,6 +1489,14 @@ if (btnSettingsStarter) {
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     if (settingsBackdrop) settingsBackdrop.classList.remove('open');
     openStarterKits();
+  };
+}
+// The starter-kits dialog's close button was never wired — dead button.
+const starterDialogCancel = document.getElementById('starter-dialog-cancel');
+if (starterDialogCancel) {
+  starterDialogCancel.onclick = () => {
+    const starterDialog = document.getElementById('starter-dialog-backdrop');
+    if (starterDialog) starterDialog.classList.remove('open');
   };
 }
 const btnSettingsTheme = document.getElementById('btn-settings-theme');
@@ -1518,7 +1611,10 @@ async function openAiKeysConfig() {
         if (val.startsWith('http://')) {
           const isPrivate = val.includes('127.0.0.1') || val.includes('localhost') || val.includes('192.168.') || val.includes('10.') || /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(val);
           if (!isPrivate) {
-            if (!confirm('⚠️ HTTP cleartext warning:\n\nYou entered a public HTTP URL (not HTTPS). Your code context will be sent in cleartext (unencrypted) over the network.\n\nThis is only recommended for loopback/private networks (127.0.0.1, localhost, 192.168.*, 10.*, 172.16-31.*).\n\nContinue saving this HTTP endpoint?\n\nUse https:// for privacy.')) {
+            const accepted = await appConfirm('⚠️ HTTP cleartext warning:\n\nYou entered a public HTTP URL (not HTTPS). Your code context will be sent in cleartext (unencrypted) over the network.\n\nThis is only recommended for loopback/private networks (127.0.0.1, localhost, 192.168.*, 10.*, 172.16-31.*).\n\nContinue saving this HTTP endpoint?\n\nUse https:// for privacy.', {
+              title: '> ⚠ security warning _', okLabel: 'save anyway', cancelLabel: 'go back', danger: true,
+            });
+            if (!accepted) {
               return;
             }
           } else {
@@ -1638,7 +1734,12 @@ const nativeWrapper = document.getElementById('native-editor-wrapper');
 const nativeCodeArea = document.getElementById('native-code-area');
 const nativeGutter = document.getElementById('native-gutter');
 const lineCounter = document.getElementById('line-counter');
-const sidebarEngineBtn = document.getElementById('sidebar-engine-btn') || document.getElementById('btn-settings-engine');
+// The legacy sidebar button no longer exists since the settings dashboard
+// redesign — do NOT fall back to the settings card here: treating the whole
+// card as "the button" made updateEngineBtnText() wipe the card's inner HTML
+// with a raw textContent write.
+const sidebarEngineBtn = document.getElementById('sidebar-engine-btn');
+const settingsEngineCard = document.getElementById('btn-settings-engine');
 
 if (monacoDiv) {
   monacoDiv.onclick = () => {
@@ -1716,17 +1817,19 @@ function activateAceEngine() {
   updateEngineBtnText();
 }
 
-if (sidebarEngineBtn) {
-  sidebarEngineBtn.onclick = () => {
-    if (sidebar) sidebar.classList.remove('open');
-    if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
-    if (activeEditorMode === 'ace') {
-      activateNativeFallback('User toggled engine');
-    } else {
-      activateAceEngine();
-    }
-  };
+function toggleEditorEngine() {
+  if (sidebar) sidebar.classList.remove('open');
+  if (sidebarBackdrop) sidebarBackdrop.classList.remove('open');
+  if (activeEditorMode === 'ace') {
+    activateNativeFallback('User toggled engine');
+  } else {
+    activateAceEngine();
+  }
 }
+// Both the (legacy) sidebar button and the settings card act as the toggle —
+// only the small label inside the card is ever updated, never the card HTML.
+if (sidebarEngineBtn) sidebarEngineBtn.onclick = toggleEditorEngine;
+if (settingsEngineCard) settingsEngineCard.onclick = toggleEditorEngine;
 
 function getEditorValue() {
   return activeEditorMode === 'ace' && editor ? editor.getValue() : (nativeCodeArea ? nativeCodeArea.value : '');
@@ -2057,8 +2160,11 @@ if (backToEditorBtn) backToEditorBtn.onclick = goToEditor;
 
 const clearBtn = document.getElementById('clear-btn');
 if (clearBtn) {
-  clearBtn.onclick = () => {
-    if (confirm('Clear editor content & terminal output?')) {
+  clearBtn.onclick = async () => {
+    const ok = await appConfirm('Clear editor content & terminal output?', {
+      title: '> clear _', okLabel: 'clear', cancelLabel: 'keep', danger: true,
+    });
+    if (ok) {
       setEditorValue('');
       if (outputTerminal) outputTerminal.innerHTML = '';
       showToast('✓ Editor & terminal cleared', 'success');
@@ -2232,12 +2338,18 @@ if (runBtnEl) {
     }
 
     let code = getEditorValue();
+    let syntaxGuardIssues = null;
 
     if (installedPlugins['syntax_linter']) {
       // Counting raw "(" vs ")" also counts the ones inside strings and
       // comments, so `print('a smiley :)')` was refused outright — valid code
       // the user could not run at all. /api/check already strips strings and
       // comments before balancing, so defer to it instead of guessing here.
+      //
+      // The guard is WARN-ONLY: it reports, it never blocks. It used to call
+      // the native confirm() dialog, which never renders in the p4a/Kivy
+      // WebView — it silently returned false, so the run handler aborted and
+      // the RUN button looked dead whenever the code had a syntax error.
       try {
         const chk = await fetchApi('/api/check', {
           method: 'POST',
@@ -2245,12 +2357,7 @@ if (runBtnEl) {
         });
         const chkData = await chk.json();
         if (chkData.ok && chkData.valid === false && chkData.issues && chkData.issues.length) {
-          const proceed = confirm(
-            '🔍 Syntax Guard found:\n\n' +
-            chkData.issues.slice(0, 5).map(i => '• ' + i).join('\n') +
-            '\n\nRun anyway?'
-          );
-          if (!proceed) return;
+          syntaxGuardIssues = chkData.issues.slice(0, 5);
         }
       } catch (e) {
         // The guard must never be the reason you cannot run your code.
@@ -2268,6 +2375,19 @@ if (runBtnEl) {
     if (outputStatusDot) outputStatusDot.style.background = 'var(--ai)';
     if (outputTerminal) {
       outputTerminal.innerHTML = '<div class="prompt-line"><span class="user">zaba@zabacode:~$</span> python3 main.py</div>';
+      if (syntaxGuardIssues) {
+        // Warn-only notice in the terminal — the interpreter itself will
+        // report the traceback, this just gives the user an early heads-up.
+        const warn = document.createElement('div');
+        warn.className = 'stderr-block';
+        warn.textContent = '⚠ Syntax Guard (warn-only, execution not blocked):\n' +
+          syntaxGuardIssues.map(i => '  • ' + i).join('\n') +
+          '\n  → running anyway…\n';
+        outputTerminal.appendChild(warn);
+      }
+    }
+    if (syntaxGuardIssues) {
+      showToast('⚠ Syntax Guard: ' + syntaxGuardIssues.length + ' issue(s) found — running anyway', 'error');
     }
     interactiveStderrBuffer = '';
     goToOutput();
@@ -2489,7 +2609,7 @@ async function handleInstallLibrary(name) {
       showToast(`✓ ${data.message}`, 'success');
       fetchAndRenderLibraries();
     } else if (data.needs_rebuild) {
-      alert(`⚠ ${data.message}`);
+      appAlert(`⚠ ${data.message}`, '> rebuild required _');
     } else {
       showToast(`✗ ${data.message}`, 'error');
     }
@@ -3324,7 +3444,10 @@ async function loadFileList() {
       };
 
       delBtn.onclick = async () => {
-        if (confirm(`Delete file ${f.name}?`)) {
+        const ok = await appConfirm(`Delete file ${f.name}?`, {
+          title: '> file manager _', okLabel: 'delete', cancelLabel: 'keep', danger: true,
+        });
+        if (ok) {
           await fetchApi(`/api/files/${f.name}`, { method: 'DELETE' });
           loadFileList();
         }

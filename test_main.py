@@ -2529,8 +2529,39 @@ class TestSyntaxGuardDoesNotBlockValidCode:
         import pathlib
 
         html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
-        guard = html.split("installedPlugins['syntax_linter']")[1][:900]
+        guard = html.split("installedPlugins['syntax_linter']")[1][:1100]
         assert "catch" in guard
+
+    def test_guard_is_warn_only_and_never_aborts_the_run(self):
+        """The p4a/Kivy WebView never renders the native confirm() dialog —
+        the guard's old confirm() gate silently returned false there, the run
+        handler aborted, and the RUN button looked dead on any syntax error.
+        The guard must report issues and always let the run proceed."""
+        import pathlib
+
+        import re
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        guard = html.split("installedPlugins['syntax_linter']")[1][:1100]
+        guard_code = re.sub(r"//[^\n]*", "", guard)  # comments may mention confirm() to warn it off
+        assert "confirm(" not in guard_code, "native confirm() gate is back — RUN dies in the WebView"
+        assert "return" not in guard_code.split("catch")[0], "guard must fall through, never early-return the run"
+        assert "runBtnEl.onclick" in html  # sanity: guard slice taken inside the run handler
+        assert "running anyway" in html, "warn-only notice missing from the run flow"
+
+    def test_no_native_js_dialogs_anywhere(self):
+        """alert()/confirm()/prompt() never render in the p4a/Kivy WebView, so
+        the template must only use the in-app dialog (showAppDialog/appAlert/
+        appConfirm). Native calls mentioned in comments are fine."""
+        import pathlib
+        import re
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        stripped = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
+        stripped = re.sub(r"<!--.*?-->", "", stripped, flags=re.S)
+        stripped = re.sub(r"//[^\n]*", "", stripped)
+        for fn in ("confirm(", "alert(", "prompt("):
+            assert not re.search(r"(?<![\w.])" + re.escape(fn), stripped), f"native {fn} call left in template"
 
 
 class TestOracleClaimsMatchReality:

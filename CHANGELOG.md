@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-29 — Audit beyond the Oracle: plugins & RUN gate
+
+A deliberate sweep of the modules the previous sessions never touched — the
+plugins that rewrite user code, and the guard that decides whether code is
+allowed to run at all. 260 → 272 tests.
+
+### Fixed — "Code Beautifier Pro" corrupted every annotated function
+
+The beautifier padded operators one character at a time, so any token it did
+not recognise was split and re-spaced into something that no longer parses:
+
+| you wrote | it produced |
+|---|---|
+| `def f() -> int:` | `def f() - > int:` |
+| `n //= 2` | `n // = 2` |
+| `n >>= 1` | `n > >= 1` |
+| `n &= 1` / `n \|= 1` / `n ^= 1` / `n %= 3` | `n & = 1` etc. |
+
+Any user with a type-annotated function got broken code back. Operators are now
+matched longest-first from one complete table (`//=` before `//` before `/`),
+and a test asserts that ordering so a prefix can never shadow the full token.
+Verified across 125 plugin × sample combinations: the output not only parses,
+its **AST is identical** to the input.
+
+### Fixed — Syntax Guard blocked code it should not have
+
+The RUN button's linter plugin (active by default) compared raw `(` and `)`
+counts, which also counts brackets inside strings and comments. So this was
+refused outright, with no way to run it:
+
+```python
+print('a smiley :)')
+```
+
+`/api/check` has always stripped strings and comments before balancing, but the
+UI never called it. The guard now defers to that endpoint, reports the real
+issues, and offers "Run anyway?" instead of a hard block — and if the check
+itself fails, execution proceeds rather than trapping the user.
+
+### Fixed — two more Oracle claims that were not true
+
+- The pip answer boasted *"We bypassed TLS issues automatically"*. That bypass
+  (`--trusted-host`) was **deliberately removed** in v1.2.0 as security fix #22
+  and is documented in `SECURITY.md`. The answer now describes verified TLS with
+  the bundled `certifi` store, and points at the real remedy (check the device
+  clock first — a wrong date invalidates every certificate).
+- The `input()` answer told users to *"use the Interactive Run mode"*, which
+  does not exist as a mode. It now describes what actually happens: press RUN,
+  the terminal pauses at `input()`, and the box at the bottom activates.
+
+Tests now pin the Oracle's claims to the code, so a promise cannot drift out of
+sync with the app again.
+
+---
+
 ## [Unreleased] - 2026-07-29 — Charts finally appear when you press RUN
 
 ### Fixed — matplotlib silently did nothing on the path the RUN button uses

@@ -2363,3 +2363,202 @@ class TestImageRenderingInUI:
 
         source = (pathlib.Path(__file__).parent / "zabacode" / "web_app.py").read_text(encoding="utf-8")
         assert "img-src 'self' data:" in source
+
+
+# ===========================================================================
+# Wider sweep — session of 2026-07-29 (beyond the Oracle)
+#
+# Auditing the modules the earlier sessions never touched: the plugins that
+# rewrite user code, and the guard that decides whether code may run at all.
+# ===========================================================================
+
+
+class TestCodeBeautifierNeverBreaksValidCode:
+    """A "beautifier" that produces unparseable code is worse than no plugin.
+
+    It padded operators one character at a time, so any multi-character token
+    it did not know about was split and re-spaced: `->` became `- >`, breaking
+    *every* annotated function; `//=` became `// =`; `>>=` became `> >=`.
+    """
+
+    OPERATOR_CASES = [
+        "def f(a: int = 1) -> int:\n    return a\n",
+        "n = 4\nn //= 2\n",
+        "n = 4\nn **= 2\n",
+        "n = 4\nn >>= 1\n",
+        "n = 4\nn <<= 1\n",
+        "n = 4\nn &= 1\n",
+        "n = 4\nn |= 1\n",
+        "n = 4\nn ^= 1\n",
+        "n = 4\nn %= 3\n",
+        "x = 7 // 2\n",
+        "y = 2 ** 8\n",
+        "if (v := 10) > 5:\n    print(v)\n",
+        "s = [1, 2, 3][::-1]\n",
+        "q = 10 ** -2\n",
+    ]
+
+    def test_output_always_parses(self):
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        for source in self.OPERATOR_CASES:
+            out = PluginExecutor.execute_plugin("code_beautifier_pro", source)["code"]
+            try:
+                ast.parse(out)
+            except SyntaxError as exc:
+                raise AssertionError(
+                    f"beautifier broke valid code: {source!r} -> {out!r} ({exc.msg})"
+                ) from exc
+
+    def test_output_is_semantically_identical(self):
+        """Parsing is not enough — the AST must be unchanged."""
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        for source in self.OPERATOR_CASES:
+            out = PluginExecutor.execute_plugin("code_beautifier_pro", source)["code"]
+            assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(out)), (
+                f"beautifier changed the meaning of {source!r} -> {out!r}"
+            )
+
+    def test_return_annotation_survives_intact(self):
+        from zabacode.plugins.implementations import PluginExecutor
+
+        out = PluginExecutor.execute_plugin(
+            "code_beautifier_pro", "def f() -> int:\n    return 1\n"
+        )["code"]
+        assert "->" in out and "- >" not in out
+
+    def test_operator_table_is_ordered_longest_first(self):
+        """A prefix listed before the full token would re-introduce the bug."""
+        from zabacode.plugins.implementations import _OPERATORS
+
+        lengths = [len(op) for op in _OPERATORS]
+        assert lengths == sorted(lengths, reverse=True), (
+            "_OPERATORS must be longest-first so '//=' matches before '//' and '/'"
+        )
+
+
+class TestAllTransformPluginsPreserveValidity:
+    """Every plugin that rewrites the buffer must hand back parseable code."""
+
+    SAMPLES = [
+        "import os\nimport sys\nprint(os.getcwd(), sys.platform)\n",
+        "name = 'z'\nprint(f'hi {name}')\n",
+        "class A:\n    def m(self) -> int:\n        return 1\n",
+        "x = [\n    1,\n    2,\n]\nprint(x)\n",
+        "try:\n    pass\nexcept ValueError as e:\n    print(e)\n",
+        "s = 'has # hash'\nprint(s)\n",
+        "def f(*args, **kw):\n    return args, kw\n",
+        "count: int = 0\nprint(count)\n",
+        "f = lambda x=1: x * 2\nprint(f())\n",
+        "data = [1, 2]\nprint(data[::-1])\n",
+    ]
+
+    PLUGINS = [
+        "auto_import_optimizer",
+        "duplicate_line_detector",
+        "smart_comment_generator",
+        "code_beautifier_pro",
+        "variable_type_hint_generator",
+    ]
+
+    def test_no_plugin_corrupts_any_sample(self):
+        import ast
+
+        from zabacode.plugins.implementations import PluginExecutor
+
+        failures = []
+        for plugin_id in self.PLUGINS:
+            for source in self.SAMPLES:
+                try:
+                    out = PluginExecutor.execute_plugin(plugin_id, source).get("code", "")
+                except Exception as exc:  # noqa: BLE001 - report, don't mask
+                    failures.append(f"{plugin_id} raised {type(exc).__name__} on {source!r}")
+                    continue
+                try:
+                    ast.parse(out)
+                except SyntaxError as exc:
+                    failures.append(f"{plugin_id} broke {source!r}: {exc.msg}")
+        assert not failures, "plugins corrupted user code:\n" + "\n".join(failures)
+
+
+class TestSyntaxGuardDoesNotBlockValidCode:
+    """The RUN gate refused code containing a bracket inside a string.
+
+    `(code.match(/\\(/g)).length !== (code.match(/\\)/g)).length` counts
+    parentheses inside strings and comments too, so `print('a smiley :)')`
+    could not be run at all. /api/check strips strings and comments first.
+    """
+
+    def _client(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        return app.test_client(), {"X-Zabacode-Token": AUTH_TOKEN}
+
+    def test_bracket_inside_string_is_not_an_imbalance(self):
+        client, headers = self._client()
+        for code in (
+            "print('a smiley :)')",
+            'print("emoticon :-(")',
+            "s = ')'\nprint(s)",
+            "x = 1  # note (unbalanced",
+        ):
+            body = client.post("/api/check", json={"code": code}, headers=headers).get_json()
+            assert body["valid"] is True, f"valid code rejected: {code!r} -> {body['issues']}"
+
+    def test_genuine_imbalance_is_still_caught(self):
+        client, headers = self._client()
+        body = client.post("/api/check", json={"code": "print('hi'"}, headers=headers).get_json()
+        assert body["valid"] is False
+
+    def test_ui_guard_defers_to_the_server_checker(self):
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        guard = html.split("installedPlugins['syntax_linter']")[1][:900]
+        assert "/api/check" in guard, "the guard must use the checker that understands strings"
+        assert "match(/\\(/g)" not in guard, "naive paren counting is back"
+
+    def test_guard_never_hard_blocks_on_its_own_failure(self):
+        """If the check errors, the user must still be able to run their code."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        guard = html.split("installedPlugins['syntax_linter']")[1][:900]
+        assert "catch" in guard
+
+
+class TestOracleClaimsMatchReality:
+    """The Oracle must not promise behaviour the app does not have.
+
+    The matplotlib claim was false until images were wired into the
+    interactive runner; these pin the remaining claims to the code.
+    """
+
+    def test_no_claim_of_bypassing_tls(self):
+        """SECURITY.md documents that --trusted-host was deliberately removed."""
+        from zabacode.core.oracle import _KNOWLEDGE
+
+        for _keywords, answer in _KNOWLEDGE:
+            lowered = answer.lower()
+            assert "bypassed tls" not in lowered
+            assert "trusted-host" not in lowered
+
+    def test_pip_answer_describes_verified_tls(self):
+        from zabacode.core.oracle import _match_knowledge
+
+        answer = _match_knowledge("how do I install a library with pip?")
+        assert answer and "verified TLS" in answer
+
+    def test_input_answer_matches_the_actual_ui(self):
+        """There is no separate "Interactive Run mode" to switch on — RUN is it."""
+        from zabacode.core.oracle import _match_knowledge
+
+        answer = _match_knowledge("how do I use input()?")
+        assert answer and "Interactive Run mode" not in answer
+        assert "RUN" in answer

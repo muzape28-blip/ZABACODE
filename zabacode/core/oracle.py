@@ -787,7 +787,8 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
     (
         ("input", "stdin", "user input"),
         "`input()` returns a string, always convert it:\n\n```python\nage = int(input('Age: '))\n```\n"
-        "Use the Interactive Run mode so your program can actually receive input.",
+        "Just press **RUN** — the terminal pauses at `input()` and the text box at the bottom "
+        "of the output panel becomes active. Type your answer there and tap send.",
     ),
     (
         ("decorator", "decorate", "wrapper", "@"),
@@ -839,11 +840,14 @@ _KNOWLEDGE: list[tuple[tuple[str, ...], str]] = [
     ),
     (
         ("pip", "install package", "install library", "pypi"),
-        "ZABACODE has its own direct PyPI Library Manager (zabapip) built-in under Settings! "
-        "If you want to install packages programmatically via python, you can do:\n\n"
-        "```python\n# Better yet, go to: Settings & Preferences -> Library Manager\n"
+        "ZABACODE has its own direct PyPI Library Manager (zabapip) built-in under Settings:\n\n"
+        "```python\n# Settings & Preferences -> Library Manager -> search the package\n"
         "```\n"
-        "We bypassed TLS issues automatically, so downloading is smoother than ever on Android!",
+        "Downloads use verified TLS with a bundled `certifi` CA store — no certificate bypass. "
+        "If an install fails complaining about certificates, the error tells you how to fix the "
+        "CA bundle (check the device date/time first — a wrong clock invalidates every "
+        "certificate). Pure-Python wheels install fine; anything needing C extensions (numpy, "
+        "pandas) must be declared in `buildozer.spec` so it is compiled into the APK.",
     ),
     (
         ("async", "await", "asyncio", "concurrency", "coroutine"),

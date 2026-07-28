@@ -2234,10 +2234,27 @@ if (runBtnEl) {
     let code = getEditorValue();
 
     if (installedPlugins['syntax_linter']) {
-      const unclosedParen = (code.match(/\(/g) || []).length !== (code.match(/\)/g) || []).length;
-      if (unclosedParen) {
-        alert('🔍 Syntax Guard: Unbalanced parentheses ( )!');
-        return;
+      // Counting raw "(" vs ")" also counts the ones inside strings and
+      // comments, so `print('a smiley :)')` was refused outright — valid code
+      // the user could not run at all. /api/check already strips strings and
+      // comments before balancing, so defer to it instead of guessing here.
+      try {
+        const chk = await fetchApi('/api/check', {
+          method: 'POST',
+          body: JSON.stringify({ code: code })
+        });
+        const chkData = await chk.json();
+        if (chkData.ok && chkData.valid === false && chkData.issues && chkData.issues.length) {
+          const proceed = confirm(
+            '🔍 Syntax Guard found:\n\n' +
+            chkData.issues.slice(0, 5).map(i => '• ' + i).join('\n') +
+            '\n\nRun anyway?'
+          );
+          if (!proceed) return;
+        }
+      } catch (e) {
+        // The guard must never be the reason you cannot run your code.
+        console.log('Syntax Guard check skipped:', e);
       }
     }
 

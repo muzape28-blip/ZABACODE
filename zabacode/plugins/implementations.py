@@ -180,6 +180,22 @@ class SmartCommentGenerator:
         return current, report
 
 
+# Operators the beautifier pads with spaces, ordered longest-first so that a
+# prefix never wins over the full token (`//=` before `//` before `/`).
+# Anything missing here gets chopped into single characters and re-spaced,
+# which silently produces code that no longer parses.
+_OPERATORS: tuple[str, ...] = (
+    # 3 chars
+    '//=', '**=', '>>=', '<<=', '...',
+    # 2 chars
+    '==', '!=', '<=', '>=', '->', ':=',
+    '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '@=',
+    '//', '**', '<<', '>>',
+    # 1 char
+    '=', '+', '-', '*', '/',
+)
+
+
 class CodeBeautifierPro:
     """Formats Python code into standard PEP-8 spacing, omitting strings and comments."""
 
@@ -246,41 +262,25 @@ class CodeBeautifierPro:
                     j = k
                     continue
 
-                # Format operators
-                double_op = None
-                if j + 1 < n:
-                    sub = stripped[j:j+2]
-                    if sub in ['==', '+=', '-=', '*=', '/=', '<=', '>=', '!=']:
-                        double_op = sub
+                # Format operators.
+                #
+                # Longest match first, otherwise a multi-character operator is
+                # split into pieces that are then spaced individually and no
+                # longer parse: `->` became `- >` (breaking every annotated
+                # function), `//=` became `// =`, `>>=` became `> >=`.
+                matched_op = None
+                for candidate in _OPERATORS:
+                    if stripped.startswith(candidate, j):
+                        matched_op = candidate
+                        break
 
-                if double_op:
+                if matched_op:
                     while new_line_chars and new_line_chars[-1] == ' ':
                         new_line_chars.pop()
                     new_line_chars.append(' ')
-                    new_line_chars.append(double_op)
+                    new_line_chars.append(matched_op)
                     new_line_chars.append(' ')
-                    k = j + 2
-                    while k < n and stripped[k] in ' \t':
-                        k += 1
-                    j = k
-                    continue
-
-                single_op = None
-                if ch in ['=', '+', '-', '*', '/']:
-                    if j + 1 < n and stripped[j+1] == ch:
-                        single_op = stripped[j:j+2]
-                        step = 2
-                    else:
-                        single_op = ch
-                        step = 1
-
-                if single_op:
-                    while new_line_chars and new_line_chars[-1] == ' ':
-                        new_line_chars.pop()
-                    new_line_chars.append(' ')
-                    new_line_chars.append(single_op)
-                    new_line_chars.append(' ')
-                    k = j + step
+                    k = j + len(matched_op)
                     while k < n and stripped[k] in ' \t':
                         k += 1
                     j = k

@@ -1088,9 +1088,9 @@ function stopMatrixRain() {
   if (canvas) canvas.remove();
 }
 
-// ---------- Boot Sequence Animation — Updated v1.2.0 (No SSL Bypass, No ZMUX, Clean) ----------
+// ---------- Boot Sequence Animation — v1.2.1 (VSCode Architecture + Palette + Project Search) ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE v1.2.0 Engine Initializing...', cls: 'dim' },
+  { text: 'ZABACODE v1.2.1 Engine Initializing...', cls: 'dim' },
   { text: '[ OK ] Local Session Token Security Active', cls: 'ok' },
   { text: '[ OK ] Android Keystore + AES-GCM Vault', cls: 'ok' },
   { text: '[ OK ] Python 3 Subprocess Sandbox (PGID)', cls: 'ok' },
@@ -4192,15 +4192,8 @@ async function executePaletteAction(item) {
       break;
     }
     default:
-      // Try executing as a palette action via Quick Open or other known patterns
-      if (action === 'navigate.symbol') {
-        const code = getEditorValue();
-        const res = await fetchApi('/api/editor/outline', { method: 'POST', body: JSON.stringify({ code }) });
-        const data = await res.json();
-        if (data.ok && data.symbols) showSymbolOutline(data.symbols);
-      } else {
-        showToast(`Action: ${item.label}`, 'info');
-      }
+      // Truly unknown action — show the label so the user at least knows what was selected
+      showToast(`${item.label}`, 'info');
   }
 }
 

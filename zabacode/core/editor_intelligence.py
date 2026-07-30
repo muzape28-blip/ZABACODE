@@ -96,6 +96,23 @@ _SYMBOL_KIND_LABELS = {
     SymbolKind.PROPERTY: "property",
 }
 
+# Standard library modules — single source of truth, used by both
+# import completions and organize-imports.  Kept as a frozenset for
+# O(1) membership checks and a sorted list for deterministic ordering.
+_STDLIB_MODULES_SET = frozenset({
+    "os", "sys", "json", "re", "math", "time", "datetime", "pathlib",
+    "collections", "itertools", "functools", "typing", "dataclasses",
+    "abc", "io", "hashlib", "hmac", "secrets", "subprocess", "threading",
+    "multiprocessing", "asyncio", "socket", "http", "urllib", "sqlite3",
+    "csv", "configparser", "logging", "unittest", "argparse", "shutil",
+    "tempfile", "glob", "fnmatch", "stat", "copy", "pprint", "textwrap",
+    "string", "random", "struct", "base64", "uuid", "traceback",
+    "inspect", "ast", "dis", "warnings", "contextlib", "enum",
+    "operator", "heapq", "bisect", "array", "weakref", "types",
+    "platform", "signal", "atexit", "gc", "codecs",
+})
+_STDLIB_MODULES_LIST = sorted(_STDLIB_MODULES_SET)
+
 
 def get_symbol_outline(code: str) -> list[DocumentSymbol]:
     """
@@ -200,9 +217,10 @@ def _node_to_symbol(node: ast.AST) -> DocumentSymbol | None:
 
 
 def _is_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if a function is likely a method (defined inside a class)."""
-    # This is a heuristic; in the outline we already know the parent
-    return False  # Will be overridden by the class that calls this
+    """Check if a function is likely a method (has 'self' or 'cls' as first arg)."""
+    if node.args.args and node.args.args[0].arg in ("self", "cls"):
+        return True
+    return False
 
 
 def _is_constant(node: ast.Assign) -> bool:
@@ -388,20 +406,8 @@ def get_completions(code: str, line: int, column: int) -> list[CompletionItem]:
 
 def _get_import_completions(prefix: str) -> list[CompletionItem]:
     """Get module name completions for import statements."""
-    _STDLIB_MODULES = [
-        "os", "sys", "json", "re", "math", "time", "datetime", "pathlib",
-        "collections", "itertools", "functools", "typing", "dataclasses",
-        "abc", "io", "hashlib", "hmac", "secrets", "subprocess", "threading",
-        "multiprocessing", "asyncio", "socket", "http", "urllib", "sqlite3",
-        "csv", "configparser", "logging", "unittest", "argparse", "shutil",
-        "tempfile", "glob", "fnmatch", "stat", "copy", "pprint", "textwrap",
-        "string", "random", "struct", "base64", "uuid", "traceback",
-        "inspect", "ast", "dis", "warnings", "contextlib", "enum",
-        "operator", "heapq", "bisect", "array", "weakref", "types",
-        "platform", "signal", "atexit", "gc", "codecs",
-    ]
     items = []
-    for mod in _STDLIB_MODULES:
+    for mod in _STDLIB_MODULES_LIST:
         items.append(CompletionItem(mod, "import", mod, f"stdlib: {mod}"))
     return items
 
@@ -573,6 +579,10 @@ def organize_imports(code: str) -> dict[str, Any]:
         elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             used_names.add(node.value.id)
 
+    # __future__ imports are compiler directives, never "unused" — always keep them
+    _FUTURE_IMPORTS = {"annotations", "division", "print_function", "unicode_literals",
+                       "absolute_import", "with_statement", "generator_stop", "barry_as_FLUFL"}
+
     # Collect all import nodes
     import_nodes: list[ast.stmt] = []
     other_nodes: list[ast.stmt] = []
@@ -595,18 +605,7 @@ def organize_imports(code: str) -> dict[str, Any]:
     local_imports: list[str] = []
     removed: list[str] = []
 
-    _STDLIB_MODULES = {
-        "os", "sys", "json", "re", "math", "time", "datetime", "pathlib",
-        "collections", "itertools", "functools", "typing", "dataclasses",
-        "abc", "io", "hashlib", "hmac", "secrets", "subprocess", "threading",
-        "asyncio", "socket", "http", "urllib", "sqlite3", "csv", "logging",
-        "unittest", "argparse", "shutil", "tempfile", "glob", "copy",
-        "pprint", "textwrap", "string", "random", "struct", "base64",
-        "uuid", "traceback", "inspect", "ast", "warnings", "contextlib",
-        "enum", "operator", "heapq", "bisect", "array", "weakref",
-        "types", "platform", "signal", "atexit", "gc", "codecs",
-        "configparser", "fnmatch", "stat", "dis", "multiprocessing",
-    }
+    _STDLIB_MODULES = _STDLIB_MODULES_SET
 
     for node in import_nodes:
         if isinstance(node, ast.Import):
@@ -626,6 +625,14 @@ def organize_imports(code: str) -> dict[str, Any]:
 
         elif isinstance(node, ast.ImportFrom):
             if not node.module:
+                continue
+            # __future__ imports are compiler directives — always keep them
+            if node.module == "__future__":
+                for alias in node.names:
+                    line = f"from __future__ import {alias.name}"
+                    if alias.asname:
+                        line += f" as {alias.asname}"
+                    stdlib_imports.append(line)
                 continue
             root_module = node.module.split('.')[0]
             used_names_in_import = []
@@ -679,14 +686,32 @@ def organize_imports(code: str) -> dict[str, Any]:
             non_import_lines.append(line)
 
     # Find where to insert the import block (after any __future__ imports or docstrings)
+    # PEP 8: module docstring comes first, then __future__ imports, then regular imports
     insert_pos = 0
+    in_docstring = False
     for i, line in enumerate(non_import_lines):
         stripped = line.strip()
+        if in_docstring:
+            # Look for closing triple-quote
+            if '"""' in stripped or "'''" in stripped:
+                in_docstring = False
+                insert_pos = i + 1
+            continue
         if stripped.startswith('"""') or stripped.startswith("'''"):
-            # Skip docstring
+            # Check if it's a single-line docstring (open and close on same line)
+            quote = stripped[:3]
+            if stripped.count(quote) >= 2 and stripped.endswith(quote) and len(stripped) > 3:
+                # Single-line docstring
+                insert_pos = i + 1
+            else:
+                # Multi-line docstring start
+                in_docstring = True
             continue
         if stripped.startswith('from __future__ import'):
             insert_pos = i + 1
+            continue
+        if not stripped:
+            # Blank line between docstring and imports — keep scanning
             continue
         break
 

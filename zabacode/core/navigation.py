@@ -22,7 +22,7 @@ from typing import Any
 
 from zabacode.core.commands import get_command_registry
 from zabacode.core.file_manager import list_files, read_file
-from zabacode.core.editor_intelligence import find_symbol, get_symbol_outline
+from zabacode.core.editor_intelligence import find_symbol, get_symbol_outline, _SYMBOL_KIND_LABELS
 
 
 # ---------------------------------------------------------------------------

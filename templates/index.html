@@ -2005,6 +2005,9 @@ try {
     const langTools = ace.require('ace/ext/language_tools');
     if (langTools) {
       // Custom completer that fetches from /api/editor/completions
+      // Debounced to avoid spamming the server on fast typing
+      let _completionTimer = null;
+      let _lastCompletionPrefix = '';
       const zabacodeCompleter = {
         getCompletions: function(editor, session, pos, prefix, callback) {
           // Don't spam the server on every keystroke — only if prefix is at least 1 char
@@ -2013,33 +2016,43 @@ try {
             callback(null, []);
             return;
           }
-          const code = session.getValue();
-          const line = pos.row + 1;
-          const column = pos.column + 1;
+          // Skip duplicate requests for the same prefix
+          if (prefix === _lastCompletionPrefix) {
+            return;
+          }
+          _lastCompletionPrefix = prefix;
 
-          fetchApi('/api/editor/completions', {
-            method: 'POST',
-            body: JSON.stringify({ code, line, column })
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (!data.ok || !data.completions) {
+          // Debounce: cancel any pending request
+          if (_completionTimer) clearTimeout(_completionTimer);
+          _completionTimer = setTimeout(() => {
+            const code = session.getValue();
+            const line = pos.row + 1;
+            const column = pos.column + 1;
+
+            fetchApi('/api/editor/completions', {
+              method: 'POST',
+              body: JSON.stringify({ code, line, column })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (!data.ok || !data.completions) {
+                callback(null, []);
+                return;
+              }
+              const aceCompletions = data.completions.map(c => ({
+                caption: c.label,
+                value: c.insertText,
+                meta: c.kind,
+                score: c.kind === 'snippet' ? 1000 : (c.kind === 'keyword' ? 500 : 100),
+                docHTML: c.documentation ? `<b>${escapeHtml(c.label)}</b><br>${escapeHtml(c.documentation)}` : null,
+              }));
+              callback(null, aceCompletions);
+            })
+            .catch(() => {
+              // Non-critical: if completions fail, just show nothing
               callback(null, []);
-              return;
-            }
-            const aceCompletions = data.completions.map(c => ({
-              caption: c.label,
-              value: c.insertText,
-              meta: c.kind,
-              score: c.kind === 'snippet' ? 1000 : (c.kind === 'keyword' ? 500 : 100),
-              docHTML: c.documentation ? `<b>${escapeHtml(c.label)}</b><br>${escapeHtml(c.documentation)}` : null,
-            }));
-            callback(null, aceCompletions);
-          })
-          .catch(() => {
-            // Non-critical: if completions fail, just show nothing
-            callback(null, []);
-          });
+            });
+          }, 300); // 300ms debounce
         }
       };
 
@@ -2169,9 +2182,7 @@ try {
 
   document.getElementById('floating-palette-btn').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (editor) {
-      editor.showSettingsMenu();
-    }
+    openCommandPalette();
     hideFloatingMenu();
   });
 
@@ -3983,7 +3994,7 @@ async function executePaletteAction(item) {
     }
     case 'navigate.line': {
       // Inline input — no native prompt() dialog
-      const lineStr = _inlineInput('Go to line number:');
+      const lineStr = await _inlineInput('Go to line number:');
       if (lineStr && editor) {
         const lineNum = parseInt(lineStr);
         if (lineNum > 0) {
@@ -4009,13 +4020,14 @@ async function executePaletteAction(item) {
       refreshDiagnostics();
       break;
     case 'view.terminal': {
-      const outputView = document.getElementById('view-output');
-      if (outputView) outputView.click();
+      goToOutput();
       break;
     }
     case 'ai.chat': {
-      const aiTab = document.querySelector('[data-view="ai"]') || document.getElementById('ai-tab');
-      if (aiTab) aiTab.click();
+      const aiPanelEl = document.getElementById('ai-panel');
+      if (aiPanelEl) aiPanelEl.classList.add('open');
+      const aiInputEl = document.getElementById('ai-input');
+      if (aiInputEl) aiInputEl.focus();
       break;
     }
     case 'ai.explain': {
@@ -4041,15 +4053,8 @@ async function executePaletteAction(item) {
       // Inline input — no native prompt() dialog
       const themeName = await _inlineInput('Theme name (retro, dracula, monokai, cyberpunk, nord, etc.):');
       if (themeName) {
-        const res = await fetchApi(`/api/themes/${themeName}`);
-        const data = await res.json();
-        if (data.ok) {
-          applyTheme(data.theme);
-          localStorage.setItem('zabacode-theme', themeName);
-          showToast(`Theme changed to ${themeName}!`, 'success');
-        } else {
-          showToast('Theme not found.', 'error');
-        }
+        await applyTheme(themeName);
+        showToast(`Theme changed to ${themeName}!`, 'success');
       }
       break;
     }
@@ -4153,8 +4158,17 @@ async function openFileByName(filename) {
   const res = await fetchApi(`/api/files/${filename}`);
   const data = await res.json();
   if (data.ok) {
-    setEditorValue(data.content);
-    markActiveTabChanged();
+    // Reuse existing tab for this file, or create a new one
+    let existingTab = tabs.find(t => t.name === filename);
+    if (existingTab) {
+      existingTab.content = data.content;
+      existingTab.revision = Number.isSafeInteger(existingTab.revision) ? existingTab.revision + 1 : 1;
+      switchTab(existingTab.id);
+    } else {
+      const newId = 'tab-' + Date.now();
+      tabs.push({ id: newId, name: filename, content: data.content, revision: 0 });
+      switchTab(newId);
+    }
     showToast(`Opened ${filename}`, 'success');
   }
 }
@@ -4252,11 +4266,8 @@ function openSettingsSearch() {
   loadSettings('');
 }
 
-// Override the existing Palette button to open our Command Palette
-document.getElementById('floating-palette-btn')?.addEventListener('click', (e) => {
-  e.stopImmediatePropagation();
-  openCommandPalette();
-});
+// The Palette button in the floating menu already opens the Command Palette
+// (wired above in the floating-menu-btn click handler). No duplicate needed.
 
 // Inline input — replaces native prompt() with a non-blocking modal
 // Returns a Promise that resolves to the user's input (or null if cancelled)

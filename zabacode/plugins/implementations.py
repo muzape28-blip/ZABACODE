@@ -22,8 +22,8 @@ class AutoImportOptimizer:
         except SyntaxError as e:
             return {"ok": False, "error": f"SyntaxError: {str(e)}", "unused": []}
 
-        imported_names = {}  # name -> (node, line_num, end_line_num, full_imported_name)
-        used_names = set()
+        imported_names: dict[str, tuple[ast.AST, int, int, str]] = {}
+        used_names: set[str] = set()
 
         class ImportVisitor(ast.NodeVisitor):
             def visit_Import(self, node):
@@ -70,14 +70,14 @@ class AutoImportOptimizer:
 
         lines = code.split('\n')
         # Build a set of line numbers to comment, covering full multi-line import spans
-        unused_lines = set()
-        line_to_names = {}
+        unused_lines: set[int] = set()
+        line_to_names: dict[int, list[str]] = {}
         for start, end, name in unused:
             for ln in range(start, end + 1):
                 unused_lines.add(ln)
             line_to_names.setdefault(start, []).append(name)
-        report = []
-        new_lines = []
+        report: list[str] = []
+        new_lines: list[str] = []
         for i, line in enumerate(lines, 1):
             if i in unused_lines:
                 if i in line_to_names:
@@ -96,8 +96,8 @@ class DuplicateLineDetector:
     @staticmethod
     def detect(code: str) -> tuple[str, list[str]]:
         lines = code.split('\n')
-        seen = {}  # cleaned_line -> list of 1-based line numbers
-        report = []
+        seen: dict[str, list[int]] = {}
+        report: list[str] = []
 
         for i, line in enumerate(lines, 1):
             cleaned = line.strip()
@@ -140,7 +140,7 @@ class SmartCommentGenerator:
 
     @staticmethod
     def generate(code: str) -> tuple[str, list[str]]:
-        report = []
+        report: list[str] = []
         current = code
         # Process one function at a time, re-parsing after each insertion so line
         # numbers stay accurate. Inserting at a function shifts every line below
@@ -325,7 +325,7 @@ class VariableTypeHintGenerator:
 
     @staticmethod
     def generate(code: str) -> tuple[str, list[str]]:
-        report = []
+        report: list[str] = []
         current = code
         has_any_imports = "from typing import Any" in code or "import typing" in code
 

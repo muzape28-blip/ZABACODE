@@ -1340,15 +1340,17 @@ loadTabsFromStorage();
 setTimeout(updatePrivacyUI, 500);
 
 let saveTimeout = null;
+function saveActiveTab() {
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  if (activeTab) {
+    activeTab.content = getEditorValue();
+  }
+  saveTabsToStorage();
+}
+
 function triggerAutoSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab) {
-      activeTab.content = getEditorValue();
-    }
-    saveTabsToStorage();
-  }, 500);
+  saveTimeout = setTimeout(saveActiveTab, 500);
 }
 
 const tabBarEl = document.getElementById('tab-bar');
@@ -1846,8 +1848,7 @@ function setEditorValue(val) {
   updateLineCounter();
 }
 
-// Backward Compatibility placeholder function
-function registerCustomMonacoTheme(themeData) {
+function refreshAceLayout() {
   if (editor && activeEditorMode === 'ace') {
     editor.resize();
   }
@@ -3519,7 +3520,7 @@ async function applyTheme(name) {
       document.documentElement.style.setProperty('--ai-dim', rgbaToCss(aiDim));
     }
     
-    registerCustomMonacoTheme(t);
+    refreshAceLayout();
     if (themeDialogBackdrop) themeDialogBackdrop.classList.remove('open');
     if (marketModalBackdrop) marketModalBackdrop.classList.remove('open');
   }

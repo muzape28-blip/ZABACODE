@@ -221,4 +221,4 @@ def get_theme(name: str) -> dict | None:
 
 def list_themes() -> dict[str, str]:
     """List all available themes as {key: display_name}."""
-    return {k: v["display_name"] for k, v in THEMES.items()}
+    return {key: str(theme["display_name"]) for key, theme in THEMES.items()}

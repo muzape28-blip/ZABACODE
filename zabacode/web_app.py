@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 
 from flask import Flask, jsonify, render_template, request
-from waitress import serve
+from waitress import serve  # type: ignore[import-untyped]
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.checker import check_code

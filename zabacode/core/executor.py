@@ -151,7 +151,7 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
     Run user code in a separate subprocess.
     This isolates process lifetime, not filesystem/network privileges.
     Treat code as trusted unless a platform-level sandbox is added.
-    
+
     Returns dict with: ok, stdout, stderr, timeout, images
     """
     if not isinstance(code, str) or len(code.encode("utf-8")) > MAX_CODE_BYTES:

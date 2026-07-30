@@ -20,7 +20,7 @@ from pathlib import Path
 def resolve_app_dir() -> Path:
     """
     Resolve the application directory based on runtime environment.
-    
+
     Priority:
     1. ANDROID_PRIVATE env var (Python-for-Android webview bootstrap)
     2. Kivy android storage via pyjnius

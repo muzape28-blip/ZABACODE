@@ -93,7 +93,7 @@ def strip_comments_and_strings(code: str) -> tuple[str, list[str]]:
 def check_code(code: str) -> dict:
     """
     Validate Python code structure before execution.
-    
+
     Returns dict with: ok, valid, issues, hint
     """
     # Normalise line endings/BOM only. normalize_code() also injects the

@@ -1098,10 +1098,19 @@ class TestOracleAutoFix:
 
     def test_ui_contains_auto_fix_functions(self):
         import pathlib
+
         html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
         assert "renderAutoFixButton" in html
         assert "renderDiffView" in html
         assert "renderAutoFixResult" in html
+
+    def test_auto_fix_apply_calls_a_defined_tab_save_function(self):
+        """Applying an Oracle patch must not fail with an undefined JS function."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "function saveActiveTab()" in html
+        assert "saveActiveTab();" in html
 
 
 # ===========================================================================
@@ -2577,7 +2586,6 @@ class TestSyntaxGuardDoesNotBlockValidCode:
         handler aborted, and the RUN button looked dead on any syntax error.
         The guard must report issues and always let the run proceed."""
         import pathlib
-
         import re
 
         html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")

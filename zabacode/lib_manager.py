@@ -29,7 +29,7 @@ _PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 # Library Catalog — Expanded with offline/online/hybrid mode indicators
 # ---------------------------------------------------------------------------
 
-KNOWN_LIBRARIES = {
+KNOWN_LIBRARIES: dict[str, dict[str, object]] = {
     # === Web & Networking ===
     "requests": {
         "tier": "runtime", "category": "Web & API",

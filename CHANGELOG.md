@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-07-30 — Oracle: future retrieval and local-model direction
+
+### Planned — keep Oracle deterministic before introducing RAG
+
+Oracle will continue to be developed first as ZABACODE's **offline,
+deterministic code diagnostician**, rather than being presented as an LLM. Its
+trusted paths—traceback explanation, buffer analysis, and safe Auto-Fix—remain
+parser- and rule-driven, with fixes accepted only after verification. This is
+important for an offline Android editor: a concise, evidence-based refusal is
+better than a confident but invented explanation.
+
+A full Retrieval-Augmented Generation (RAG) feature is intentionally deferred.
+Retrieval can locate relevant files or documentation, but it does not itself
+provide reliable reasoning or natural-language generation. Adding it before a
+well-trained, evaluated generator is available could create missed context,
+incorrect links between code fragments, verbose babbling, or gibberish.
+
+### Planned — retrieval as an honest, optional stepping stone
+
+A future local retrieval feature may begin as **project/document search**, not
+as a claimed code-understanding assistant. It should return factual, inspectable
+results such as relevant file paths, symbols, and line ranges. Any later
+explanation must cite the retrieved source and say when the available context is
+insufficient.
+
+Potential retrieval sources, in order of practical value, are:
+
+1. ZABACODE's bundled documentation, for accurate offline help about the app.
+2. The active project's local code and text files, for navigation and context.
+3. Optional, curated Python/Kivy/Buildozer knowledge packs.
+
+Indexes must remain local by default, respect project privacy, and be designed
+for mobile storage and memory limits. A large raw corpus must not be bundled
+into the APK simply to claim RAG support.
+
+### Planned — separate local-LLM research track
+
+A custom Python LLM implementation and its training corpus are a separate
+future research track, not a dependency of the current Oracle. Only after the
+model has been trained, evaluated for code tasks, and made feasible for the
+target hardware should it be considered as an optional generator for retrieved
+context. Even then, deterministic diagnosis and parser-verified Auto-Fix remain
+the safety baseline.
+
+---
+
 ## [Unreleased] - 2026-07-29 — Audit beyond the Oracle: plugins & RUN gate
 
 A deliberate sweep of the modules the previous sessions never touched — the

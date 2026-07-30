@@ -184,6 +184,45 @@ class TestFileManager:
         assert result["ok"] is False
 
 
+class TestFilenameLengthLimit:
+    """Over-long names must be rejected cleanly, never raise OSError (500).
+
+    secure_filename() used an unbounded ``*`` quantifier, so a 300-char name
+    passed validation and reached os.stat() / write(), which raised
+    ``OSError: [Errno 36] File name too long``. read_file()/delete_file()
+    checked existence outside any try/except, so the error escaped as an HTTP
+    500 instead of a 400.
+    """
+
+    def test_helper_rejects_overlong_name(self):
+        from zabacode.core.file_manager import MAX_FILENAME_LEN
+
+        # At the cap it is still accepted; one char over it is refused.
+        assert secure_filename("a" * MAX_FILENAME_LEN) is not None
+        assert secure_filename("a" * (MAX_FILENAME_LEN + 1)) is None
+
+    def test_read_and_delete_never_500_on_overlong_name(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+        name = "a" * 300  # well past any filesystem component limit
+        for resp in (
+            client.get(f"/api/files/{name}", headers=headers),
+            client.delete(f"/api/files/{name}", headers=headers),
+            client.post(f"/api/files/{name}", json={"content": "x"}, headers=headers),
+        ):
+            assert resp.status_code == 400, resp.status_code
+            assert resp.get_json()["ok"] is False
+
+    def test_normal_length_name_still_works(self):
+        result = save_file("a" * 40, "print('hi')\n")
+        assert result["ok"] is True
+        assert read_file(result["filename"])["ok"] is True
+        assert delete_file(result["filename"])["ok"] is True
+
+
 # ===================================================================
 # Test Security Module
 # ===================================================================

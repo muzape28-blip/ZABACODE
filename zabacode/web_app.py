@@ -24,6 +24,12 @@ from zabacode.core.executor import (
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
 from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
 from zabacode.core.oracle import analyze_buffer, auto_fix_code, humanize_traceback, offline_reply
+from zabacode.core.diagnostics import (
+    Diagnostic,
+    DiagnosticSeverity,
+    diagnostics_to_ace_annotations,
+    make_diagnostic,
+)
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
 from zabacode.lib_manager import get_all_libraries, install_library
 from zabacode.plugins.implementations import PluginExecutor
@@ -680,6 +686,86 @@ def oracle_fix():
     if revision is not None:
         result["revision"] = revision
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+
+
+# P1 — Diagnostics & Oracle actions (VS Code-inspired)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/diagnostics/aggregate")
+@require_auth
+def diagnostics_aggregate():
+    """
+    Aggregate diagnostics from multiple sources (Oracle + checker).
+    Returns a unified list of Diagnostic objects + Ace annotations.
+
+    This is the foundation for Problems bottom sheet + Ace gutter annotations.
+    """
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    diagnostics: list[Diagnostic] = []
+
+    # 1. Syntax / static analysis via Oracle
+    analysis = analyze_buffer(code)
+    if not analysis.get("ok"):
+        if analysis.get("syntax_error"):
+            diagnostics.append(
+                make_diagnostic(
+                    start_line=max(0, (analysis.get("line") or 1) - 1),
+                    start_col=0,
+                    end_line=max(0, (analysis.get("line") or 1) - 1),
+                    end_col=80,
+                    message=analysis.get("message", "Syntax error"),
+                    severity=DiagnosticSeverity.Error,
+                    source="oracle",
+                    code="syntax-error",
+                    fixable=True,
+                    quick_fix_id="oracle-fix",
+                    explanation="Oracle detected a syntax problem.",
+                )
+            )
+
+    # 2. Run the existing checker (if it returns structured issues)
+    try:
+        chk = check_code(code)
+        if chk.get("ok") is False and chk.get("issues"):
+            for issue in chk.get("issues", [])[:20]:
+                diagnostics.append(
+                    make_diagnostic(
+                        start_line=0,
+                        start_col=0,
+                        end_line=0,
+                        end_col=80,
+                        message=str(issue),
+                        severity=DiagnosticSeverity.Warning,
+                        source="checker",
+                        fixable=False,
+                    )
+                )
+    except Exception:
+        pass
+
+    # Convert to Ace-friendly annotations
+    annotations = diagnostics_to_ace_annotations(diagnostics)
+
+    return jsonify(
+        {
+            "ok": True,
+            "diagnostics": diagnostics,
+            "annotations": annotations,
+            "count": len(diagnostics),
+            "sources": ["oracle", "checker"],
+        }
+    )
 
 
 def run_webview_server():

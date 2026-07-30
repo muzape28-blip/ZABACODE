@@ -1,11 +1,10 @@
 """
-ZABACODE — Standalone Anti-Capitalist Mobile Python IDE
-Copyright (C) 2026 Zaqi (muzape28-blip) and ZABACODE Contributors
+ZABACODE v1.2.1 — WebView shell entry point for the native Python core.
 
-v1.2.0 — WebView + Oracle + Custom Endpoint Edition
+v1.2.1 — VSCode-inspired architecture: Event Emitter + Disposable, Command Registry, Service Container
 """
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 __app_name__ = "ZABACODE"
 __author__ = "Zaqi (muzape28-blip)"
 __license__ = "GPLv3"

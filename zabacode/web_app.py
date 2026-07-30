@@ -1,4 +1,10 @@
-"""WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle."""
+"""WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle.
+
+Architecture (v1.2.1+): VSCode-inspired event system + command registry + service container.
+  - Events:    core modules fire events, web_app routes and plugins listen
+  - Commands:  plugins register as commands, no more hardcoded if/elif
+  - Services:  lazy-loaded, testable, decoupled dependency injection
+"""
 
 import functools
 import hashlib
@@ -10,7 +16,9 @@ from waitress import serve  # type: ignore[import-untyped]
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.checker import check_code
+from zabacode.core.commands import get_command_registry
 from zabacode.core.diff import compute_line_diff
+from zabacode.core.events import get_app_events
 from zabacode.core.executor import (
     MAX_CODE_BYTES,
     MAX_INTERACTIVE_BYTES,
@@ -23,20 +31,21 @@ from zabacode.core.executor import (
 )
 from zabacode.core.file_manager import delete_file, list_files, read_file, save_file
 from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
-from zabacode.core.oracle import analyze_buffer, auto_fix_code, humanize_traceback, offline_reply
 from zabacode.core.diagnostics import (
     Diagnostic,
     DiagnosticSeverity,
     diagnostics_to_ace_annotations,
     make_diagnostic,
 )
+from zabacode.core.oracle import analyze_buffer, auto_fix_code, humanize_traceback, offline_reply
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
+from zabacode.core.services import get_service_container
 from zabacode.lib_manager import get_all_libraries, install_library
 from zabacode.plugins.implementations import PluginExecutor
 from zabacode.plugins.registry import get_all_plugins
 from zabacode.themes.definitions import get_theme, list_themes
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 MAX_AI_FIELD_CHARS = 100_000
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -178,6 +187,69 @@ def health_check():
     )
 
 
+# ---------------------------------------------------------------------------
+# VSCode-inspired API endpoints — Command Registry & Event System
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/commands")
+@require_auth
+def list_commands():
+    """List all registered commands (VSCode CommandsRegistry pattern)."""
+    registry = get_command_registry()
+    return jsonify({"ok": True, "commands": registry.get_all_commands_info()})
+
+
+@app.post("/api/commands/execute")
+@require_auth
+def execute_command():
+    """Execute a registered command by ID (VSCode CommandService pattern)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    command_id = payload.get("command_id", "")
+    args = payload.get("args", [])
+
+    if not isinstance(command_id, str):
+        return jsonify({"ok": False, "message": "Field 'command_id' must be a string."}), 400
+    if not isinstance(args, list):
+        return jsonify({"ok": False, "message": "Field 'args' must be an array."}), 400
+
+    registry = get_command_registry()
+    if not registry.has_command(command_id):
+        return jsonify({"ok": False, "message": f"Command '{command_id}' not found."}), 404
+
+    try:
+        result = registry.execute_command(command_id, *args)
+        if isinstance(result, tuple) and len(result) == 2:
+            new_code, report = result
+            return jsonify({"ok": True, "code": new_code, "report": "\n".join(report) if isinstance(report, list) else str(report)})
+        return jsonify({"ok": True, "result": result})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"Command execution failed: {e}"}), 500
+
+
+@app.get("/api/events/status")
+@require_auth
+def events_status():
+    """Report event system status — listener counts for debugging."""
+    events = get_app_events()
+    return jsonify({
+        "ok": True,
+        "events": {
+            "onWillRunCode": events._onWillRunCode.listener_count,
+            "onDidRunCode": events._onDidRunCode.listener_count,
+            "onDidSaveFile": events._onDidSaveFile.listener_count,
+            "onDidDeleteFile": events._onDidDeleteFile.listener_count,
+            "onWillAIChat": events._onWillAIChat.listener_count,
+            "onDidAIChat": events._onDidAIChat.listener_count,
+            "onDidTogglePlugin": events._onDidTogglePlugin.listener_count,
+            "onDidInstallLibrary": events._onDidInstallLibrary.listener_count,
+        },
+    })
+
+
 @app.post("/api/run")
 @require_auth
 def run_code():
@@ -238,6 +310,15 @@ def run_code():
 
     result = execute_code_isolated(code, stdin_data=stdin_data)
 
+    # Fire events (VSCode-inspired event bus)
+    events = get_app_events()
+    events.fire_did_run_code({
+        "mode": "isolated",
+        "ok": result.get("ok"),
+        "timeout": result.get("timeout"),
+        "code_size": len(code.encode("utf-8")),
+    })
+
     # Offline Oracle: explain the crash in plain language, no network needed.
     if not result.get("ok") and result.get("stderr"):
         explanation = humanize_traceback(result["stderr"], line_offset=PRELUDE_LINE_COUNT)
@@ -273,7 +354,12 @@ def run_interactive_start():
             ),
             413,
         )
-    return jsonify(start_interactive_session(code))
+    result = start_interactive_session(code)
+    # Fire event (VSCode-inspired event bus)
+    if result.get("ok"):
+        events = get_app_events()
+        events.fire_will_run_code({"mode": "interactive", "code_size": len(code.encode("utf-8"))})
+    return jsonify(result)
 
 
 @app.get("/api/run/interactive/output")
@@ -356,7 +442,11 @@ def install():
             ),
             400,
         )
-    return jsonify(install_library(payload.get("name", "")))
+    result = install_library(payload.get("name", ""))
+    # Fire event (VSCode-inspired event bus)
+    if result.get("ok"):
+        get_app_events().fire_did_install_library({"name": payload.get("name", "")})
+    return jsonify(result)
 
 
 @app.get("/api/files")
@@ -386,8 +476,14 @@ def file_item(filename):
                 400,
             )
         result = save_file(filename, payload.get("content", ""))
+        # Fire event (VSCode-inspired event bus)
+        if result.get("ok"):
+            get_app_events().fire_did_save_file({"filename": result.get("filename", filename)})
     else:
         result = delete_file(filename)
+        # Fire event (VSCode-inspired event bus)
+        if result.get("ok"):
+            get_app_events().fire_did_delete_file({"filename": filename})
     return jsonify(result), (200 if result.get("ok") else 400)
 
 
@@ -615,6 +711,14 @@ def ai_chat():
 
     result = PROVIDER_HANDLERS[provider](api_key, message, code, model=model)
 
+    # Fire events (VSCode-inspired event bus)
+    events = get_app_events()
+    events.fire_did_ai_chat({
+        "provider": provider,
+        "ok": result.get("ok"),
+        "fallback": result.get("fallback_reason"),
+    })
+
     # Cloud unreachable (TLS, rate limit, airplane mode)? The Oracle still answers.
     if not result.get("ok") and allow_offline:
         fallback = offline_reply(message, code)
@@ -689,10 +793,48 @@ def oracle_fix():
 
 
 # ---------------------------------------------------------------------------
-
-
-# P1 — Diagnostics & Oracle actions (VS Code-inspired)
+# P1: Diagnostics — VSCode-inspired Diagnostic Collection
 # ---------------------------------------------------------------------------
+
+
+@app.post("/api/diagnostics")
+@require_auth
+def get_diagnostics():
+    """Analyze code and return diagnostics with quick-fixes (VSCode DiagnosticCollection pattern)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.diagnostics import analyze_code_diagnostics, get_diagnostic_engine
+    diags = analyze_code_diagnostics(code)
+
+    # Update the diagnostic engine's "checker" collection
+    engine = get_diagnostic_engine()
+    collection = engine.create_collection("checker")
+    collection.set(diags)
+
+    return jsonify({
+        "ok": True,
+        "diagnostics": [d.to_dict() for d in diags],
+        "counts": engine.get_diagnostics_severity_counts(),
+    })
+
+
+@app.get("/api/diagnostics")
+@require_auth
+def get_current_diagnostics():
+    """Get all current diagnostics from all collections (VSCode aggregated diagnostics)."""
+    from zabacode.core.diagnostics import get_diagnostic_engine
+    engine = get_diagnostic_engine()
+    diags = engine.get_all_diagnostics()
+    return jsonify({
+        "ok": True,
+        "diagnostics": [d.to_dict() for d in diags],
+        "counts": engine.get_diagnostics_severity_counts(),
+    })
 
 
 @app.post("/api/diagnostics/aggregate")
@@ -725,7 +867,7 @@ def diagnostics_aggregate():
                     end_line=max(0, (analysis.get("line") or 1) - 1),
                     end_col=80,
                     message=analysis.get("message", "Syntax error"),
-                    severity=DiagnosticSeverity.Error,
+                    severity=DiagnosticSeverity.ERROR,
                     source="oracle",
                     code="syntax-error",
                     fixable=True,
@@ -746,7 +888,7 @@ def diagnostics_aggregate():
                         end_line=0,
                         end_col=80,
                         message=str(issue),
-                        severity=DiagnosticSeverity.Warning,
+                        severity=DiagnosticSeverity.WARNING,
                         source="checker",
                         fixable=False,
                     )
@@ -760,7 +902,7 @@ def diagnostics_aggregate():
     return jsonify(
         {
             "ok": True,
-            "diagnostics": diagnostics,
+            "diagnostics": [d.to_dict() for d in diagnostics],
             "annotations": annotations,
             "count": len(diagnostics),
             "sources": ["oracle", "checker"],
@@ -768,9 +910,246 @@ def diagnostics_aggregate():
     )
 
 
+# ---------------------------------------------------------------------------
+# P2: Editor Intelligence — VSCode-inspired Language Features
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/editor/outline")
+@require_auth
+def editor_outline():
+    """Get AST symbol outline for the current file (VSCode DocumentSymbolProvider)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import get_symbol_outline
+    symbols = get_symbol_outline(code)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.post("/api/editor/symbols")
+@require_auth
+def editor_symbols():
+    """Search for symbols in the current file (VSCode workspace/symbol)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    query = payload.get("query", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(query, str):
+        return jsonify({"ok": False, "message": "Field 'query' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import find_symbol
+    symbols = find_symbol(code, query)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.post("/api/editor/completions")
+@require_auth
+def editor_completions():
+    """Get autocomplete completions for the cursor position (VSCode CompletionItemProvider)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+
+    from zabacode.core.editor_intelligence import get_completions
+    completions = get_completions(code, line, column)
+    return jsonify({
+        "ok": True,
+        "completions": [c.to_dict() for c in completions],
+    })
+
+
+@app.post("/api/editor/rename")
+@require_auth
+def editor_rename():
+    """Rename a symbol at the given position (VSCode RenameProvider, local one-file)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    new_name = payload.get("new_name", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+    if not isinstance(new_name, str):
+        return jsonify({"ok": False, "message": "Field 'new_name' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import rename_symbol
+    result = rename_symbol(code, line, column, new_name)
+    return jsonify(result)
+
+
+@app.post("/api/editor/rename-workspace")
+@require_auth
+def editor_rename_workspace():
+    """Rename a symbol across all user files (VSCode WorkspaceEdit)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    filename = payload.get("filename", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    new_name = payload.get("new_name", "")
+    if not isinstance(filename, str):
+        return jsonify({"ok": False, "message": "Field 'filename' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+    if not isinstance(new_name, str):
+        return jsonify({"ok": False, "message": "Field 'new_name' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import rename_symbol_workspace
+    result = rename_symbol_workspace(filename, line, column, new_name)
+    return jsonify(result)
+
+
+@app.post("/api/editor/organize-imports")
+@require_auth
+def editor_organize_imports():
+    """Organize imports: sort, group, and remove unused (VSCode organizeImports)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import organize_imports
+    result = organize_imports(code)
+    if result.get("ok") and isinstance(result.get("code"), str):
+        result["diff"] = compute_line_diff(code, result["code"])
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# P3: Navigation UX — VSCode-inspired Command Palette & Quick Open
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/palette")
+@require_auth
+def command_palette():
+    """Get command palette items, optionally filtered (VSCode Command Palette)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_command_palette_items
+    items = get_command_palette_items(query)
+    return jsonify({
+        "ok": True,
+        "items": [i.to_dict() for i in items],
+    })
+
+
+@app.get("/api/quickopen")
+@require_auth
+def quick_open():
+    """Get Quick Open items — files and symbols (VSCode Quick Open Ctrl+P)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_quick_open_items
+    items = get_quick_open_items(query)
+    return jsonify({
+        "ok": True,
+        "items": [i.to_dict() for i in items],
+    })
+
+
+@app.get("/api/settings")
+@require_auth
+def get_settings():
+    """Get all settings, optionally filtered (VSCode Searchable Settings)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_all_settings
+    settings = get_all_settings(query)
+    return jsonify({
+        "ok": True,
+        "settings": [s.to_dict() for s in settings],
+    })
+
+
+# ---------------------------------------------------------------------------
+# P4: Workspace — VSCode-inspired Search & Symbol Index
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/search")
+@require_auth
+def search_in_files_endpoint():
+    """Search across all user files (VSCode Search in Files Ctrl+Shift+F)."""
+    query = request.args.get("q", "")
+    case_sensitive = request.args.get("case", "0") == "1"
+    regex = request.args.get("regex", "0") == "1"
+    if not query:
+        return jsonify({"ok": True, "results": []})
+
+    from zabacode.core.navigation import search_in_files
+    results = search_in_files(query, case_sensitive=case_sensitive, regex=regex)
+    return jsonify({
+        "ok": True,
+        "results": [r.to_dict() for r in results],
+        "total": len(results),
+    })
+
+
+@app.get("/api/workspace/symbols")
+@require_auth
+def workspace_symbols():
+    """Get symbols across all user files (VSCode workspace/symbol Ctrl+T)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_workspace_symbols
+    symbols = get_workspace_symbols(query)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.get("/api/workspace/imports")
+@require_auth
+def workspace_import_graph():
+    """Get the import graph for all user files (VSCode dependency view)."""
+    from zabacode.core.navigation import get_import_graph
+    graph = get_import_graph()
+    return jsonify({
+        "ok": True,
+        "graph": graph,
+    })
+
+
 def run_webview_server():
     """Run WebView server with port conflict detection (Fix #27)."""
     import socket
+
+    # Bootstrap service container (VSCode-inspired DI)
+    # This registers all services and commands before the server starts
+    get_service_container()
+    print("[INFO] Service container bootstrapped — events, commands, services ready")
 
     # Try ports 5000-5010 to handle collision/denial-of-service on fixed port
     for port in range(5000, 5011):

@@ -10,6 +10,7 @@ from waitress import serve  # type: ignore[import-untyped]
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.checker import check_code
+from zabacode.core.diff import compute_line_diff
 from zabacode.core.executor import (
     MAX_CODE_BYTES,
     MAX_INTERACTIVE_BYTES,
@@ -672,6 +673,8 @@ def oracle_fix():
     # while its current buffer still hashes to the exact source we analyzed.
     result = auto_fix_code(code, stderr)
     result["source_hash"] = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    if result.get("ok") and isinstance(result.get("fixed_code"), str):
+        result["diff"] = compute_line_diff(code, result["fixed_code"])
     if tab_id is not None:
         result["tab_id"] = tab_id
     if revision is not None:

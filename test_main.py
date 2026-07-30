@@ -1038,6 +1038,36 @@ class TestOracleLineMapping:
         assert PRELUDE_LINE_COUNT == SAFE_INPUT_PATCH.count("\n")
 
 
+class TestLineDiff:
+    """Patch previews must retain insertion/deletion alignment."""
+
+    def test_line_diff_does_not_shift_following_lines_after_an_insertion(self):
+        from zabacode.core.diff import compute_line_diff
+
+        diff = compute_line_diff("first\nthird", "first\nsecond\nthird")
+        assert diff == {
+            "truncated": False,
+            "changes": [
+                {"type": "insert", "old_start": 1, "old_end": 1, "new_start": 1, "new_end": 2}
+            ],
+        }
+
+    def test_line_diff_reports_replacement_range(self):
+        from zabacode.core.diff import compute_line_diff
+
+        diff = compute_line_diff("one\ntwo\nthree", "one\nTWO\nthree")
+        assert diff["truncated"] is False
+        assert diff["changes"] == [
+            {"type": "replace", "old_start": 1, "old_end": 2, "new_start": 1, "new_end": 2}
+        ]
+
+    def test_large_diff_is_safely_simplified(self):
+        from zabacode.core.diff import MAX_DIFF_LINES, compute_line_diff
+
+        source = "\n".join("line" for _ in range(MAX_DIFF_LINES + 1))
+        assert compute_line_diff(source, source + "\nextra") == {"truncated": True, "changes": []}
+
+
 class TestOracleAutoFix:
     """Verify Zaba Oracle's offline Auto-Fix capabilities."""
 
@@ -1114,6 +1144,10 @@ class TestOracleAutoFix:
         assert body["source_hash"] == hashlib.sha256(code.encode("utf-8")).hexdigest()
         assert body["tab_id"] == "tab-7"
         assert body["revision"] == 12
+        assert body["diff"] == {
+            "truncated": False,
+            "changes": [{"type": "replace", "old_start": 0, "old_end": 1, "new_start": 0, "new_end": 1}],
+        }
 
     def test_fix_endpoint_rejects_invalid_document_identity(self):
         from zabacode.core.security import AUTH_TOKEN
@@ -1157,6 +1191,9 @@ class TestOracleAutoFix:
         assert "getEditorValue() !== request.code" in html
         assert "data.source_hash" in html
         assert "function sha256Hex(text)" in html
+        assert "renderDiffView(request.code, data.fixed_code, data.diff)" in html
+        assert "function replaceEditorValueAsEdit(val)" in html
+        assert "↶ Undo Oracle Fix" in html
 
 
 # ===========================================================================

@@ -1880,6 +1880,28 @@ function setEditorValue(val) {
   updateLineCounter();
 }
 
+function replaceEditorValueAsEdit(val) {
+  suppressDocumentChange = true;
+  try {
+    if (activeEditorMode === 'ace' && editor && window.ace && ace.require) {
+      const Range = ace.require('ace/range').Range;
+      const session = editor.session;
+      const lastRow = Math.max(0, session.getLength() - 1);
+      const lastColumn = session.getLine(lastRow).length;
+      // Session.replace is a single Ace undoable edit; unlike editor.setValue,
+      // it does not reset the undo manager.
+      session.replace(new Range(0, 0, lastRow, lastColumn), val);
+      editor.clearSelection();
+    } else if (nativeCodeArea) {
+      nativeCodeArea.value = val;
+      updateNativeGutter();
+    }
+  } finally {
+    suppressDocumentChange = false;
+  }
+  updateLineCounter();
+}
+
 function refreshAceLayout() {
   if (editor && activeEditorMode === 'ace') {
     editor.resize();
@@ -3307,25 +3329,30 @@ function renderAutoFixRefusal(data, container, badge) {
   container.appendChild(card);
 }
 
-function renderDiffView(originalCode, fixedCode) {
+function renderDiffView(originalCode, fixedCode, lineDiff) {
   const origLines = originalCode.split('\n');
   const fixedLines = fixedCode.split('\n');
   let html = '<div class="diff-view" style="font-family:monospace; font-size:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border); padding:8px; border-radius:4px; margin-top:8px; overflow-x:auto;">';
-  const maxLen = Math.max(origLines.length, fixedLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const oLine = origLines[i];
-    const fLine = fixedLines[i];
-    if (oLine !== fLine) {
-      if (oLine !== undefined) {
-        html += `<div style="background:rgba(255,0,0,0.15); color:#ff6666; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(255,0,0,0.4); text-align:right; margin-right:8px;">${i+1} -</span>${escapeHtml(oLine)}</div>`;
-      }
-      if (fLine !== undefined) {
-        html += `<div style="background:rgba(0,255,0,0.15); color:#66ff66; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(0,255,0,0.4); text-align:right; margin-right:8px;">${i+1} +</span>${escapeHtml(fLine)}</div>`;
-      }
+
+  if (!lineDiff || lineDiff.truncated) {
+    return html + '<div style="color:var(--text-dim);">Preview simplified: this file is too large for a detailed mobile diff. The patch is still guarded by its source fingerprint.</div></div>';
+  }
+
+  for (const change of lineDiff.changes || []) {
+    if (change.type === 'replace' || change.type === 'delete') {
+      origLines.slice(change.old_start, change.old_end).forEach((line, index) => {
+        const lineNo = change.old_start + index + 1;
+        html += `<div style="background:rgba(255,0,0,0.15); color:#ff6666; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(255,0,0,0.4); text-align:right; margin-right:8px;">${lineNo} -</span>${escapeHtml(line)}</div>`;
+      });
+    }
+    if (change.type === 'replace' || change.type === 'insert') {
+      fixedLines.slice(change.new_start, change.new_end).forEach((line, index) => {
+        const lineNo = change.new_start + index + 1;
+        html += `<div style="background:rgba(0,255,0,0.15); color:#66ff66; padding:2px 4px; display:flex;"><span style="user-select:none; width:24px; color:rgba(0,255,0,0.4); text-align:right; margin-right:8px;">${lineNo} +</span>${escapeHtml(line)}</div>`;
+      });
     }
   }
-  html += '</div>';
-  return html;
+  return html + '</div>';
 }
 
 async function sha256Hex(text) {
@@ -3341,7 +3368,7 @@ function renderAutoFixResult(data, container, request) {
   resultCard.style.borderLeftColor = '#66ff66';
   resultCard.style.background = 'rgba(0,255,0,0.02)';
 
-  const diffHtml = renderDiffView(request.code, data.fixed_code);
+  const diffHtml = renderDiffView(request.code, data.fixed_code, data.diff);
 
   let formattedExplanation = escapeHtml(data.explanation)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
@@ -3383,10 +3410,31 @@ function renderAutoFixResult(data, container, request) {
       return;
     }
 
-    setEditorValue(data.fixed_code);
+    const beforeCode = getEditorValue();
+    replaceEditorValueAsEdit(data.fixed_code);
     markActiveTabChanged();
+    const appliedTab = tabs.find(tab => tab.id === activeTabId);
+    const appliedRevision = appliedTab ? appliedTab.revision : null;
+
+    applyBtn.innerHTML = '↶ Undo Oracle Fix';
+    applyBtn.onclick = () => {
+      const currentTab = tabs.find(tab => tab.id === activeTabId);
+      if (!currentTab || currentTab.id !== request.tabId || currentTab.revision !== appliedRevision
+          || getEditorValue() !== data.fixed_code) {
+        showToast('The editor changed after this fix. Revert was skipped to protect your newer work.', 'info');
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = 'Undo unavailable';
+        return;
+      }
+      replaceEditorValueAsEdit(beforeCode);
+      markActiveTabChanged();
+      applyBtn.disabled = true;
+      applyBtn.innerHTML = '↶ Fix reverted';
+      resultCard.querySelector('.oracle-badge').textContent = 'REVERTED';
+      showToast('Oracle fix reverted safely.', 'success');
+    };
+    resultCard.querySelector('.oracle-badge').textContent = 'APPLIED';
     showToast('Oracle fix applied and saved successfully!', 'success');
-    resultCard.remove();
   };
 
   resultCard.appendChild(applyBtn);

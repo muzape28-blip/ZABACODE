@@ -3755,7 +3755,7 @@ function renderProblemsPanel(diagnostics) {
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'problems-panel';
-    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:var(--bg-panel);border-top:2px solid var(--border);z-index:1000;display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;overflow:hidden;';
+    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:var(--bg-panel);border-top:2px solid var(--border);z-index:15;display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;overflow:hidden;';
     document.body.appendChild(panel);
   }
 
@@ -3769,13 +3769,14 @@ function renderProblemsPanel(diagnostics) {
 
   const total = counts.error + counts.warning + counts.info + counts.hint;
   panel.innerHTML = `
-    <div style="display:flex;align-items:center;padding:6px 10px;background:var(--bg-panel-2);border-bottom:1px solid var(--border);cursor:pointer;" onclick="toggleProblemsPanel()">
-      <span style="font-weight:bold;color:var(--text);margin-right:12px;">PROBLEMS</span>
+    <div style="display:flex;align-items:center;padding:6px 10px;background:var(--bg-panel-2);border-bottom:1px solid var(--border);">
+      <span style="font-weight:bold;color:var(--text);margin-right:12px;cursor:pointer;" onclick="toggleProblemsPanel()">PROBLEMS</span>
       ${counts.error ? `<span style="color:#ff6666;margin-right:8px;">${counts.error} error${counts.error > 1 ? 's' : ''}</span>` : ''}
       ${counts.warning ? `<span style="color:#ffaa00;margin-right:8px;">${counts.warning} warning${counts.warning > 1 ? 's' : ''}</span>` : ''}
       ${counts.info ? `<span style="color:#66aaff;margin-right:8px;">${counts.info} info</span>` : ''}
       ${!total ? '<span style="color:var(--text-dim);">No problems detected</span>' : ''}
-      <span style="margin-left:auto;color:var(--text-dim);font-size:10px;">▼</span>
+      <span style="margin-left:auto;color:var(--text-dim);cursor:pointer;font-size:10px;" onclick="toggleProblemsPanel()">▼</span>
+      <button onclick="closeProblemsPanel();event.stopPropagation();" style="margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:10px;padding:1px 6px;cursor:pointer;border-radius:3px;">✕</button>
     </div>
     <div id="problems-list" style="overflow-y:auto;flex:1;max-height:30vh;">
       ${(diagnostics || []).map(d => `
@@ -3798,6 +3799,12 @@ function toggleProblemsPanel() {
   if (list) {
     list.style.display = list.style.display === 'none' ? 'block' : 'none';
   }
+}
+
+function closeProblemsPanel() {
+  const panel = document.getElementById('problems-panel');
+  if (panel) panel.remove();
+  clearAceAnnotations();
 }
 
 function goToProblem(line, column) {
@@ -3849,14 +3856,39 @@ async function refreshDiagnostics() {
 function openProblemsSheet() {
   refreshDiagnostics();
   const panel = document.getElementById('problems-panel');
-  if (panel) panel.style.display = 'flex';
+  if (panel) {
+    panel.style.display = 'flex';
+  } else {
+    // Panel doesn't exist yet — render it (refreshDiagnostics already called)
+    // The panel is created inside renderProblemsPanel, so let's do a fresh render
+    // with empty diagnostics to create the panel, then let refreshDiagnostics
+    // re-fetch and update.
+    renderProblemsPanel([]);
+    refreshDiagnostics();
+  }
 }
 
 // Debounced diagnostics on code change
 let _diagTimeout = null;
 function scheduleDiagnostics() {
   if (_diagTimeout) clearTimeout(_diagTimeout);
-  _diagTimeout = setTimeout(refreshDiagnostics, 1500);
+  // Auto-diagnostics silently set Ace gutter annotations only;
+  // the Problems panel is NOT auto-opened — it covers the RUN/CLEAR buttons.
+  _diagTimeout = setTimeout(async () => {
+    const code = getEditorValue();
+    if (!code.trim()) { clearAceAnnotations(); return; }
+    try {
+      const res = await fetchApi('/api/diagnostics/aggregate', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.annotations && editor && editor.session) {
+          editor.session.setAnnotations(data.annotations);
+        } else {
+          setAceAnnotations(data.diagnostics);
+        }
+      }
+    } catch (e) { /* silent */ }
+  }, 1500);
 }
 
 // Hook diagnostics into Ace change events
@@ -4040,10 +4072,46 @@ async function executePaletteAction(item) {
       break;
     }
     case 'view.problems':
-      refreshDiagnostics();
+      openProblemsSheet();
       break;
     case 'view.terminal': {
       goToOutput();
+      break;
+    }
+    case 'file.new': {
+      // Create a new empty tab
+      const newId = 'tab-' + Date.now();
+      tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "", revision: 0 });
+      switchTab(newId);
+      showToast('New file created', 'success');
+      break;
+    }
+    case 'file.open':
+      // Open file manager dialog
+      openFileManager(false);
+      break;
+    case 'file.save':
+      // Open file manager in save mode
+      openFileManager(true);
+      break;
+    case 'file.delete':
+      // Open file manager (has delete buttons)
+      openFileManager(false);
+      break;
+    case 'settings.ai_provider': {
+      const aiPanelEl = document.getElementById('ai-panel');
+      if (aiPanelEl) aiPanelEl.classList.add('open');
+      const aiProvEl = document.getElementById('ai-provider');
+      if (aiProvEl) aiProvEl.focus();
+      break;
+    }
+    case 'settings.libraries':
+      openLibraryManager();
+      break;
+    case 'settings.plugins': {
+      const mktBack = document.getElementById('market-modal-backdrop');
+      if (mktBack) mktBack.classList.add('open');
+      loadMarketplace();
       break;
     }
     case 'ai.chat': {
@@ -4073,12 +4141,10 @@ async function executePaletteAction(item) {
       break;
     }
     case 'settings.theme': {
-      // Inline input — no native prompt() dialog
-      const themeName = await _inlineInput('Theme name (retro, dracula, monokai, cyberpunk, nord, etc.):');
-      if (themeName) {
-        await applyTheme(themeName);
-        showToast(`Theme changed to ${themeName}!`, 'success');
-      }
+      // Open the theme picker dialog instead of text input
+      const themeBackdrop = document.getElementById('theme-dialog-backdrop');
+      if (themeBackdrop) themeBackdrop.classList.add('open');
+      loadThemes();
       break;
     }
     case 'settings.search':
@@ -4097,7 +4163,15 @@ async function executePaletteAction(item) {
       break;
     }
     default:
-      showToast(`Action: ${item.label} (not yet implemented)`, 'info');
+      // Try executing as a palette action via Quick Open or other known patterns
+      if (action === 'navigate.symbol') {
+        const code = getEditorValue();
+        const res = await fetchApi('/api/editor/outline', { method: 'POST', body: JSON.stringify({ code }) });
+        const data = await res.json();
+        if (data.ok && data.symbols) showSymbolOutline(data.symbols);
+      } else {
+        showToast(`Action: ${item.label}`, 'info');
+      }
   }
 }
 
@@ -4154,6 +4228,14 @@ function openQuickOpen(prefix) {
           openFileByName(item.args[0]);
         } else if (item.action === 'navigate.line' && item.args[0]) {
           if (editor) { editor.gotoLine(item.args[0], 0, true); editor.focus(); }
+        } else if (item.action === 'navigate.symbol') {
+          // Symbol search in Quick Open — show outline
+          const code = getEditorValue();
+          fetchApi('/api/editor/outline', { method: 'POST', body: JSON.stringify({ code }) })
+            .then(r => r.json()).then(d => { if (d.ok && d.symbols) showSymbolOutline(d.symbols); });
+        } else {
+          // Delegate to executePaletteAction for other action types
+          executePaletteAction(item);
         }
       };
       list.appendChild(row);

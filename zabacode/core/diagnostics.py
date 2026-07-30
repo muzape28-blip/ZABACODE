@@ -12,6 +12,7 @@ We port this to Python:
   - DiagnosticCollection: a named collection of diagnostics
   - DiagnosticEngine: aggregates diagnostics from all sources
   - QuickFix: a code action that can resolve a diagnostic
+  - make_diagnostic / diagnostics_to_ace_annotations: convenience helpers
 
 References:
   - https://github.com/microsoft/vscode/blob/main/src/vs/editor/common/services/diagnostics.ts
@@ -24,7 +25,7 @@ import ast
 import enum
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from zabacode.core.events import Emitter, IDisposable
 
@@ -438,6 +439,78 @@ def _analyze_ast(tree: ast.AST, code: str) -> list[Diagnostic]:
             diagnostics.append(diag)
 
     return diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Convenience helpers — make_diagnostic, Ace annotation conversion
+# ---------------------------------------------------------------------------
+
+def make_diagnostic(
+    start_line: int,
+    start_col: int,
+    end_line: int,
+    end_col: int,
+    message: str,
+    severity: DiagnosticSeverity = DiagnosticSeverity.ERROR,
+    source: str = "oracle",
+    code: Optional[str | int] = None,
+    fixable: bool = False,
+    quick_fix_id: Optional[str] = None,
+    explanation: Optional[str] = None,
+) -> Diagnostic:
+    """Helper to create a well-formed Diagnostic dataclass.
+
+    Accepts the same keyword arguments as the main-branch TypedDict factory
+    but returns the HEAD-branch dataclass instance, so both code paths work.
+    """
+    qf: list[QuickFix] = []
+    if fixable and quick_fix_id:
+        qf.append(QuickFix(
+            title=f"Quick fix: {quick_fix_id}",
+            action=quick_fix_id,
+            is_preferred=True,
+        ))
+    return Diagnostic(
+        line=start_line + 1,          # make_diagnostic is 0-based; Diagnostic is 1-based
+        column=start_col + 1,
+        end_line=end_line + 1,
+        end_column=end_col + 1,
+        message=message,
+        severity=severity,
+        source=source,
+        code=str(code) if code is not None else None,
+        quick_fixes=qf,
+    )
+
+
+def diagnostics_to_ace_annotations(diagnostics: list[Diagnostic]) -> list[dict[str, Any]]:
+    """
+    Convert our Diagnostic list into Ace Editor annotation format.
+    Ace uses: { row, column, text, type }
+    type can be 'error', 'warning', 'info'
+    """
+    annotations = []
+    for d in diagnostics:
+        sev = d.severity
+        if sev >= DiagnosticSeverity.ERROR:
+            ann_type = "error"
+        elif sev >= DiagnosticSeverity.WARNING:
+            ann_type = "warning"
+        else:
+            ann_type = "info"
+
+        annotations.append({
+            "row": d.line - 1,          # Ace uses 0-based rows
+            "column": d.column - 1,     # Ace uses 0-based columns
+            "text": d.message,
+            "type": ann_type,
+        })
+    return annotations
+
+
+def get_severity_name(severity: int) -> str:
+    """Get human-readable name for a severity value."""
+    return _SEVERITY_LABELS.get(DiagnosticSeverity(severity), "Unknown")
 
 
 # ---------------------------------------------------------------------------

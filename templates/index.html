@@ -3816,17 +3816,40 @@ async function refreshDiagnostics() {
     return;
   }
   try {
-    const res = await fetchApi('/api/diagnostics', {
+    // Try the aggregate endpoint first (unified Oracle + checker),
+    // fall back to the engine-backed endpoint
+    let res = await fetchApi('/api/diagnostics/aggregate', {
       method: 'POST',
       body: JSON.stringify({ code })
     });
-    const data = await res.json();
+    let data = await res.json();
+    if (data.ok) {
+      // Aggregate endpoint returns both diagnostics and Ace annotations
+      renderProblemsPanel(data.diagnostics);
+      if (data.annotations && editor && editor.session) {
+        editor.session.setAnnotations(data.annotations);
+      }
+      return;
+    }
+    // Fallback to engine-backed endpoint
+    res = await fetchApi('/api/diagnostics', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    });
+    data = await res.json();
     if (data.ok) {
       renderProblemsPanel(data.diagnostics);
     }
   } catch (e) {
     // Non-critical: diagnostics are best-effort
   }
+}
+
+// Open Problems bottom sheet (alias used by main's Problems UI)
+function openProblemsSheet() {
+  refreshDiagnostics();
+  const panel = document.getElementById('problems-panel');
+  if (panel) panel.style.display = 'flex';
 }
 
 // Debounced diagnostics on code change

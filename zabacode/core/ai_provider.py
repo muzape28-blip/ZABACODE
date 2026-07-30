@@ -272,7 +272,10 @@ def call_ollama(api_key: str, message: str, code_context: str = "", model: str =
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=120, context=get_ssl_context()) as resp:
+        # No SSL context: Ollama runs on a plain HTTP loopback URL.
+        # Passing an SSL context to an http:// request is a no-op in CPython
+        # but is semantically incorrect and misleading — omitted here.
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read())
         return {"ok": True, "reply": data.get("message", {}).get("content", "")}
     except Exception as e:

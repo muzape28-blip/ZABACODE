@@ -786,6 +786,258 @@ def oracle_fix():
     return jsonify(result)
 
 
+# ---------------------------------------------------------------------------
+# P1: Diagnostics — VSCode-inspired Diagnostic Collection
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/diagnostics")
+@require_auth
+def get_diagnostics():
+    """Analyze code and return diagnostics with quick-fixes (VSCode DiagnosticCollection pattern)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.diagnostics import analyze_code_diagnostics, get_diagnostic_engine
+    diags = analyze_code_diagnostics(code)
+
+    # Update the diagnostic engine's "checker" collection
+    engine = get_diagnostic_engine()
+    collection = engine.create_collection("checker")
+    collection.set(diags)
+
+    return jsonify({
+        "ok": True,
+        "diagnostics": [d.to_dict() for d in diags],
+        "counts": engine.get_diagnostics_severity_counts(),
+    })
+
+
+@app.get("/api/diagnostics")
+@require_auth
+def get_current_diagnostics():
+    """Get all current diagnostics from all collections (VSCode aggregated diagnostics)."""
+    from zabacode.core.diagnostics import get_diagnostic_engine
+    engine = get_diagnostic_engine()
+    diags = engine.get_all_diagnostics()
+    return jsonify({
+        "ok": True,
+        "diagnostics": [d.to_dict() for d in diags],
+        "counts": engine.get_diagnostics_severity_counts(),
+    })
+
+
+# ---------------------------------------------------------------------------
+# P2: Editor Intelligence — VSCode-inspired Language Features
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/editor/outline")
+@require_auth
+def editor_outline():
+    """Get AST symbol outline for the current file (VSCode DocumentSymbolProvider)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import get_symbol_outline
+    symbols = get_symbol_outline(code)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.post("/api/editor/symbols")
+@require_auth
+def editor_symbols():
+    """Search for symbols in the current file (VSCode workspace/symbol)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    query = payload.get("query", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(query, str):
+        return jsonify({"ok": False, "message": "Field 'query' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import find_symbol
+    symbols = find_symbol(code, query)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.post("/api/editor/completions")
+@require_auth
+def editor_completions():
+    """Get autocomplete completions for the cursor position (VSCode CompletionItemProvider)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+
+    from zabacode.core.editor_intelligence import get_completions
+    completions = get_completions(code, line, column)
+    return jsonify({
+        "ok": True,
+        "completions": [c.to_dict() for c in completions],
+    })
+
+
+@app.post("/api/editor/rename")
+@require_auth
+def editor_rename():
+    """Rename a symbol at the given position (VSCode RenameProvider, local one-file)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    new_name = payload.get("new_name", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+    if not isinstance(new_name, str):
+        return jsonify({"ok": False, "message": "Field 'new_name' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import rename_symbol
+    result = rename_symbol(code, line, column, new_name)
+    return jsonify(result)
+
+
+@app.post("/api/editor/organize-imports")
+@require_auth
+def editor_organize_imports():
+    """Organize imports: sort, group, and remove unused (VSCode organizeImports)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    code = payload.get("code", "")
+    if not isinstance(code, str):
+        return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import organize_imports
+    result = organize_imports(code)
+    if result.get("ok") and isinstance(result.get("code"), str):
+        result["diff"] = compute_line_diff(code, result["code"])
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# P3: Navigation UX — VSCode-inspired Command Palette & Quick Open
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/palette")
+@require_auth
+def command_palette():
+    """Get command palette items, optionally filtered (VSCode Command Palette)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_command_palette_items
+    items = get_command_palette_items(query)
+    return jsonify({
+        "ok": True,
+        "items": [i.to_dict() for i in items],
+    })
+
+
+@app.get("/api/quickopen")
+@require_auth
+def quick_open():
+    """Get Quick Open items — files and symbols (VSCode Quick Open Ctrl+P)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_quick_open_items
+    items = get_quick_open_items(query)
+    return jsonify({
+        "ok": True,
+        "items": [i.to_dict() for i in items],
+    })
+
+
+@app.get("/api/settings")
+@require_auth
+def get_settings():
+    """Get all settings, optionally filtered (VSCode Searchable Settings)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_all_settings
+    settings = get_all_settings(query)
+    return jsonify({
+        "ok": True,
+        "settings": [s.to_dict() for s in settings],
+    })
+
+
+# ---------------------------------------------------------------------------
+# P4: Workspace — VSCode-inspired Search & Symbol Index
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/search")
+@require_auth
+def search_in_files_endpoint():
+    """Search across all user files (VSCode Search in Files Ctrl+Shift+F)."""
+    query = request.args.get("q", "")
+    case_sensitive = request.args.get("case", "0") == "1"
+    regex = request.args.get("regex", "0") == "1"
+    if not query:
+        return jsonify({"ok": True, "results": []})
+
+    from zabacode.core.navigation import search_in_files
+    results = search_in_files(query, case_sensitive=case_sensitive, regex=regex)
+    return jsonify({
+        "ok": True,
+        "results": [r.to_dict() for r in results],
+        "total": len(results),
+    })
+
+
+@app.get("/api/workspace/symbols")
+@require_auth
+def workspace_symbols():
+    """Get symbols across all user files (VSCode workspace/symbol Ctrl+T)."""
+    query = request.args.get("q", "")
+    from zabacode.core.navigation import get_workspace_symbols
+    symbols = get_workspace_symbols(query)
+    return jsonify({
+        "ok": True,
+        "symbols": [s.to_dict() for s in symbols],
+    })
+
+
+@app.get("/api/workspace/imports")
+@require_auth
+def workspace_import_graph():
+    """Get the import graph for all user files (VSCode dependency view)."""
+    from zabacode.core.navigation import get_import_graph
+    graph = get_import_graph()
+    return jsonify({
+        "ok": True,
+        "graph": graph,
+    })
+
+
 def run_webview_server():
     """Run WebView server with port conflict detection (Fix #27)."""
     import socket

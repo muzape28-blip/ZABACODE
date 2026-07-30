@@ -60,6 +60,43 @@ These patterns are direct ports of VSCode's proven architecture, adapted for Pyt
 - VSCode DI: https://github.com/microsoft/vscode/blob/main/src/vs/platform/instantiation/common/instantiationService.ts
 - VSCode Architecture Guide: https://github.com/microsoft/vscode/wiki/source-code-organization
 
+### P1 — Diagnostics (VSCode DiagnosticCollection)
+
+- `core/diagnostics.py`: Full diagnostic system
+  - `Diagnostic`: typed severity (Error/Warning/Info/Hint), range, source, code, tags
+  - `QuickFix`: code actions with command ID, args, and isPreferred flag
+  - `DiagnosticCollection`: named collection per provider (mirrors VSCode's DiagnosticCollection)
+  - `DiagnosticEngine`: aggregated diagnostics across all sources with change events
+  - `analyze_code_diagnostics()`: AST-based diagnostics (syntax errors, unused imports, missing docstrings, bare except)
+  - Each diagnostic carries quick-fixes (e.g. "Remove unused import", "Auto-Fix with Oracle")
+- API: `POST /api/diagnostics` (analyze code), `GET /api/diagnostics` (current state)
+
+### P2 — Editor Intelligence (VSCode Language Features)
+
+- `core/editor_intelligence.py`: Full editor intelligence module
+  - `get_symbol_outline()`: AST symbol tree (classes, functions, imports, globals) with nested children
+  - `find_symbol()`: go-to-symbol search (fuzzy/prefix match)
+  - `get_completions()`: 73+ completion items (Python keywords, builtins, snippets, local symbols)
+  - `rename_symbol()`: local one-file rename with word-boundary safety and name conflict detection
+  - `organize_imports()`: PEP 8 import sorting (stdlib/third-party grouping), unused removal
+- API: `/api/editor/outline`, `/api/editor/symbols`, `/api/editor/completions`,
+       `/api/editor/rename`, `/api/editor/organize-imports`
+
+### P3 — Navigation UX (VSCode Command Palette & Quick Open)
+
+- `core/navigation.py`: Full navigation module
+  - `get_command_palette_items()`: all commands + file ops + editor actions + navigation + AI + settings
+  - `get_quick_open_items()`: files + `@symbol` search + `:line` goto
+  - `get_all_settings()`: searchable settings with categories (Editor, Appearance, AI, Execution, Plugins)
+  - `search_in_files()`: cross-file search with regex and case-sensitive support
+- API: `/api/palette`, `/api/quickopen`, `/api/settings`, `/api/search`
+
+### P4 — Workspace (VSCode Workspace model)
+
+- `get_workspace_symbols()`: cross-file symbol index (Ctrl+T)
+- `get_import_graph()`: import dependency graph across all user files
+- API: `/api/workspace/symbols`, `/api/workspace/imports`
+
 ## Unreleased
 
 ### Safety

@@ -21,14 +21,14 @@ MAX_FILENAME_LEN = 128
 def secure_filename(filename: str) -> str | None:
     """
     Validate and secure a filename.
-    
+
     Security protections:
     - Block path traversal (.., /, \\)
     - Block null bytes
     - Block dotfiles and hidden files
     - Block underscore-prefixed system files
     - Auto-append .py extension
-    
+
     Returns secured filename or None if invalid.
     """
     if not filename:

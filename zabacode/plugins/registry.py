@@ -4,7 +4,7 @@ Expanded plugin catalog with functional implementations.
 """
 
 # Plugin registry
-MARKETPLACE_PLUGINS = {
+MARKETPLACE_PLUGINS: dict[str, dict[str, object]] = {
     # === Core Plugins ===
     "auto_formatter": {
         "id": "auto_formatter",
@@ -401,28 +401,28 @@ db.close()
         "name": "Python Class Template",
         "code": '''class DataProcessor:
     """Template class for data processing."""
-    
+
     def __init__(self, name: str):
         self.name = name
         self._data = []
-    
+
     @property
     def data(self):
         return self._data
-    
+
     @data.setter
     def data(self, value):
         self._data = value
-    
+
     def add(self, item):
         self._data.append(item)
-    
+
     def process(self):
         return [str(x).upper() for x in self._data]
-    
+
     def __len__(self):
         return len(self._data)
-    
+
     def __repr__(self):
         return f"DataProcessor({self.name!r}, items={len(self)})"
 

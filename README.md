@@ -27,7 +27,7 @@
 │  ZABACODE v1.2.0 — WebView Shell + Modular Python Core                    │
 │  [ OK ] Ace Editor 1.32.4 Bundled (100% Offline, 45-60 FPS)               │
 │  [ OK ] Modular Core Engine + Isolated Subprocess Runner (Timeout+PGID)  │
-│  [ OK ] Android Keystore + Authenticated Key Vault (AES-GCM)             │
+│  [ OK ] Android Keystore + Authenticated Local Key Vault                │
 │  [ OK ] PyPI Wheel Extractor (Verified TLS + certifi + SHA-256)          │
 │  [ OK ] 7 AI Providers: OpenRouter/Gemini/Groq/Mistral/DeepSeek/Ollama/Custom │
 │  [ OK ] Zaba Oracle — Offline Code Intelligence (No Key, No Network)     │

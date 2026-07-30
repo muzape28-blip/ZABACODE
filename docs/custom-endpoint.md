@@ -49,7 +49,7 @@ Custom endpoint is optional online extension, not replacement for Oracle.
 
 - Uses shared `get_ssl_context()` (certifi bundle), no `ssl._create_unverified_context()`
 - CSP headers active, loopback-only server, token auth
-- API keys encrypted via keystore.py (AES-GCM) or in-memory only
+- API keys use Android Keystore when available; desktop fallback is a locally persisted, authenticated encrypted file (see `SECURITY.md`)
 
 ## Examples
 

@@ -1,5 +1,65 @@
 # Changelog
 
+## [1.2.1] - 2026-07-30 — VSCode-Inspired Architecture: Events, Commands, Services
+
+### Architecture — Ported from [microsoft/vscode](https://github.com/microsoft/vscode)
+
+These patterns are direct ports of VSCode's proven architecture, adapted for Python:
+
+- **EventEmitter + Disposable** (`core/events.py`) — VSCode's `src/vs/base/common/event.ts` pattern.
+  - `Emitter<T>`: manages listeners, fires events, returns `IDisposable` for auto-cleanup
+  - `Disposable` + `DisposableStore`: base class for resource management via `_register()` / `dispose()`
+  - `AppEvents`: central event bus with typed events (`onDidRunCode`, `onDidSaveFile`, `onDidAIChat`, etc.)
+  - `event_any()`: combine multiple events into one (mirrors VSCode's `Event.any()`)
+  - `debounce_event()`: debounce rapid-fire events (mirrors VSCode's `Event.debounce()`)
+  - Thread-safe: all listener management is protected by locks (VSCode's renderer is single-threaded; Python isn't)
+
+- **Command Registry** (`core/commands.py`) — VSCode's `src/vs/platform/commands/common/commands.ts` pattern.
+  - `register_command(id, handler)`: register named commands with Disposable cleanup
+  - `@registry.command(id)` decorator: declarative registration
+  - `execute_command(id, *args)`: execute by ID
+  - Replaces hardcoded `PluginExecutor` if/elif chain — plugins self-register via `@plugin_command()`
+
+- **Service Container** (`core/services.py`) — VSCode's `src/vs/platform/instantiation/` pattern.
+  - `ServiceCollection`: register service interfaces → implementations
+  - `ServiceContainer`: lazy singleton resolution with thread-safe caching
+  - `ServiceIdentifier`: typed service keys (mirrors VSCode's `createDecorator()`)
+  - `bootstrap_services()`: single place where all services are wired (mirrors VSCode's `bootstrapApplication()`)
+  - All 12 core services registered with lazy factories
+
+- **Contribution Pattern** (`plugins/contribution.py`) — VSCode's `vs/workbench/contrib/` pattern.
+  - `@plugin_command(id)`: decorator for plugins to self-register as commands
+  - `@on_event(name)`: decorator for event listeners with auto-cleanup
+  - Plugins no longer need to edit core code to register themselves
+
+### API Endpoints — New
+
+- `GET /api/commands` — List all registered commands (VSCode CommandsRegistry pattern)
+- `POST /api/commands/execute` — Execute a command by ID (VSCode CommandService pattern)
+- `GET /api/events/status` — Event system status (listener counts for debugging)
+
+### Events — Integrated into Existing Routes
+
+- `/api/run` fires `onDidRunCode` after execution
+- `/api/run/interactive/start` fires `onWillRunCode` before execution
+- `/api/files/<name>` (POST) fires `onDidSaveFile` after save
+- `/api/files/<name>` (DELETE) fires `onDidDeleteFile` after delete
+- `/api/ai/chat` fires `onDidAIChat` after AI response
+- `/api/libraries/install` fires `onDidInstallLibrary` after installation
+
+### Refactored
+
+- `PluginExecutor.execute_plugin()` now resolves via Command Registry first, with hardcoded fallback
+- `web_app.py` bootstraps service container at startup
+- `plugins/implementations.py` plugins registered as commands in `bootstrap_services()`
+
+### References
+
+- VSCode Event System: https://github.com/microsoft/vscode/blob/main/src/vs/base/common/event.ts
+- VSCode Commands: https://github.com/microsoft/vscode/blob/main/src/vs/platform/commands/common/commands.ts
+- VSCode DI: https://github.com/microsoft/vscode/blob/main/src/vs/platform/instantiation/common/instantiationService.ts
+- VSCode Architecture Guide: https://github.com/microsoft/vscode/wiki/source-code-organization
+
 ## Unreleased
 
 ### Safety

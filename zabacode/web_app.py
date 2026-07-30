@@ -1,4 +1,10 @@
-"""WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle."""
+"""WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle.
+
+Architecture (v1.2.1+): VSCode-inspired event system + command registry + service container.
+  - Events:    core modules fire events, web_app routes and plugins listen
+  - Commands:  plugins register as commands, no more hardcoded if/elif
+  - Services:  lazy-loaded, testable, decoupled dependency injection
+"""
 
 import functools
 import hashlib
@@ -10,7 +16,9 @@ from waitress import serve  # type: ignore[import-untyped]
 
 from zabacode.core.ai_provider import ALLOWED_PROVIDERS, PROVIDER_HANDLERS
 from zabacode.core.checker import check_code
+from zabacode.core.commands import get_command_registry
 from zabacode.core.diff import compute_line_diff
+from zabacode.core.events import get_app_events
 from zabacode.core.executor import (
     MAX_CODE_BYTES,
     MAX_INTERACTIVE_BYTES,
@@ -25,12 +33,13 @@ from zabacode.core.file_manager import delete_file, list_files, read_file, save_
 from zabacode.core.net import TLS_HELP_MESSAGE, ca_bundle_available
 from zabacode.core.oracle import analyze_buffer, auto_fix_code, humanize_traceback, offline_reply
 from zabacode.core.security import AUTH_TOKEN, load_keys, save_key, verify_token
+from zabacode.core.services import get_service_container
 from zabacode.lib_manager import get_all_libraries, install_library
 from zabacode.plugins.implementations import PluginExecutor
 from zabacode.plugins.registry import get_all_plugins
 from zabacode.themes.definitions import get_theme, list_themes
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 MAX_AI_FIELD_CHARS = 100_000
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -172,6 +181,69 @@ def health_check():
     )
 
 
+# ---------------------------------------------------------------------------
+# VSCode-inspired API endpoints — Command Registry & Event System
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/commands")
+@require_auth
+def list_commands():
+    """List all registered commands (VSCode CommandsRegistry pattern)."""
+    registry = get_command_registry()
+    return jsonify({"ok": True, "commands": registry.get_all_commands_info()})
+
+
+@app.post("/api/commands/execute")
+@require_auth
+def execute_command():
+    """Execute a registered command by ID (VSCode CommandService pattern)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    command_id = payload.get("command_id", "")
+    args = payload.get("args", [])
+
+    if not isinstance(command_id, str):
+        return jsonify({"ok": False, "message": "Field 'command_id' must be a string."}), 400
+    if not isinstance(args, list):
+        return jsonify({"ok": False, "message": "Field 'args' must be an array."}), 400
+
+    registry = get_command_registry()
+    if not registry.has_command(command_id):
+        return jsonify({"ok": False, "message": f"Command '{command_id}' not found."}), 404
+
+    try:
+        result = registry.execute_command(command_id, *args)
+        if isinstance(result, tuple) and len(result) == 2:
+            new_code, report = result
+            return jsonify({"ok": True, "code": new_code, "report": "\n".join(report) if isinstance(report, list) else str(report)})
+        return jsonify({"ok": True, "result": result})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"Command execution failed: {e}"}), 500
+
+
+@app.get("/api/events/status")
+@require_auth
+def events_status():
+    """Report event system status — listener counts for debugging."""
+    events = get_app_events()
+    return jsonify({
+        "ok": True,
+        "events": {
+            "onWillRunCode": events._onWillRunCode.listener_count,
+            "onDidRunCode": events._onDidRunCode.listener_count,
+            "onDidSaveFile": events._onDidSaveFile.listener_count,
+            "onDidDeleteFile": events._onDidDeleteFile.listener_count,
+            "onWillAIChat": events._onWillAIChat.listener_count,
+            "onDidAIChat": events._onDidAIChat.listener_count,
+            "onDidTogglePlugin": events._onDidTogglePlugin.listener_count,
+            "onDidInstallLibrary": events._onDidInstallLibrary.listener_count,
+        },
+    })
+
+
 @app.post("/api/run")
 @require_auth
 def run_code():
@@ -232,6 +304,15 @@ def run_code():
 
     result = execute_code_isolated(code, stdin_data=stdin_data)
 
+    # Fire events (VSCode-inspired event bus)
+    events = get_app_events()
+    events.fire_did_run_code({
+        "mode": "isolated",
+        "ok": result.get("ok"),
+        "timeout": result.get("timeout"),
+        "code_size": len(code.encode("utf-8")),
+    })
+
     # Offline Oracle: explain the crash in plain language, no network needed.
     if not result.get("ok") and result.get("stderr"):
         explanation = humanize_traceback(result["stderr"], line_offset=PRELUDE_LINE_COUNT)
@@ -267,7 +348,12 @@ def run_interactive_start():
             ),
             413,
         )
-    return jsonify(start_interactive_session(code))
+    result = start_interactive_session(code)
+    # Fire event (VSCode-inspired event bus)
+    if result.get("ok"):
+        events = get_app_events()
+        events.fire_will_run_code({"mode": "interactive", "code_size": len(code.encode("utf-8"))})
+    return jsonify(result)
 
 
 @app.get("/api/run/interactive/output")
@@ -350,7 +436,11 @@ def install():
             ),
             400,
         )
-    return jsonify(install_library(payload.get("name", "")))
+    result = install_library(payload.get("name", ""))
+    # Fire event (VSCode-inspired event bus)
+    if result.get("ok"):
+        get_app_events().fire_did_install_library({"name": payload.get("name", "")})
+    return jsonify(result)
 
 
 @app.get("/api/files")
@@ -380,8 +470,14 @@ def file_item(filename):
                 400,
             )
         result = save_file(filename, payload.get("content", ""))
+        # Fire event (VSCode-inspired event bus)
+        if result.get("ok"):
+            get_app_events().fire_did_save_file({"filename": result.get("filename", filename)})
     else:
         result = delete_file(filename)
+        # Fire event (VSCode-inspired event bus)
+        if result.get("ok"):
+            get_app_events().fire_did_delete_file({"filename": filename})
     return jsonify(result), (200 if result.get("ok") else 400)
 
 
@@ -609,6 +705,14 @@ def ai_chat():
 
     result = PROVIDER_HANDLERS[provider](api_key, message, code, model=model)
 
+    # Fire events (VSCode-inspired event bus)
+    events = get_app_events()
+    events.fire_did_ai_chat({
+        "provider": provider,
+        "ok": result.get("ok"),
+        "fallback": result.get("fallback_reason"),
+    })
+
     # Cloud unreachable (TLS, rate limit, airplane mode)? The Oracle still answers.
     if not result.get("ok") and allow_offline:
         fallback = offline_reply(message, code)
@@ -685,6 +789,11 @@ def oracle_fix():
 def run_webview_server():
     """Run WebView server with port conflict detection (Fix #27)."""
     import socket
+
+    # Bootstrap service container (VSCode-inspired DI)
+    # This registers all services and commands before the server starts
+    get_service_container()
+    print("[INFO] Service container bootstrapped — events, commands, services ready")
 
     # Try ports 5000-5010 to handle collision/denial-of-service on fixed port
     for port in range(5000, 5011):

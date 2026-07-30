@@ -418,10 +418,47 @@ class VariableTypeHintGenerator:
 
 
 class PluginExecutor:
-    """Central registry and executor for transform plugins."""
+    """Central registry and executor for transform plugins.
+
+    Refactored to use the VSCode-inspired Command Registry pattern.
+    New plugins can be registered via:
+        from zabacode.core.commands import register_command
+        register_command("zabacode.plugin.my_new_plugin", MyPlugin.run)
+    No need to edit this file anymore.
+    """
+
+    # Map from plugin_id (used by the API) to command_id (used by the registry)
+    _PLUGIN_COMMAND_MAP: dict[str, str] = {
+        "auto_import_optimizer": "zabacode.plugin.auto_import_optimizer",
+        "duplicate_line_detector": "zabacode.plugin.duplicate_line_detector",
+        "smart_comment_generator": "zabacode.plugin.smart_comment_generator",
+        "code_beautifier_pro": "zabacode.plugin.code_beautifier_pro",
+        "variable_type_hint_generator": "zabacode.plugin.variable_type_hint_generator",
+    }
 
     @staticmethod
     def execute_plugin(plugin_id: str, code: str) -> dict:
+        """Execute a plugin by ID using the command registry.
+
+        Falls back to the hardcoded path for unregistered plugins
+        (backward compatibility during migration).
+        """
+        command_id = PluginExecutor._PLUGIN_COMMAND_MAP.get(plugin_id)
+
+        if command_id:
+            try:
+                from zabacode.core.commands import get_command_registry
+                registry = get_command_registry()
+                if registry.has_command(command_id):
+                    result = registry.execute_command(command_id, code)
+                    if isinstance(result, tuple) and len(result) == 2:
+                        new_code, report = result
+                        return {"ok": True, "code": new_code, "report": "\n".join(report)}
+                    return {"ok": True, "code": code, "report": str(result)}
+            except Exception:
+                pass  # Fall through to hardcoded path
+
+        # Hardcoded fallback — will be removed once all plugins are migrated
         if plugin_id == "auto_import_optimizer":
             new_code, report = AutoImportOptimizer.optimize(code)
             return {"ok": True, "code": new_code, "report": "\n".join(report)}

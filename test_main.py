@@ -469,7 +469,7 @@ class TestVersion:
     """Test version info."""
 
     def test_version_is_1_2_0(self):
-        assert __version__ == "1.2.0"
+        assert __version__ == "1.2.1"
 
 
 if __name__ == "__main__":

@@ -912,10 +912,16 @@ function rgbaToHex(rgba) {
 let interactiveActive = false;
 let currentLang = 'en';
 let tabs = [
-  { id: 'tab-1', name: 'main.py', content: "print('Hello! Welcome to ZABACODE')\nprint('Try running libraries or executing code here!')\n" }
+  {
+    id: 'tab-1',
+    name: 'main.py',
+    content: "print('Hello! Welcome to ZABACODE')\nprint('Try running libraries or executing code here!')\n",
+    revision: 0,
+  }
 ];
 let activeTabId = 'tab-1';
 let editor = null;
+let suppressDocumentChange = false;
 let activeEditorMode = localStorage.getItem('zabacode-preferred-engine') === 'native' ? 'native' : 'ace';
 let installedPlugins = JSON.parse(localStorage.getItem('zabacode-active-plugins') || '{}');
 let currentThemeData = null;
@@ -1278,10 +1284,20 @@ function loadTabsFromStorage() {
   if (savedTabs) {
     try {
       const parsedTabs = JSON.parse(savedTabs);
-      if (parsedTabs && parsedTabs.length > 0) {
-        tabs = parsedTabs;
-        activeTabId = savedActiveTabId || tabs[0].id;
-        return true;
+      if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+        const restoredTabs = parsedTabs
+          .filter(tab => tab && typeof tab.id === 'string' && typeof tab.name === 'string' && typeof tab.content === 'string')
+          .map(tab => ({
+            id: tab.id,
+            name: tab.name,
+            content: tab.content,
+            revision: Number.isSafeInteger(tab.revision) && tab.revision >= 0 ? tab.revision : 0,
+          }));
+        if (restoredTabs.length > 0) {
+          tabs = restoredTabs;
+          activeTabId = restoredTabs.some(tab => tab.id === savedActiveTabId) ? savedActiveTabId : restoredTabs[0].id;
+          return true;
+        }
       }
     } catch (e) {
       console.error('Failed to parse saved tabs:', e);
@@ -1340,17 +1356,31 @@ loadTabsFromStorage();
 setTimeout(updatePrivacyUI, 500);
 
 let saveTimeout = null;
-function saveActiveTab() {
-  const activeTab = tabs.find(t => t.id === activeTabId);
-  if (activeTab) {
-    activeTab.content = getEditorValue();
+
+function syncActiveTabContent() {
+  const activeTab = tabs.find(tab => tab.id === activeTabId);
+  const content = getEditorValue();
+  if (activeTab && activeTab.content !== content) {
+    activeTab.content = content;
+    activeTab.revision = Number.isSafeInteger(activeTab.revision) ? activeTab.revision + 1 : 1;
   }
+  return activeTab;
+}
+
+function saveActiveTab() {
+  syncActiveTabContent();
   saveTabsToStorage();
 }
 
 function triggerAutoSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(saveActiveTab, 500);
+}
+
+function markActiveTabChanged() {
+  if (suppressDocumentChange) return;
+  syncActiveTabContent();
+  triggerAutoSave();
 }
 
 const tabBarEl = document.getElementById('tab-bar');
@@ -1390,8 +1420,7 @@ function renderTabs() {
 
 function switchTab(id) {
   if (activeTabId && activeTabId !== id) {
-    const prevTab = tabs.find(t => t.id === activeTabId);
-    if (prevTab) prevTab.content = getEditorValue();
+    saveActiveTab();
   }
   activeTabId = id;
   const targetTab = tabs.find(t => t.id === activeTabId);
@@ -1414,8 +1443,7 @@ function closeTab(id) {
       switchTab(otherTab.id);
     }
   } else {
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab) activeTab.content = getEditorValue();
+    saveActiveTab();
   }
 
   tabs = tabs.filter(t => t.id !== id);
@@ -1426,7 +1454,7 @@ function closeTab(id) {
 if (addTabBtn) {
   addTabBtn.onclick = () => {
     const newId = 'tab-' + Date.now();
-    tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "# Kode Python Baru\n" });
+    tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "# Kode Python Baru\n", revision: 0 });
     switchTab(newId);
   };
 }
@@ -1448,7 +1476,7 @@ function openStarterKits() {
     button.innerHTML = `<strong>${escapeHtml(kit.name)}</strong><br><span style="font-size:10px;color:var(--text-dim);">${escapeHtml(kit.description)}</span>`;
     button.onclick = () => {
       const id = 'tab-' + Date.now();
-      tabs.push({ id, name: kit.file, content: kit.code });
+      tabs.push({ id, name: kit.file, content: kit.code, revision: 0 });
       switchTab(id);
       const starterDialog = document.getElementById('starter-dialog-backdrop');
       if (starterDialog) starterDialog.classList.remove('open');
@@ -1785,7 +1813,7 @@ if (nativeCodeArea) {
   nativeCodeArea.addEventListener('input', () => {
     updateNativeGutter();
     updateLineCounter();
-    triggerAutoSave();
+    markActiveTabChanged();
   });
   nativeCodeArea.addEventListener('keyup', updateLineCounter);
   nativeCodeArea.addEventListener('click', updateLineCounter);
@@ -1810,8 +1838,7 @@ function activateAceEngine() {
   if (monacoDiv) monacoDiv.style.display = 'block';
   if (editor) {
     const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab) editor.setValue(activeTab.content);
-    editor.clearSelection();
+    if (activeTab) setEditorValue(activeTab.content);
     editor.resize();
     editor.focus();
   }
@@ -1838,12 +1865,17 @@ function getEditorValue() {
 }
 
 function setEditorValue(val) {
-  if (activeEditorMode === 'ace' && editor) {
-    editor.setValue(val);
-    editor.clearSelection();
-  } else if (nativeCodeArea) {
-    nativeCodeArea.value = val;
-    updateNativeGutter();
+  suppressDocumentChange = true;
+  try {
+    if (activeEditorMode === 'ace' && editor) {
+      editor.setValue(val);
+      editor.clearSelection();
+    } else if (nativeCodeArea) {
+      nativeCodeArea.value = val;
+      updateNativeGutter();
+    }
+  } finally {
+    suppressDocumentChange = false;
   }
   updateLineCounter();
 }
@@ -1946,9 +1978,7 @@ try {
   editor.setValue(activeTab.content);
   editor.clearSelection();
 
-  editor.session.on('change', () => {
-    triggerAutoSave();
-  });
+  editor.session.on('change', markActiveTabChanged);
 
   editor.selection.on('changeCursor', () => {
     updateLineCounter();
@@ -3201,16 +3231,31 @@ async function renderAutoFixButton(stderrText, container) {
   btn.innerHTML = '⚙️ Auto-Fix with Oracle';
 
   btn.onclick = async () => {
+    const requestTab = syncActiveTabContent();
+    if (!requestTab) {
+      showToast('No active editor tab is available for Auto-Fix.', 'error');
+      return;
+    }
+    const request = {
+      tabId: requestTab.id,
+      revision: requestTab.revision,
+      code: requestTab.content,
+    };
     btn.disabled = true;
     btn.innerHTML = 'Analyzing...';
     try {
       const res = await fetchApi('/api/oracle/fix', {
         method: 'POST',
-        body: JSON.stringify({ code: getEditorValue(), stderr: stderrText })
+        body: JSON.stringify({
+          code: request.code,
+          stderr: stderrText,
+          tab_id: request.tabId,
+          revision: request.revision,
+        })
       });
       const data = await res.json();
       if (data.ok) {
-        renderAutoFixResult(data, container);
+        renderAutoFixResult(data, container, request);
         btn.remove();
       } else if (data.runtime_error) {
         // Syntax is fine — this is a logic bug. Say so plainly instead of
@@ -3283,14 +3328,20 @@ function renderDiffView(originalCode, fixedCode) {
   return html;
 }
 
-function renderAutoFixResult(data, container) {
+async function sha256Hex(text) {
+  if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') return null;
+  const bytes = new TextEncoder().encode(text);
+  const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function renderAutoFixResult(data, container, request) {
   const resultCard = document.createElement('div');
   resultCard.className = 'oracle-card';
   resultCard.style.borderLeftColor = '#66ff66';
   resultCard.style.background = 'rgba(0,255,0,0.02)';
 
-  const originalCode = getEditorValue();
-  const diffHtml = renderDiffView(originalCode, data.fixed_code);
+  const diffHtml = renderDiffView(request.code, data.fixed_code);
 
   let formattedExplanation = escapeHtml(data.explanation)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
@@ -3313,9 +3364,27 @@ function renderAutoFixResult(data, container) {
   applyBtn.style.cssText = 'background:#66ff66;color:#1A0F00;border:none;font-weight:bold;margin-top:12px;padding:8px 16px;cursor:pointer;';
   applyBtn.innerHTML = '✔️ Apply Fix';
 
-  applyBtn.onclick = () => {
+  applyBtn.onclick = async () => {
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
+    const editorChanged = !activeTab || activeTab.id !== request.tabId || activeTab.revision !== request.revision
+      || getEditorValue() !== request.code;
+    if (editorChanged) {
+      showToast('Editor changed after this fix was generated. Analyze the latest code before applying it.', 'info');
+      resultCard.remove();
+      return;
+    }
+
+    // A revision mismatch is already enough to reject a stale patch. When the
+    // WebView exposes Web Crypto, verify the server-owned SHA-256 too.
+    const currentHash = await sha256Hex(getEditorValue());
+    if (currentHash && currentHash !== data.source_hash) {
+      showToast('Editor fingerprint no longer matches this fix. Analyze again before applying it.', 'info');
+      resultCard.remove();
+      return;
+    }
+
     setEditorValue(data.fixed_code);
-    saveActiveTab();
+    markActiveTabChanged();
     showToast('Oracle fix applied and saved successfully!', 'success');
     resultCard.remove();
   };
@@ -3433,11 +3502,14 @@ async function loadFileList() {
         if (fileData.ok) {
           let existingTab = tabs.find(t => t.name === f.name);
           if (existingTab) {
-            existingTab.content = fileData.content;
+            if (existingTab.content !== fileData.content) {
+              existingTab.content = fileData.content;
+              existingTab.revision = Number.isSafeInteger(existingTab.revision) ? existingTab.revision + 1 : 1;
+            }
             switchTab(existingTab.id);
           } else {
             const newId = 'tab-' + Date.now();
-            tabs.push({ id: newId, name: f.name, content: fileData.content });
+            tabs.push({ id: newId, name: f.name, content: fileData.content, revision: 0 });
             switchTab(newId);
           }
           if (fileDialogBackdrop) fileDialogBackdrop.classList.remove('open');

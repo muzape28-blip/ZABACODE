@@ -1,6 +1,7 @@
 """WebView shell for the ZABACODE v1.2.0 core — Modular Python core + Oracle."""
 
 import functools
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 
@@ -655,12 +656,27 @@ def oracle_fix():
 
     code = payload.get("code", "")
     stderr = payload.get("stderr", "")
+    tab_id = payload.get("tab_id")
+    revision = payload.get("revision")
     if not isinstance(code, str):
         return jsonify({"ok": False, "message": "Field 'code' must be a string."}), 400
     if not isinstance(stderr, str):
         return jsonify({"ok": False, "message": "Field 'stderr' must be a string."}), 400
+    if tab_id is not None and (not isinstance(tab_id, str) or not tab_id or len(tab_id) > 128):
+        return jsonify({"ok": False, "message": "Field 'tab_id' must be a non-empty string up to 128 chars."}), 400
+    # bool is a subclass of int in Python, but never a valid document revision.
+    if revision is not None and (isinstance(revision, bool) or not isinstance(revision, int) or revision < 0):
+        return jsonify({"ok": False, "message": "Field 'revision' must be a non-negative integer."}), 400
 
-    return jsonify(auto_fix_code(code, stderr))
+    # The server owns this fingerprint: the client must only apply this result
+    # while its current buffer still hashes to the exact source we analyzed.
+    result = auto_fix_code(code, stderr)
+    result["source_hash"] = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    if tab_id is not None:
+        result["tab_id"] = tab_id
+    if revision is not None:
+        result["revision"] = revision
+    return jsonify(result)
 
 
 def run_webview_server():

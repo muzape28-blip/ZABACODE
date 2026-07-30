@@ -1085,16 +1085,51 @@ class TestOracleAutoFix:
     def test_fix_endpoint_success(self):
         from zabacode.core.security import AUTH_TOKEN
         from zabacode.web_app import app
+
         c = app.test_client()
         r = c.post(
             "/api/oracle/fix",
             json={"code": "print(hello world)"},
-            headers={"X-Zabacode-Token": AUTH_TOKEN}
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
         )
         assert r.status_code == 200
         body = r.get_json()
         assert body["ok"] is True
         assert body["fixed_code"] == 'print("hello world")'
+
+    def test_fix_endpoint_returns_the_server_source_fingerprint(self):
+        import hashlib
+
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        code = "if x == 5"
+        response = app.test_client().post(
+            "/api/oracle/fix",
+            json={"code": code, "tab_id": "tab-7", "revision": 12},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["source_hash"] == hashlib.sha256(code.encode("utf-8")).hexdigest()
+        assert body["tab_id"] == "tab-7"
+        assert body["revision"] == 12
+
+    def test_fix_endpoint_rejects_invalid_document_identity(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+        invalid_payloads = [
+            {"code": "if x == 5", "tab_id": ""},
+            {"code": "if x == 5", "tab_id": 7},
+            {"code": "if x == 5", "revision": -1},
+            {"code": "if x == 5", "revision": True},
+        ]
+        for payload in invalid_payloads:
+            response = client.post("/api/oracle/fix", json=payload, headers=headers)
+            assert response.status_code == 400
 
     def test_ui_contains_auto_fix_functions(self):
         import pathlib
@@ -1111,6 +1146,17 @@ class TestOracleAutoFix:
         html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
         assert "function saveActiveTab()" in html
         assert "saveActiveTab();" in html
+
+    def test_auto_fix_ui_uses_revision_and_fingerprint_guards(self):
+        """A response for an old editor buffer must never overwrite new text."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "revision: requestTab.revision" in html
+        assert "activeTab.revision !== request.revision" in html
+        assert "getEditorValue() !== request.code" in html
+        assert "data.source_hash" in html
+        assert "function sha256Hex(text)" in html
 
 
 # ===========================================================================

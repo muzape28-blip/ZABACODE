@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Safety
++- Oracle Auto-Fix now fingerprints the exact source analyzed and records the active tab revision. A patch is rejected if the user switches tabs, edits the buffer, or otherwise changes the document before selecting **Apply Fix**.
++- Auto-Fix previews now compare against the source snapshot that generated the patch, never against whichever tab content happens to be open when the response arrives.
+
 All notable changes to **ZABACODE** will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

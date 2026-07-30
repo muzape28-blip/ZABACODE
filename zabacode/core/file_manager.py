@@ -8,6 +8,14 @@ import re
 from zabacode.core.paths import FILES_DIR
 
 MAX_FILE_BYTES = 512 * 1024  # 512 KB
+# Most filesystems cap a single name component at 255 bytes (ext4/FAT/Android),
+# and the working-directory prefix counts toward the total path length too. A
+# name near that limit used to reach os.stat()/write() and raise OSError
+# ([Errno 36] File name too long), which escaped as an HTTP 500 because
+# read_file()/delete_file() checked existence outside any try/except. 128 chars
+# is far more than any real .py file needs and stays clear of every platform's
+# limit with room to spare.
+MAX_FILENAME_LEN = 128
 
 
 def secure_filename(filename: str) -> str | None:
@@ -30,6 +38,9 @@ def secure_filename(filename: str) -> str | None:
         return None
 
     filename = filename.strip()
+
+    if len(filename) > MAX_FILENAME_LEN:
+        return None
 
     if filename.startswith(".") or filename.startswith("_"):
         return None
@@ -63,7 +74,13 @@ def read_file(filename: str) -> dict:
         return {"ok": False, "message": "Invalid filename"}
 
     file_path = FILES_DIR / secured
-    if not file_path.exists():
+    # exists()/stat() can raise OSError on names the regex accepted but the
+    # filesystem rejects (or in a deletion race). Never let that escape as a 500.
+    try:
+        exists = file_path.exists()
+    except OSError:
+        return {"ok": False, "message": "Invalid filename"}
+    if not exists:
         return {"ok": False, "message": f"File '{filename}' not found"}
 
     try:
@@ -97,7 +114,12 @@ def delete_file(filename: str) -> dict:
         return {"ok": False, "message": "Invalid filename"}
 
     file_path = FILES_DIR / secured
-    if not file_path.exists():
+    # See read_file(): stat() can raise OSError — keep it inside the guard too.
+    try:
+        exists = file_path.exists()
+    except OSError:
+        return {"ok": False, "message": "Invalid filename"}
+    if not exists:
         return {"ok": False, "message": f"File '{filename}' not found"}
 
     try:

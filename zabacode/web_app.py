@@ -927,6 +927,31 @@ def editor_rename():
     return jsonify(result)
 
 
+@app.post("/api/editor/rename-workspace")
+@require_auth
+def editor_rename_workspace():
+    """Rename a symbol across all user files (VSCode WorkspaceEdit)."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+    filename = payload.get("filename", "")
+    line = payload.get("line", 1)
+    column = payload.get("column", 1)
+    new_name = payload.get("new_name", "")
+    if not isinstance(filename, str):
+        return jsonify({"ok": False, "message": "Field 'filename' must be a string."}), 400
+    if not isinstance(line, int):
+        return jsonify({"ok": False, "message": "Field 'line' must be an integer."}), 400
+    if not isinstance(column, int):
+        return jsonify({"ok": False, "message": "Field 'column' must be an integer."}), 400
+    if not isinstance(new_name, str):
+        return jsonify({"ok": False, "message": "Field 'new_name' must be a string."}), 400
+
+    from zabacode.core.editor_intelligence import rename_symbol_workspace
+    result = rename_symbol_workspace(filename, line, column, new_name)
+    return jsonify(result)
+
+
 @app.post("/api/editor/organize-imports")
 @require_auth
 def editor_organize_imports():

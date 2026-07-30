@@ -2723,3 +2723,149 @@ class TestOracleClaimsMatchReality:
         answer = _match_knowledge("how do I use input()?")
         assert answer and "Interactive Run mode" not in answer
         assert "RUN" in answer
+
+
+
+# ===========================================================================
+# P0 Hardening: Stale buffer rejection — regression tests
+# These tests verify that the Auto-Fix system correctly rejects patches
+# when the editor buffer has changed since the fix was requested.
+# ===========================================================================
+
+class TestStaleBufferRejection:
+    """Verify that stale Auto-Fix responses are handled safely."""
+
+    def test_source_hash_matches_original_code(self):
+        """The source_hash must be the SHA-256 of the code sent in the request."""
+        import hashlib
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        code = "print(hello world)"
+        client = app.test_client()
+        response = client.post(
+            "/api/oracle/fix",
+            json={"code": code, "tab_id": "tab-stale-1", "revision": 0},
+            headers={"X-Zabacode-Token": AUTH_TOKEN},
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["source_hash"] == hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    def test_source_hash_differs_for_different_code(self):
+        """Different code must produce a different source_hash."""
+        import hashlib
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        code_a = "print(hello world)"
+        code_b = "print(hello universe)"
+
+        resp_a = client.post("/api/oracle/fix", json={"code": code_a}, headers=headers)
+        resp_b = client.post("/api/oracle/fix", json={"code": code_b}, headers=headers)
+
+        hash_a = resp_a.get_json()["source_hash"]
+        hash_b = resp_b.get_json()["source_hash"]
+        assert hash_a != hash_b
+
+    def test_revision_is_echoed_back_intact(self):
+        """The revision sent in the request must be echoed back unchanged."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        for rev in [0, 1, 42, 999]:
+            resp = client.post(
+                "/api/oracle/fix",
+                json={"code": "print(hello)", "revision": rev},
+                headers=headers,
+            )
+            body = resp.get_json()
+            assert body["revision"] == rev, f"Expected revision {rev}, got {body.get('revision')}"
+
+    def test_tab_id_is_echoed_back_intact(self):
+        """The tab_id sent in the request must be echoed back unchanged."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        for tab in ["tab-1", "tab-abc", "tab-xyz-999"]:
+            resp = client.post(
+                "/api/oracle/fix",
+                json={"code": "print(hello)", "tab_id": tab},
+                headers=headers,
+            )
+            body = resp.get_json()
+            assert body["tab_id"] == tab
+
+    def test_diff_is_provided_on_successful_fix(self):
+        """A successful fix must include a diff for the UI preview."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        resp = client.post(
+            "/api/oracle/fix",
+            json={"code": "print(hello world)"},
+            headers=headers,
+        )
+        body = resp.get_json()
+        if body.get("ok"):
+            assert "diff" in body, "Successful fix must include diff"
+            assert "changes" in body["diff"]
+
+    def test_ui_stale_rejection_checks_revision_and_hash(self):
+        """The frontend must check both revision AND source_hash before applying."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        # Revision check
+        assert "activeTab.revision !== request.revision" in html
+        # Content check (editor value changed)
+        assert "getEditorValue() !== request.code" in html
+        # Source hash check (server fingerprint)
+        assert "data.source_hash" in html
+        # SHA-256 verification function
+        assert "function sha256Hex" in html
+        # Rejection toast
+        assert "Editor changed after this fix" in html or "fingerprint no longer matches" in html
+
+    def test_ui_revert_protection_checks_revision(self):
+        """The undo/revert button must check revision before reverting."""
+        import pathlib
+
+        html = (pathlib.Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+        # The revert handler checks that the tab hasn't changed
+        assert "currentTab.id !== request.tabId" in html or "currentTab.revision !== appliedRevision" in html
+        # Protects newer work
+        assert "Revert was skipped to protect your newer work" in html
+
+    def test_fix_without_tab_id_still_works(self):
+        """Auto-fix must work without tab_id or revision (backward compat)."""
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+
+        client = app.test_client()
+        headers = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        resp = client.post(
+            "/api/oracle/fix",
+            json={"code": "print(hello world)", "stderr": "SyntaxError"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        # source_hash must always be present
+        assert "source_hash" in body
+        # tab_id and revision should NOT be present when not provided
+        assert "tab_id" not in body
+        assert "revision" not in body

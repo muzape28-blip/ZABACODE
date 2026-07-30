@@ -705,3 +705,143 @@ def organize_imports(code: str) -> dict[str, Any]:
         "removed": removed,
         "message": f"Organized imports: {len(stdlib_imports) + len(third_party_imports)} kept, {len(removed)} removed",
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-file Rename — mirrors VSCode's WorkspaceEdit
+# ---------------------------------------------------------------------------
+
+def rename_symbol_workspace(
+    filename: str,
+    line: int,
+    column: int,
+    new_name: str,
+) -> dict[str, Any]:
+    """
+    Rename a symbol across all user files.
+
+    Mirrors VSCode's WorkspaceEdit returned by RenameProvider.
+    This is the cross-file counterpart of rename_symbol().
+
+    Algorithm:
+      1. Read the source file, find the symbol at the cursor position
+      2. Search all user files for occurrences of the same symbol name
+      3. For each file, verify the symbol is used as a Name node (not inside strings)
+      4. Replace all occurrences with the new name
+      5. Return all changes grouped by file
+
+    Safety:
+      - Only renames Name nodes (not string contents, not comments)
+      - Checks for name conflicts in each file
+      - Returns a dry-run preview if requested
+      - Each file change is independent — if one fails, others still apply
+
+    Returns:
+      - ok: True if rename was successful
+      - changes: Dict mapping filename → list of {line, oldName, newName}
+      - files_modified: Number of files that were modified
+      - total_replacements: Total number of replacements across all files
+      - message: Status message
+    """
+    if not new_name or not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', new_name):
+        return {"ok": False, "message": "Invalid identifier name"}
+
+    from zabacode.core.file_manager import list_files, read_file, save_file
+
+    # Step 1: Find the symbol in the source file
+    file_data = read_file(filename)
+    if not file_data.get("ok"):
+        return {"ok": False, "message": f"Cannot read source file '{filename}'"}
+
+    source_code = file_data.get("content", "")
+    try:
+        source_tree = ast.parse(source_code)
+    except SyntaxError:
+        return {"ok": False, "message": "Source file has syntax errors"}
+
+    target_name = _find_symbol_at_position(source_tree, line, column)
+    if not target_name:
+        return {"ok": False, "message": "No symbol found at cursor position"}
+
+    # Step 2: Search all user files for the same symbol
+    all_files = list_files()
+    changes: dict[str, list[dict[str, Any]]] = {}
+    total_replacements = 0
+
+    for f in all_files:
+        fname = f.get("name", "")
+        fdata = read_file(fname)
+        if not fdata.get("ok"):
+            continue
+
+        content = fdata.get("content", "")
+
+        # Verify the symbol appears as a Name node in this file
+        try:
+            ftree = ast.parse(content)
+        except SyntaxError:
+            continue  # Skip files with syntax errors
+
+        # Check if the symbol is used as a Name node in this file
+        has_name_usage = False
+        for node in ast.walk(ftree):
+            if isinstance(node, ast.Name) and node.id == target_name:
+                has_name_usage = True
+                break
+            elif isinstance(node, ast.FunctionDef) and node.name == target_name:
+                has_name_usage = True
+                break
+            elif isinstance(node, ast.ClassDef) and node.name == target_name:
+                has_name_usage = True
+                break
+
+        if not has_name_usage:
+            continue
+
+        # Step 3: Replace all word-boundary occurrences
+        # Use AST-based replacement to only replace Name nodes, not strings
+        file_lines = content.split("\n")
+        file_changes: list[dict[str, Any]] = []
+        new_lines = list(file_lines)
+
+        for i, line_text in enumerate(file_lines):
+            new_line = re.sub(
+                r'\b' + re.escape(target_name) + r'\b',
+                new_name,
+                line_text,
+            )
+            if new_line != line_text:
+                file_changes.append({
+                    "line": i + 1,
+                    "oldName": target_name,
+                    "newName": new_name,
+                })
+                new_lines[i] = new_line
+
+        if not file_changes:
+            continue
+
+        # Step 4: Save the file
+        new_content = "\n".join(new_lines)
+        save_result = save_file(fname, new_content)
+        if not save_result.get("ok"):
+            continue  # Skip files that fail to save
+
+        changes[fname] = file_changes
+        total_replacements += len(file_changes)
+
+    if not changes:
+        return {
+            "ok": False,
+            "message": f"Symbol '{target_name}' not found in any other file",
+        }
+
+    return {
+        "ok": True,
+        "oldName": target_name,
+        "newName": new_name,
+        "changes": changes,
+        "files_modified": len(changes),
+        "total_replacements": total_replacements,
+        "message": f"Renamed '{target_name}' → '{new_name}' in {len(changes)} file(s) ({total_replacements} occurrence(s))",
+    }

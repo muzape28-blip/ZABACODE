@@ -1993,8 +1993,64 @@ try {
     showPrintMargin: false,
     showGutter: true,
     highlightActiveLine: false,
-    theme: "ace/theme/tomorrow_night_eighties"
+    theme: "ace/theme/tomorrow_night_eighties",
+    enableLiveAutocompletion: true,
+    enableSnippets: true,
+    enableBasicAutocompletion: true
   });
+
+  // Register custom ZABACODE completer that calls the backend
+  // (VSCode CompletionItemProvider pattern — backend provides data, frontend renders)
+  if (window.ace && ace.require) {
+    const langTools = ace.require('ace/ext/language_tools');
+    if (langTools) {
+      // Custom completer that fetches from /api/editor/completions
+      const zabacodeCompleter = {
+        getCompletions: function(editor, session, pos, prefix, callback) {
+          // Don't spam the server on every keystroke — only if prefix is at least 1 char
+          // or if the user explicitly triggered autocomplete (Ctrl+Space)
+          if (!prefix && prefix !== '') {
+            callback(null, []);
+            return;
+          }
+          const code = session.getValue();
+          const line = pos.row + 1;
+          const column = pos.column + 1;
+
+          fetchApi('/api/editor/completions', {
+            method: 'POST',
+            body: JSON.stringify({ code, line, column })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (!data.ok || !data.completions) {
+              callback(null, []);
+              return;
+            }
+            const aceCompletions = data.completions.map(c => ({
+              caption: c.label,
+              value: c.insertText,
+              meta: c.kind,
+              score: c.kind === 'snippet' ? 1000 : (c.kind === 'keyword' ? 500 : 100),
+              docHTML: c.documentation ? `<b>${escapeHtml(c.label)}</b><br>${escapeHtml(c.documentation)}` : null,
+            }));
+            callback(null, aceCompletions);
+          })
+          .catch(() => {
+            // Non-critical: if completions fail, just show nothing
+            callback(null, []);
+          });
+        }
+      };
+
+      // Add our completer alongside the default keyword completer
+      langTools.setCompleters([
+        langTools.snippetCompleter,
+        langTools.textCompleter,
+        zabacodeCompleter
+      ]);
+    }
+  }
 
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
   editor.setValue(activeTab.content);

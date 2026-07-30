@@ -158,7 +158,7 @@ def execute_code_isolated(code: str, stdin_data: str = "", timeout: int = DEFAUL
         return {
             "ok": False,
             "stdout": "",
-            "stderr": "Source code terlalu besar.",
+            "stderr": "Source code is too large (max 512 KB).",
             "timeout": False,
             "images": []
         }

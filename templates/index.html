@@ -3653,6 +3653,608 @@ function showToast(msg, type) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
 }
+
+// ---------------------------------------------------------------------------
+// P1: Diagnostics — Ace Annotations & Problems Panel
+// VSCode-inspired: setAnnotations for inline error markers, Problems bottom sheet
+// ---------------------------------------------------------------------------
+
+// P1-3: Ace annotations — set diagnostic markers on the Ace editor gutter
+function setAceAnnotations(diagnostics) {
+  if (!editor || !window.ace || !ace.require) return;
+  const AceAnnotations = ace.require('ace/annotations');
+  if (!AceAnnotations) return;
+
+  // Convert our diagnostic format to Ace annotation format
+  const annotations = (diagnostics || []).map(d => ({
+    row: Math.max(0, (d.line || 1) - 1),
+    column: Math.max(0, (d.column || 1) - 1),
+    text: d.message || '',
+    type: d.severityLabel === 'ERROR' ? 'error' : (d.severityLabel === 'WARN' ? 'warning' : 'info'),
+  }));
+  editor.session.setAnnotations(annotations);
+}
+
+// Clear all Ace annotations
+function clearAceAnnotations() {
+  if (editor && editor.session) {
+    editor.session.clearAnnotations();
+  }
+}
+
+// P1-4: Problems bottom sheet — show diagnostics in a collapsible panel
+function renderProblemsPanel(diagnostics) {
+  let panel = document.getElementById('problems-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'problems-panel';
+    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:var(--bg-panel);border-top:2px solid var(--border);z-index:1000;display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;overflow:hidden;';
+    document.body.appendChild(panel);
+  }
+
+  const counts = { error: 0, warning: 0, info: 0, hint: 0 };
+  (diagnostics || []).forEach(d => {
+    if (d.severityLabel === 'ERROR') counts.error++;
+    else if (d.severityLabel === 'WARN') counts.warning++;
+    else if (d.severityLabel === 'INFO') counts.info++;
+    else counts.hint++;
+  });
+
+  const total = counts.error + counts.warning + counts.info + counts.hint;
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;padding:6px 10px;background:var(--bg-panel-2);border-bottom:1px solid var(--border);cursor:pointer;" onclick="toggleProblemsPanel()">
+      <span style="font-weight:bold;color:var(--text);margin-right:12px;">PROBLEMS</span>
+      ${counts.error ? `<span style="color:#ff6666;margin-right:8px;">${counts.error} error${counts.error > 1 ? 's' : ''}</span>` : ''}
+      ${counts.warning ? `<span style="color:#ffaa00;margin-right:8px;">${counts.warning} warning${counts.warning > 1 ? 's' : ''}</span>` : ''}
+      ${counts.info ? `<span style="color:#66aaff;margin-right:8px;">${counts.info} info</span>` : ''}
+      ${!total ? '<span style="color:var(--text-dim);">No problems detected</span>' : ''}
+      <span style="margin-left:auto;color:var(--text-dim);font-size:10px;">▼</span>
+    </div>
+    <div id="problems-list" style="overflow-y:auto;flex:1;max-height:30vh;">
+      ${(diagnostics || []).map(d => `
+        <div class="problem-item" data-line="${d.line}" data-column="${d.column}" style="padding:4px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;" onclick="goToProblem(${d.line}, ${d.column})">
+          <span style="color:${d.severityLabel === 'ERROR' ? '#ff6666' : (d.severityLabel === 'WARN' ? '#ffaa00' : '#66aaff')};margin-right:8px;min-width:16px;">${d.severityLabel === 'ERROR' ? '●' : (d.severityLabel === 'WARN' ? '▲' : 'ℹ')}</span>
+          <span style="color:var(--text-dim);min-width:40px;">L${d.line}</span>
+          <span style="color:var(--text);flex:1;">${escapeHtml(d.message)}</span>
+          <span style="color:var(--text-dim);font-size:10px;margin-left:8px;">${d.source || ''}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Set Ace annotations
+  setAceAnnotations(diagnostics);
+}
+
+function toggleProblemsPanel() {
+  const list = document.getElementById('problems-list');
+  if (list) {
+    list.style.display = list.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function goToProblem(line, column) {
+  if (editor) {
+    editor.gotoLine(line, column - 1, true);
+    editor.focus();
+  }
+}
+
+// Fetch diagnostics for current code
+async function refreshDiagnostics() {
+  const code = getEditorValue();
+  if (!code.trim()) {
+    clearAceAnnotations();
+    renderProblemsPanel([]);
+    return;
+  }
+  try {
+    const res = await fetchApi('/api/diagnostics', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      renderProblemsPanel(data.diagnostics);
+    }
+  } catch (e) {
+    // Non-critical: diagnostics are best-effort
+  }
+}
+
+// Debounced diagnostics on code change
+let _diagTimeout = null;
+function scheduleDiagnostics() {
+  if (_diagTimeout) clearTimeout(_diagTimeout);
+  _diagTimeout = setTimeout(refreshDiagnostics, 1500);
+}
+
+// Hook diagnostics into Ace change events
+setTimeout(() => {
+  if (editor && editor.session) {
+    editor.session.on('change', scheduleDiagnostics);
+  }
+}, 1000);
+
+// ---------------------------------------------------------------------------
+// P3: Command Palette — proper VSCode-style mobile command palette
+// ---------------------------------------------------------------------------
+
+let _paletteOpen = false;
+
+function openCommandPalette() {
+  if (_paletteOpen) { closeCommandPalette(); return; }
+  _paletteOpen = true;
+
+  let overlay = document.getElementById('command-palette-overlay');
+  if (overlay) { overlay.remove(); }
+
+  overlay = document.createElement('div');
+  overlay.id = 'command-palette-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+
+  const palette = document.createElement('div');
+  palette.style.cssText = 'width:90%;max-width:400px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:70vh;display:flex;flex-direction:column;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Type a command... (e.g. "run", "format", "theme")';
+  input.style.cssText = 'width:100%;padding:12px;background:var(--bg-panel-2);color:var(--text);border:none;border-bottom:1px solid var(--border);font-size:14px;outline:none;font-family:var(--mono);';
+  input.autofocus = true;
+
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow-y:auto;flex:1;max-height:50vh;';
+
+  palette.appendChild(input);
+  palette.appendChild(list);
+  overlay.appendChild(palette);
+  document.body.appendChild(overlay);
+
+  // Close on backdrop click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeCommandPalette();
+  });
+
+  // Load and render commands
+  async function loadCommands(query) {
+    const url = '/api/palette' + (query ? `?q=${encodeURIComponent(query)}` : '');
+    const res = await fetchApi(url);
+    const data = await res.json();
+    list.innerHTML = '';
+    (data.items || []).forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;';
+      row.innerHTML = `<span style="color:var(--text-dim);font-size:10px;min-width:60px;">${escapeHtml(item.category)}</span><span style="color:var(--text);flex:1;">${escapeHtml(item.label)}</span><span style="color:var(--text-dim);font-size:10px;">${escapeHtml(item.detail)}</span>`;
+      row.onmouseover = () => row.style.background = 'var(--bg-panel-2)';
+      row.onmouseout = () => row.style.background = '';
+      row.onclick = () => {
+        closeCommandPalette();
+        executePaletteAction(item);
+      };
+      list.appendChild(row);
+    });
+  }
+
+  // Debounced search
+  let _searchTimeout = null;
+  input.oninput = () => {
+    if (_searchTimeout) clearTimeout(_searchTimeout);
+    _searchTimeout = setTimeout(() => loadCommands(input.value), 200);
+  };
+
+  // Close on Escape
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') closeCommandPalette();
+  };
+
+  // Load initial commands
+  loadCommands('');
+}
+
+function closeCommandPalette() {
+  _paletteOpen = false;
+  const overlay = document.getElementById('command-palette-overlay');
+  if (overlay) overlay.remove();
+}
+
+async function executePaletteAction(item) {
+  if (!item) return;
+  const action = item.action;
+
+  // Built-in actions
+  switch (action) {
+    case 'run.code':
+      document.getElementById('run-btn')?.click();
+      break;
+    case 'run.interactive':
+      document.getElementById('run-btn')?.click();
+      break;
+    case 'run.stop':
+      await fetchApi('/api/run/interactive/stop', { method: 'POST' });
+      break;
+    case 'edit.check': {
+      const code = getEditorValue();
+      const res = await fetchApi('/api/check', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.valid) showToast('No syntax issues found!', 'success');
+        else showToast('Issues: ' + (data.issues || []).join(', '), 'info');
+      }
+      break;
+    }
+    case 'edit.autofix': {
+      // Trigger Oracle Auto-Fix
+      const stderrEl = document.getElementById('output-terminal');
+      const stderrText = stderrEl ? stderrEl.textContent : '';
+      const code = getEditorValue();
+      const res = await fetchApi('/api/oracle/fix', { method: 'POST', body: JSON.stringify({ code, stderr: stderrText }) });
+      const data = await res.json();
+      if (data.ok && data.fixed_code) {
+        replaceEditorValueAsEdit(data.fixed_code);
+        markActiveTabChanged();
+        showToast('Auto-fix applied!', 'success');
+      } else {
+        showToast(data.explanation || data.message || 'No fix available', 'info');
+      }
+      break;
+    }
+    case 'edit.format': {
+      const code = getEditorValue();
+      const res = await fetchApi('/api/plugins/execute', { method: 'POST', body: JSON.stringify({ plugin_id: 'code_beautifier_pro', code }) });
+      const data = await res.json();
+      if (data.ok && data.code) {
+        replaceEditorValueAsEdit(data.code);
+        markActiveTabChanged();
+        showToast('Code formatted!', 'success');
+      }
+      break;
+    }
+    case 'edit.organize_imports': {
+      const code = getEditorValue();
+      const res = await fetchApi('/api/editor/organize-imports', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok && data.code) {
+        replaceEditorValueAsEdit(data.code);
+        markActiveTabChanged();
+        showToast(data.message || 'Imports organized!', 'success');
+      }
+      break;
+    }
+    case 'navigate.symbol': {
+      // Open Quick Open in symbol mode
+      openQuickOpen('@');
+      break;
+    }
+    case 'navigate.line': {
+      // Inline input — no native prompt() dialog
+      const lineStr = _inlineInput('Go to line number:');
+      if (lineStr && editor) {
+        const lineNum = parseInt(lineStr);
+        if (lineNum > 0) {
+          editor.gotoLine(lineNum, 0, true);
+          editor.focus();
+        }
+      }
+      break;
+    }
+    case 'navigate.quickopen':
+      openQuickOpen('');
+      break;
+    case 'navigate.outline': {
+      const code = getEditorValue();
+      const res = await fetchApi('/api/editor/outline', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok && data.symbols) {
+        showSymbolOutline(data.symbols);
+      }
+      break;
+    }
+    case 'view.problems':
+      refreshDiagnostics();
+      break;
+    case 'view.terminal': {
+      const outputView = document.getElementById('view-output');
+      if (outputView) outputView.click();
+      break;
+    }
+    case 'ai.chat': {
+      const aiTab = document.querySelector('[data-view="ai"]') || document.getElementById('ai-tab');
+      if (aiTab) aiTab.click();
+      break;
+    }
+    case 'ai.explain': {
+      const stderrEl = document.getElementById('output-terminal');
+      const stderrText = stderrEl ? stderrEl.textContent : '';
+      if (stderrText) {
+        const res = await fetchApi('/api/oracle/explain', { method: 'POST', body: JSON.stringify({ stderr: stderrText }) });
+        const data = await res.json();
+        if (data.ok) showToast(data.explanation || 'No explanation available', 'info');
+      } else {
+        showToast('No error output to explain.', 'info');
+      }
+      break;
+    }
+    case 'ai.analyze': {
+      const code = getEditorValue();
+      const res = await fetchApi('/api/oracle/analyze', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok) showToast('Analysis: ' + (data.notes || []).join('; '), 'info');
+      break;
+    }
+    case 'settings.theme': {
+      // Inline input — no native prompt() dialog
+      const themeName = await _inlineInput('Theme name (retro, dracula, monokai, cyberpunk, nord, etc.):');
+      if (themeName) {
+        const res = await fetchApi(`/api/themes/${themeName}`);
+        const data = await res.json();
+        if (data.ok) {
+          applyTheme(data.theme);
+          localStorage.setItem('zabacode-theme', themeName);
+          showToast(`Theme changed to ${themeName}!`, 'success');
+        } else {
+          showToast('Theme not found.', 'error');
+        }
+      }
+      break;
+    }
+    case 'settings.search':
+      openSettingsSearch();
+      break;
+    case 'command': {
+      if (item.args && item.args[0]) {
+        const res = await fetchApi('/api/commands/execute', { method: 'POST', body: JSON.stringify({ command_id: item.args[0], args: [getEditorValue()] }) });
+        const data = await res.json();
+        if (data.ok && data.code) {
+          replaceEditorValueAsEdit(data.code);
+          markActiveTabChanged();
+          showToast('Command executed!', 'success');
+        }
+      }
+      break;
+    }
+    default:
+      showToast(`Action: ${item.label} (not yet implemented)`, 'info');
+  }
+}
+
+// Quick Open — VSCode-style Ctrl+P
+let _quickOpenOpen = false;
+
+function openQuickOpen(prefix) {
+  if (_quickOpenOpen) { closeQuickOpen(); return; }
+  _quickOpenOpen = true;
+
+  let overlay = document.getElementById('quickopen-overlay');
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement('div');
+  overlay.id = 'quickopen-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+
+  const palette = document.createElement('div');
+  palette.style.cssText = 'width:90%;max-width:400px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:70vh;display:flex;flex-direction:column;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Quick Open... (type filename, @ for symbols, : for line)';
+  input.style.cssText = 'width:100%;padding:12px;background:var(--bg-panel-2);color:var(--text);border:none;border-bottom:1px solid var(--border);font-size:14px;outline:none;font-family:var(--mono);';
+  input.value = prefix || '';
+  input.autofocus = true;
+
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow-y:auto;flex:1;max-height:50vh;';
+
+  palette.appendChild(input);
+  palette.appendChild(list);
+  overlay.appendChild(palette);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeQuickOpen();
+  });
+
+  async function loadItems(query) {
+    const url = '/api/quickopen' + (query ? `?q=${encodeURIComponent(query)}` : '');
+    const res = await fetchApi(url);
+    const data = await res.json();
+    list.innerHTML = '';
+    (data.items || []).forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);';
+      row.innerHTML = `<span style="color:var(--text);">${escapeHtml(item.label)}</span><span style="color:var(--text-dim);margin-left:8px;font-size:10px;">${escapeHtml(item.detail)}</span>`;
+      row.onmouseover = () => row.style.background = 'var(--bg-panel-2)';
+      row.onmouseout = () => row.style.background = '';
+      row.onclick = () => {
+        closeQuickOpen();
+        if (item.action === 'file.open' && item.args[0]) {
+          openFileByName(item.args[0]);
+        } else if (item.action === 'navigate.line' && item.args[0]) {
+          if (editor) { editor.gotoLine(item.args[0], 0, true); editor.focus(); }
+        }
+      };
+      list.appendChild(row);
+    });
+  }
+
+  let _searchTimeout = null;
+  input.oninput = () => {
+    if (_searchTimeout) clearTimeout(_searchTimeout);
+    _searchTimeout = setTimeout(() => loadItems(input.value), 200);
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') closeQuickOpen();
+  };
+  loadItems(input.value);
+}
+
+function closeQuickOpen() {
+  _quickOpenOpen = false;
+  const overlay = document.getElementById('quickopen-overlay');
+  if (overlay) overlay.remove();
+}
+
+async function openFileByName(filename) {
+  const res = await fetchApi(`/api/files/${filename}`);
+  const data = await res.json();
+  if (data.ok) {
+    setEditorValue(data.content);
+    markActiveTabChanged();
+    showToast(`Opened ${filename}`, 'success');
+  }
+}
+
+// Symbol outline popup
+function showSymbolOutline(symbols) {
+  let overlay = document.getElementById('symbol-outline-overlay');
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement('div');
+  overlay.id = 'symbol-outline-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'width:90%;max-width:350px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:60vh;overflow-y:auto;';
+
+  let html = '<div style="font-weight:bold;color:var(--text);margin-bottom:8px;">📋 Document Outline</div>';
+  function renderSymbols(syms, indent) {
+    (syms || []).forEach(s => {
+      const icon = s.kindLabel === 'class' ? '📦' : (s.kindLabel === 'def' ? '⚡' : (s.kindLabel === 'import' ? '📥' : '📌'));
+      html += `<div style="padding:4px 0 4px ${indent}px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" onclick="goToSymbolLine(${s.line}); document.getElementById('symbol-outline-overlay')?.remove();">
+        ${icon} <span style="color:var(--text-bright);">${escapeHtml(s.name)}</span>
+        <span style="color:var(--text-dim);font-size:10px;">L${s.line} ${s.detail || ''}</span>
+      </div>`;
+      if (s.children) renderSymbols(s.children, indent + 16);
+    });
+  }
+  renderSymbols(symbols, 8);
+  panel.innerHTML = html;
+
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
+function goToSymbolLine(line) {
+  if (editor) {
+    editor.gotoLine(line, 0, true);
+    editor.focus();
+  }
+}
+
+// Settings search
+function openSettingsSearch() {
+  let overlay = document.getElementById('settings-search-overlay');
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement('div');
+  overlay.id = 'settings-search-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'width:90%;max-width:400px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:70vh;display:flex;flex-direction:column;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search settings...';
+  input.style.cssText = 'width:100%;padding:12px;background:var(--bg-panel-2);color:var(--text);border:none;border-bottom:1px solid var(--border);font-size:14px;outline:none;font-family:var(--mono);';
+
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow-y:auto;flex:1;max-height:50vh;';
+
+  panel.appendChild(input);
+  panel.appendChild(list);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  async function loadSettings(query) {
+    const url = '/api/settings' + (query ? `?q=${encodeURIComponent(query)}` : '');
+    const res = await fetchApi(url);
+    const data = await res.json();
+    list.innerHTML = '';
+    (data.settings || []).forEach(s => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--border);';
+      row.innerHTML = `<div style="color:var(--text);font-weight:bold;">${escapeHtml(s.label)}</div><div style="color:var(--text-dim);font-size:10px;">${escapeHtml(s.key)} · ${escapeHtml(s.category)} · ${escapeHtml(s.description)}</div>`;
+      list.appendChild(row);
+    });
+  }
+
+  let _searchTimeout = null;
+  input.oninput = () => {
+    if (_searchTimeout) clearTimeout(_searchTimeout);
+    _searchTimeout = setTimeout(() => loadSettings(input.value), 200);
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') overlay.remove();
+  };
+  loadSettings('');
+}
+
+// Override the existing Palette button to open our Command Palette
+document.getElementById('floating-palette-btn')?.addEventListener('click', (e) => {
+  e.stopImmediatePropagation();
+  openCommandPalette();
+});
+
+// Inline input — replaces native prompt() with a non-blocking modal
+// Returns a Promise that resolves to the user's input (or null if cancelled)
+function _inlineInput(placeholder) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:3000;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'width:90%;max-width:300px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:16px;';
+
+    const label = document.createElement('div');
+    label.style.cssText = 'color:var(--text);margin-bottom:8px;font-size:14px;';
+    label.textContent = placeholder;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.style.cssText = 'width:100%;padding:8px;background:var(--bg-panel-2);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:14px;outline:none;font-family:var(--mono);box-sizing:border-box;';
+    input.autofocus = true;
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:12px;justify-content:flex-end;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:6px 12px;background:var(--bg-panel-2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;';
+    cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'OK';
+    okBtn.style.cssText = 'padding:6px 12px;background:var(--border-bright);color:var(--bg);border:none;border-radius:4px;cursor:pointer;font-weight:bold;';
+    okBtn.onclick = () => { overlay.remove(); resolve(input.value); };
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { overlay.remove(); resolve(input.value); }
+      if (e.key === 'Escape') { overlay.remove(); resolve(null); }
+    };
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    box.appendChild(label);
+    box.appendChild(input);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+
+    input.focus();
+  });
+}
 </script>
 </body>
 </html>

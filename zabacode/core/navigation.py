@@ -17,6 +17,7 @@ References:
 from __future__ import annotations
 
 import re
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -203,6 +204,31 @@ def get_quick_open_items(query: str = "") -> list[QuickOpenItem]:
 # Searchable Settings — mirrors VSCode's Settings Editor
 # ---------------------------------------------------------------------------
 
+from zabacode.core.paths import APP_DIR
+
+SETTINGS_FILE = APP_DIR / ".zabacode_settings.json"
+
+
+def load_settings() -> dict[str, Any]:
+    """Load settings from local JSON file."""
+    if SETTINGS_FILE.exists():
+        try:
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def save_setting(key: str, value: Any) -> None:
+    """Save a setting value to local JSON file."""
+    settings = load_settings()
+    settings[key] = value
+    try:
+        SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 @dataclass
 class SettingItem:
     """A single setting."""
@@ -234,55 +260,56 @@ def get_all_settings(query: str = "") -> list[SettingItem]:
 
     Mirrors VSCode's searchable settings editor (Ctrl+,).
     """
+    stored = load_settings()
     settings: list[SettingItem] = [
         # Editor
-        SettingItem("editor.fontSize", "Font Size", "Editor", "number", 14, 14,
+        SettingItem("editor.fontSize", "Font Size", "Editor", "number", 14, stored.get("editor.fontSize", 14),
                     description="Editor font size in pixels"),
-        SettingItem("editor.tabSize", "Tab Size", "Editor", "number", 4, 4,
+        SettingItem("editor.tabSize", "Tab Size", "Editor", "number", 4, stored.get("editor.tabSize", 4),
                     description="Number of spaces per tab"),
-        SettingItem("editor.wordWrap", "Word Wrap", "Editor", "boolean", True, True,
+        SettingItem("editor.wordWrap", "Word Wrap", "Editor", "boolean", True, stored.get("editor.wordWrap", True),
                     description="Wrap long lines"),
-        SettingItem("editor.showLineNumbers", "Line Numbers", "Editor", "boolean", True, True,
+        SettingItem("editor.showLineNumbers", "Line Numbers", "Editor", "boolean", True, stored.get("editor.showLineNumbers", True),
                     description="Show line numbers in the gutter"),
-        SettingItem("editor.minimap", "Minimap", "Editor", "boolean", False, False,
+        SettingItem("editor.minimap", "Minimap", "Editor", "boolean", False, stored.get("editor.minimap", False),
                     description="Show minimap on the right side"),
-        SettingItem("editor.autoComplete", "Auto Complete", "Editor", "boolean", True, True,
+        SettingItem("editor.autoComplete", "Auto Complete", "Editor", "boolean", True, stored.get("editor.autoComplete", True),
                     description="Enable autocomplete suggestions"),
 
         # Appearance
-        SettingItem("editor.theme", "Color Theme", "Appearance", "select", "retro", "retro",
+        SettingItem("editor.theme", "Color Theme", "Appearance", "select", "retro", stored.get("editor.theme", "retro"),
                     options=["retro", "solarized", "dracula", "cyberpunk", "nord", "monokai",
                              "tokyo_night", "one_dark", "gruvbox", "catppuccin", "forest", "synthwave84"],
                     description="Editor color theme"),
-        SettingItem("editor.engine", "Editor Engine", "Appearance", "select", "ace", "ace",
+        SettingItem("editor.engine", "Editor Engine", "Appearance", "select", "ace", stored.get("editor.engine", "ace"),
                     options=["ace", "native"],
                     description="Code editor engine (Ace or native textarea)"),
-        SettingItem("editor.crtEffect", "CRT Effect", "Appearance", "boolean", False, False,
+        SettingItem("editor.crtEffect", "CRT Effect", "Appearance", "boolean", False, stored.get("editor.crtEffect", False),
                     description="Enable CRT scanline effect"),
 
         # AI
-        SettingItem("ai.provider", "AI Provider", "AI", "select", "openrouter", "openrouter",
+        SettingItem("ai.provider", "AI Provider", "AI", "select", "openrouter", stored.get("ai.provider", "openrouter"),
                     options=["openrouter", "gemini", "groq", "mistral", "deepseek", "ollama", "custom"],
                     description="AI chat provider"),
-        SettingItem("ai.model", "AI Model", "AI", "string", "", "",
+        SettingItem("ai.model", "AI Model", "AI", "string", "", stored.get("ai.model", ""),
                     description="AI model name (leave empty for default)"),
-        SettingItem("ai.allowOffline", "Allow Offline Fallback", "AI", "boolean", True, True,
+        SettingItem("ai.allowOffline", "Allow Offline Fallback", "AI", "boolean", True, stored.get("ai.allowOffline", True),
                     description="Fall back to Oracle when cloud AI is unavailable"),
 
         # Execution
-        SettingItem("run.timeout", "Execution Timeout", "Execution", "number", 30, 30,
+        SettingItem("run.timeout", "Execution Timeout", "Execution", "number", 30, stored.get("run.timeout", 30),
                     description="Maximum code execution time in seconds"),
-        SettingItem("run.interactiveTimeout", "Interactive Timeout", "Execution", "number", 120, 120,
+        SettingItem("run.interactiveTimeout", "Interactive Timeout", "Execution", "number", 120, stored.get("run.interactiveTimeout", 120),
                     description="Maximum interactive session duration in seconds"),
 
         # Plugins
-        SettingItem("plugins.autoFormatter", "Auto Formatter", "Plugins", "boolean", True, True,
+        SettingItem("plugins.autoFormatter", "Auto Formatter", "Plugins", "boolean", True, stored.get("plugins.autoFormatter", True),
                     description="Enable the PEP-8 auto-code formatter"),
-        SettingItem("plugins.snippetPack", "Snippet Pack", "Plugins", "boolean", True, True,
+        SettingItem("plugins.snippetPack", "Snippet Pack", "Plugins", "boolean", True, stored.get("plugins.snippetPack", True),
                     description="Enable the Pro Python Snippets Pack"),
-        SettingItem("plugins.syntaxLinter", "Syntax Linter", "Plugins", "boolean", True, True,
+        SettingItem("plugins.syntaxLinter", "Syntax Linter", "Plugins", "boolean", True, stored.get("plugins.syntaxLinter", True),
                     description="Enable the static syntax linter guard"),
-        SettingItem("plugins.symbolBar", "Symbol Bar", "Plugins", "boolean", True, True,
+        SettingItem("plugins.symbolBar", "Symbol Bar", "Plugins", "boolean", True, stored.get("plugins.symbolBar", True),
                     description="Enable the extended mobile symbol bar"),
     ]
 

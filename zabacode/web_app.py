@@ -1093,6 +1093,25 @@ def get_settings():
     })
 
 
+@app.post("/api/settings")
+@require_auth
+def update_setting_endpoint():
+    """Update a searchable setting's value."""
+    payload, err = _get_json_payload()
+    if err:
+        return err
+
+    key = payload.get("key")
+    value = payload.get("value")
+
+    if not key or not isinstance(key, str):
+        return jsonify({"ok": False, "message": "Field 'key' must be a non-empty string."}), 400
+
+    from zabacode.core.navigation import save_setting
+    save_setting(key, value)
+    return jsonify({"ok": True, "message": f"Setting '{key}' successfully updated."})
+
+
 # ---------------------------------------------------------------------------
 # P4: Workspace — VSCode-inspired Search & Symbol Index
 # ---------------------------------------------------------------------------

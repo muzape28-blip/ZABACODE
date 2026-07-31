@@ -3174,3 +3174,52 @@ class TestDiagnosticsAggregateEndpoint:
         items = r.get_json().get("items", [])
         actions = [item["action"] for item in items]
         assert "view.problems" in actions, "view.problems must be in command palette"
+
+
+class TestSearchableSettingsPersistence:
+    """End-to-end tests for the searchable settings persistence and updates."""
+
+    def test_settings_get_and_post_endpoints(self):
+        from zabacode.core.security import AUTH_TOKEN
+        from zabacode.web_app import app
+        from zabacode.core.navigation import SETTINGS_FILE
+
+        # Clean up any existing settings file before starting
+        if SETTINGS_FILE.exists():
+            try:
+                SETTINGS_FILE.unlink()
+            except Exception:
+                pass
+
+        client = app.test_client()
+        h = {"X-Zabacode-Token": AUTH_TOKEN}
+
+        # 1. Get settings and verify default value for wordWrap is True
+        r = client.get("/api/settings", headers=h)
+        assert r.status_code == 200
+        data = r.get_json()
+        assert data["ok"] is True
+        settings = data["settings"]
+        word_wrap_item = next(s for s in settings if s["key"] == "editor.wordWrap")
+        assert word_wrap_item["current"] is True
+
+        # 2. Update wordWrap to False
+        r = client.post("/api/settings", json={"key": "editor.wordWrap", "value": False}, headers=h)
+        assert r.status_code == 200
+        assert r.get_json()["ok"] is True
+
+        # 3. Retrieve settings again and verify current value is now False
+        r = client.get("/api/settings", headers=h)
+        assert r.status_code == 200
+        data = r.get_json()
+        assert data["ok"] is True
+        settings = data["settings"]
+        word_wrap_item = next(s for s in settings if s["key"] == "editor.wordWrap")
+        assert word_wrap_item["current"] is False
+
+        # Clean up after test
+        if SETTINGS_FILE.exists():
+            try:
+                SETTINGS_FILE.unlink()
+            except Exception:
+                pass

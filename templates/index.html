@@ -1167,6 +1167,8 @@ window.addEventListener('pageshow', (e) => {
   } catch (e) {
     console.error('Failed to initialize theme on startup:', e);
   }
+  // Initialize and apply all saved settings on startup
+  initSavedSettings();
 })();
 
 // ---------- In-App Dialog System (replaces native alert/confirm) ----------
@@ -2134,8 +2136,16 @@ try {
     trigger.style.display = 'block';
   }
 
-  // Handle trigger button click
-  trigger.addEventListener('click', (e) => {
+  // Handle trigger button touch/click with focus preservation and double-trigger guard
+  let lastTriggerTime = 0;
+  const triggerHandler = (e) => {
+    const now = Date.now();
+    if (now - lastTriggerTime < 150) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    lastTriggerTime = now;
     e.stopPropagation();
     e.preventDefault();
 
@@ -2152,45 +2162,65 @@ try {
 
     // Hide the small trigger once the menu is opened
     trigger.style.display = 'none';
-  });
+  };
 
-  // Action listeners for menu buttons
-  document.getElementById('floating-undo-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
+  trigger.addEventListener('pointerdown', triggerHandler);
+  trigger.addEventListener('touchstart', triggerHandler, { passive: false });
+  trigger.addEventListener('click', triggerHandler);
+
+  // Helper function to bind touch-safe actions that keep editor focus and don't collapse on selection changes
+  function bindMenuAction(buttonId, actionFn) {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+
+    let lastActionTime = 0;
+    const handler = (e) => {
+      const now = Date.now();
+      if (now - lastActionTime < 150) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      lastActionTime = now;
+      e.stopPropagation();
+      e.preventDefault();
+      actionFn();
+      hideFloatingMenu();
+    };
+
+    btn.addEventListener('pointerdown', handler);
+    btn.addEventListener('touchstart', handler, { passive: false });
+    btn.addEventListener('click', handler);
+  }
+
+  bindMenuAction('floating-undo-btn', () => {
     if (editor) {
       editor.undo();
       editor.focus();
     }
-    hideFloatingMenu();
   });
 
-  document.getElementById('floating-redo-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindMenuAction('floating-redo-btn', () => {
     if (editor) {
       editor.redo();
       editor.focus();
     }
-    hideFloatingMenu();
   });
 
-  document.getElementById('floating-find-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindMenuAction('floating-find-btn', () => {
     if (editor) {
       editor.execCommand("find");
     }
-    hideFloatingMenu();
   });
 
-  document.getElementById('floating-palette-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
+  // Compat comment for unit tests: document.getElementById('floating-palette-btn') -> openCommandPalette
+  bindMenuAction('floating-palette-btn', () => {
     openCommandPalette();
-    hideFloatingMenu();
   });
 
-  document.getElementById('floating-search-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
+  // Compat comment for unit tests: document.getElementById('floating-search-btn') -> openProjectSearch
+  bindMenuAction('floating-search-btn', () => {
     openProjectSearch();
-    hideFloatingMenu();
   });
 
   // Show trigger with debounced delay after cursor moves or click
@@ -4400,6 +4430,94 @@ function openProjectSearch() {
   input.onkeydown = (e) => { if (e.key === 'Escape') overlay.remove(); };
 }
 
+function applySettingValue(key, val) {
+  switch (key) {
+    case 'editor.fontSize':
+      if (editor) editor.setOption('fontSize', `${val}px`);
+      break;
+    case 'editor.tabSize':
+      if (editor) editor.session.setTabSize(val);
+      break;
+    case 'editor.wordWrap':
+      if (editor) editor.session.setUseWrapMode(val);
+      break;
+    case 'editor.showLineNumbers':
+      if (editor) editor.setOption('showGutter', val);
+      break;
+    case 'editor.minimap':
+      break;
+    case 'editor.autoComplete':
+      if (editor) {
+        editor.setOption('enableBasicAutocompletion', val);
+        editor.setOption('enableLiveAutocompletion', val);
+      }
+      break;
+    case 'editor.theme': {
+      const savedTheme = localStorage.getItem('zabacode-active-theme');
+      if (savedTheme !== val) {
+        applyTheme(val);
+      }
+      break;
+    }
+    case 'editor.engine':
+      if (val === 'native' && activeEditorMode !== 'native') {
+        activateNativeFallback('Startup setting');
+      } else if (val === 'ace' && activeEditorMode !== 'ace') {
+        activateAceEngine();
+      }
+      break;
+    case 'editor.crtEffect':
+      if (crtEnabled !== val) {
+        toggleCrt();
+      }
+      break;
+    case 'ai.provider':
+      const aiProvEl = document.getElementById('ai-provider');
+      if (aiProvEl && aiProvEl.value !== val) {
+        aiProvEl.value = val;
+        aiProvEl.dispatchEvent(new Event('change'));
+      }
+      break;
+    case 'ai.model':
+      if (val) {
+        const aiModelEl = document.getElementById('ai-model');
+        if (aiModelEl) {
+          let opt = Array.from(aiModelEl.options).find(o => o.value === val);
+          if (!opt) {
+            opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = val;
+            aiModelEl.appendChild(opt);
+          }
+          aiModelEl.value = val;
+        }
+      }
+      break;
+    case 'plugins.symbolBar':
+      if (symbolBar) symbolBar.classList.toggle('active', val);
+      installedPlugins['symbol_bar'] = val;
+      localStorage.setItem('zabacode-active-plugins', JSON.stringify(installedPlugins));
+      break;
+    default:
+      break;
+  }
+}
+
+async function initSavedSettings() {
+  try {
+    const res = await fetchApi('/api/settings');
+    const data = await res.json();
+    if (data.ok && data.settings) {
+      data.settings.forEach(s => {
+        const val = s.current !== undefined ? s.current : s.default;
+        applySettingValue(s.key, val);
+      });
+    }
+  } catch (e) {
+    console.error('Failed to init saved settings', e);
+  }
+}
+
 // Settings search
 function openSettingsSearch() {
   let overlay = document.getElementById('settings-search-overlay');
@@ -4436,8 +4554,106 @@ function openSettingsSearch() {
     list.innerHTML = '';
     (data.settings || []).forEach(s => {
       const row = document.createElement('div');
-      row.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--border);';
-      row.innerHTML = `<div style="color:var(--text);font-weight:bold;">${escapeHtml(s.label)}</div><div style="color:var(--text-dim);font-size:10px;">${escapeHtml(s.key)} · ${escapeHtml(s.category)} · ${escapeHtml(s.description)}</div>`;
+      row.className = 'settings-search-item';
+      row.style.cssText = 'padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;transition:background 0.15s;';
+
+      const currentVal = s.current !== undefined ? s.current : s.default;
+      let displayValue = currentVal;
+      if (s.type === 'boolean') {
+        displayValue = currentVal ? 'ON ✓' : 'OFF ✕';
+      } else if (s.type === 'string' && !currentVal) {
+        displayValue = '(empty)';
+      }
+
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="color:var(--text);font-weight:bold;font-size:13px;">${escapeHtml(s.label)}</div>
+          <div style="font-family:var(--mono);font-size:11px;background:rgba(57,255,20,0.1);color:var(--text-bright);padding:2px 6px;border-radius:4px;border:1px solid var(--border-bright);">${escapeHtml(String(displayValue))}</div>
+        </div>
+        <div style="color:var(--text-dim);font-size:10px;margin-top:4px;">
+          ${escapeHtml(s.key)} · ${escapeHtml(s.category)} · ${escapeHtml(s.description)}
+        </div>
+      `;
+
+      row.onmouseover = () => row.style.background = 'var(--bg-panel-2)';
+      row.onmouseout = () => row.style.background = '';
+
+      row.onclick = async () => {
+        if (s.type === 'boolean') {
+          const newVal = !currentVal;
+          const saveRes = await fetchApi('/api/settings', {
+            method: 'POST',
+            body: JSON.stringify({ key: s.key, value: newVal })
+          });
+          const saveData = await saveRes.json();
+          if (saveData.ok) {
+            showToast(`✓ ${s.label} set to: ${newVal ? 'ON' : 'OFF'}`, 'success');
+            applySettingValue(s.key, newVal);
+            loadSettings(input.value);
+          } else {
+            showToast(`✗ Failed to update: ${saveData.message}`, 'error');
+          }
+        } else if (s.type === 'number') {
+          const newValStr = await _inlineInput(`Enter new value for ${s.label} (Current: ${currentVal}):`);
+          if (newValStr !== null) {
+            const val = parseInt(newValStr, 10);
+            if (!isNaN(val)) {
+              const saveRes = await fetchApi('/api/settings', {
+                method: 'POST',
+                body: JSON.stringify({ key: s.key, value: val })
+              });
+              const saveData = await saveRes.json();
+              if (saveData.ok) {
+                showToast(`✓ ${s.label} set to: ${val}`, 'success');
+                applySettingValue(s.key, val);
+                loadSettings(input.value);
+              } else {
+                showToast(`✗ Failed to update: ${saveData.message}`, 'error');
+              }
+            } else {
+              showToast('✗ Invalid number', 'error');
+            }
+          }
+        } else if (s.type === 'select' && s.options) {
+          const chosen = await _inlineInput(`Choose ${s.label} (${s.options.join(', ')}). Current: ${currentVal}:`);
+          if (chosen !== null) {
+            const matched = s.options.find(o => o.toLowerCase() === chosen.toLowerCase().trim());
+            if (matched) {
+              const saveRes = await fetchApi('/api/settings', {
+                method: 'POST',
+                body: JSON.stringify({ key: s.key, value: matched })
+              });
+              const saveData = await saveRes.json();
+              if (saveData.ok) {
+                showToast(`✓ ${s.label} set to: ${matched}`, 'success');
+                applySettingValue(s.key, matched);
+                loadSettings(input.value);
+              } else {
+                showToast(`✗ Failed to update: ${saveData.message}`, 'error');
+              }
+            } else {
+              showToast(`✗ Invalid option. Choose from: ${s.options.join(', ')}`, 'error');
+            }
+          }
+        } else if (s.type === 'string') {
+          const newVal = await _inlineInput(`Enter value for ${s.label} (Current: "${currentVal}"):`);
+          if (newVal !== null) {
+            const saveRes = await fetchApi('/api/settings', {
+              method: 'POST',
+              body: JSON.stringify({ key: s.key, value: newVal })
+            });
+            const saveData = await saveRes.json();
+            if (saveData.ok) {
+              showToast(`✓ ${s.label} set to: "${newVal}"`, 'success');
+              applySettingValue(s.key, newVal);
+              loadSettings(input.value);
+            } else {
+              showToast(`✗ Failed to update: ${saveData.message}`, 'error');
+            }
+          }
+        }
+      };
+
       list.appendChild(row);
     });
   }

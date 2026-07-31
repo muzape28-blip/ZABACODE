@@ -465,6 +465,20 @@
     box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
     user-select: none;
     -webkit-user-select: none;
+    max-width: 90vw;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  #editor-floating-menu::-webkit-scrollbar {
+    display: none;
+  }
+  /* Prevent native Android text selection, clipboard handles, and callout overlays inside the editor */
+  .ace_editor, .ace_editor * {
+    -webkit-touch-callout: none !important;
+  }
+  .ace_content, .ace_text-layer, .ace_layer {
+    -webkit-user-select: none !important;
+    user-select: none !important;
   }
   .floating-menu-btn {
     background: var(--bg-panel);
@@ -520,6 +534,10 @@
 
         <!-- Floating touch context menu -->
         <div id="editor-floating-menu" style="display: none;">
+          <button class="floating-menu-btn" id="floating-copy-btn" style="display: none;">Copy</button>
+          <button class="floating-menu-btn" id="floating-cut-btn" style="display: none;">Cut</button>
+          <button class="floating-menu-btn" id="floating-paste-btn" style="display: none;">Paste</button>
+          <button class="floating-menu-btn" id="floating-selectall-btn" style="display: none;">Select All</button>
           <button class="floating-menu-btn" id="floating-undo-btn">Undo</button>
           <button class="floating-menu-btn" id="floating-redo-btn">Redo</button>
           <button class="floating-menu-btn" id="floating-find-btn">Find</button>
@@ -2116,6 +2134,25 @@ try {
       return;
     }
 
+    const isSelectionEmpty = editor.selection.isEmpty();
+
+    // Toggle button visibility based on selection status
+    const copyBtn = document.getElementById("floating-copy-btn");
+    const cutBtn = document.getElementById("floating-cut-btn");
+    const pasteBtn = document.getElementById("floating-paste-btn");
+    const selectallBtn = document.getElementById("floating-selectall-btn");
+    const findBtn = document.getElementById("floating-find-btn");
+    const paletteBtn = document.getElementById("floating-palette-btn");
+    const searchBtn = document.getElementById("floating-search-btn");
+
+    if (copyBtn) copyBtn.style.display = isSelectionEmpty ? 'none' : 'block';
+    if (cutBtn) cutBtn.style.display = isSelectionEmpty ? 'none' : 'block';
+    if (pasteBtn) pasteBtn.style.display = 'block'; // Always useful
+    if (selectallBtn) selectallBtn.style.display = isSelectionEmpty ? 'block' : 'none';
+    if (findBtn) findBtn.style.display = isSelectionEmpty ? 'block' : 'none';
+    if (paletteBtn) paletteBtn.style.display = isSelectionEmpty ? 'block' : 'none';
+    if (searchBtn) searchBtn.style.display = 'block'; // Always useful
+
     const cursor = editor.getCursorPosition();
     const coords = editor.renderer.textToScreenCoordinates(cursor.row, cursor.column);
     const containerRect = container.getBoundingClientRect();
@@ -2193,6 +2230,75 @@ try {
     btn.addEventListener('click', handler);
   }
 
+  bindMenuAction('floating-copy-btn', () => {
+    if (editor) {
+      const selectedText = editor.getSelectedText();
+      if (selectedText) {
+        navigator.clipboard.writeText(selectedText)
+          .then(() => showToast('✓ Copied to clipboard', 'success'))
+          .catch(() => {
+            try {
+              document.execCommand('copy');
+              showToast('✓ Copied to clipboard', 'success');
+            } catch (err) {
+              showToast('✗ Copy failed', 'error');
+            }
+          });
+      }
+      editor.focus();
+    }
+  });
+
+  bindMenuAction('floating-cut-btn', () => {
+    if (editor) {
+      const selectedText = editor.getSelectedText();
+      if (selectedText) {
+        navigator.clipboard.writeText(selectedText)
+          .then(() => {
+            editor.insert("");
+            showToast('✓ Cut to clipboard', 'success');
+          })
+          .catch(() => {
+            try {
+              document.execCommand('cut');
+              showToast('✓ Cut to clipboard', 'success');
+            } catch (err) {
+              showToast('✗ Cut failed', 'error');
+            }
+          });
+      }
+      editor.focus();
+    }
+  });
+
+  bindMenuAction('floating-paste-btn', () => {
+    if (editor) {
+      navigator.clipboard.readText()
+        .then(text => {
+          if (text) {
+            editor.insert(text);
+            showToast('✓ Pasted', 'success');
+          }
+        })
+        .catch(() => {
+          showToast('Tap editor & use keyboard paste if blocked', 'loading');
+          try {
+            document.execCommand('paste');
+          } catch (err) {
+            // Browser security blocks direct paste command
+          }
+        });
+      editor.focus();
+    }
+  });
+
+  bindMenuAction('floating-selectall-btn', () => {
+    if (editor) {
+      editor.selectAll();
+      editor.focus();
+    }
+  });
+
   bindMenuAction('floating-undo-btn', () => {
     if (editor) {
       editor.undo();
@@ -2228,8 +2334,8 @@ try {
   function triggerMenuWithDelay() {
     if (touchTimeout) clearTimeout(touchTimeout);
     touchTimeout = setTimeout(() => {
-      // Don't show menu if currently selecting text (dragging) to avoid clutter
-      if (editor && editor.selection.isEmpty()) {
+      // Show custom trigger menu for editing (even with non-empty selections)
+      if (editor) {
         updateMenuPosition();
       } else {
         hideFloatingMenu();
@@ -2267,6 +2373,16 @@ try {
       hideFloatingMenu();
     }
   });
+
+  // Block native Android selection context menu inside the editor
+  setTimeout(() => {
+    if (editor && editor.container) {
+      editor.container.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        return false;
+      }, true);
+    }
+  }, 1000);
 })();
 
 

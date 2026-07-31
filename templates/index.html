@@ -524,6 +524,7 @@
           <button class="floating-menu-btn" id="floating-redo-btn">Redo</button>
           <button class="floating-menu-btn" id="floating-find-btn">Find</button>
           <button class="floating-menu-btn" id="floating-palette-btn">Palette</button>
+          <button class="floating-menu-btn" id="floating-search-btn">Search</button>
         </div>
 
         <div id="code-editor" tabindex="0"></div>
@@ -1087,9 +1088,9 @@ function stopMatrixRain() {
   if (canvas) canvas.remove();
 }
 
-// ---------- Boot Sequence Animation — Updated v1.2.0 (No SSL Bypass, No ZMUX, Clean) ----------
+// ---------- Boot Sequence Animation — v1.2.1 (VSCode Architecture + Palette + Project Search) ----------
 const BOOT_MESSAGES = [
-  { text: 'ZABACODE v1.2.0 Engine Initializing...', cls: 'dim' },
+  { text: 'ZABACODE v1.2.1 Engine Initializing...', cls: 'dim' },
   { text: '[ OK ] Local Session Token Security Active', cls: 'ok' },
   { text: '[ OK ] Android Keystore + AES-GCM Vault', cls: 'ok' },
   { text: '[ OK ] Python 3 Subprocess Sandbox (PGID)', cls: 'ok' },
@@ -2183,6 +2184,12 @@ try {
   document.getElementById('floating-palette-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     openCommandPalette();
+    hideFloatingMenu();
+  });
+
+  document.getElementById('floating-search-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openProjectSearch();
     hideFloatingMenu();
   });
 
@@ -3755,7 +3762,7 @@ function renderProblemsPanel(diagnostics) {
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'problems-panel';
-    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:var(--bg-panel);border-top:2px solid var(--border);z-index:1000;display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;overflow:hidden;';
+    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:var(--bg-panel);border-top:2px solid var(--border);z-index:15;display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;overflow:hidden;';
     document.body.appendChild(panel);
   }
 
@@ -3769,13 +3776,14 @@ function renderProblemsPanel(diagnostics) {
 
   const total = counts.error + counts.warning + counts.info + counts.hint;
   panel.innerHTML = `
-    <div style="display:flex;align-items:center;padding:6px 10px;background:var(--bg-panel-2);border-bottom:1px solid var(--border);cursor:pointer;" onclick="toggleProblemsPanel()">
-      <span style="font-weight:bold;color:var(--text);margin-right:12px;">PROBLEMS</span>
+    <div style="display:flex;align-items:center;padding:6px 10px;background:var(--bg-panel-2);border-bottom:1px solid var(--border);">
+      <span style="font-weight:bold;color:var(--text);margin-right:12px;cursor:pointer;" onclick="toggleProblemsPanel()">PROBLEMS</span>
       ${counts.error ? `<span style="color:#ff6666;margin-right:8px;">${counts.error} error${counts.error > 1 ? 's' : ''}</span>` : ''}
       ${counts.warning ? `<span style="color:#ffaa00;margin-right:8px;">${counts.warning} warning${counts.warning > 1 ? 's' : ''}</span>` : ''}
       ${counts.info ? `<span style="color:#66aaff;margin-right:8px;">${counts.info} info</span>` : ''}
       ${!total ? '<span style="color:var(--text-dim);">No problems detected</span>' : ''}
-      <span style="margin-left:auto;color:var(--text-dim);font-size:10px;">▼</span>
+      <span style="margin-left:auto;color:var(--text-dim);cursor:pointer;font-size:10px;" onclick="toggleProblemsPanel()">▼</span>
+      <button onclick="closeProblemsPanel();event.stopPropagation();" style="margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:10px;padding:1px 6px;cursor:pointer;border-radius:3px;">✕</button>
     </div>
     <div id="problems-list" style="overflow-y:auto;flex:1;max-height:30vh;">
       ${(diagnostics || []).map(d => `
@@ -3798,6 +3806,12 @@ function toggleProblemsPanel() {
   if (list) {
     list.style.display = list.style.display === 'none' ? 'block' : 'none';
   }
+}
+
+function closeProblemsPanel() {
+  const panel = document.getElementById('problems-panel');
+  if (panel) panel.remove();
+  clearAceAnnotations();
 }
 
 function goToProblem(line, column) {
@@ -3849,14 +3863,39 @@ async function refreshDiagnostics() {
 function openProblemsSheet() {
   refreshDiagnostics();
   const panel = document.getElementById('problems-panel');
-  if (panel) panel.style.display = 'flex';
+  if (panel) {
+    panel.style.display = 'flex';
+  } else {
+    // Panel doesn't exist yet — render it (refreshDiagnostics already called)
+    // The panel is created inside renderProblemsPanel, so let's do a fresh render
+    // with empty diagnostics to create the panel, then let refreshDiagnostics
+    // re-fetch and update.
+    renderProblemsPanel([]);
+    refreshDiagnostics();
+  }
 }
 
 // Debounced diagnostics on code change
 let _diagTimeout = null;
 function scheduleDiagnostics() {
   if (_diagTimeout) clearTimeout(_diagTimeout);
-  _diagTimeout = setTimeout(refreshDiagnostics, 1500);
+  // Auto-diagnostics silently set Ace gutter annotations only;
+  // the Problems panel is NOT auto-opened — it covers the RUN/CLEAR buttons.
+  _diagTimeout = setTimeout(async () => {
+    const code = getEditorValue();
+    if (!code.trim()) { clearAceAnnotations(); return; }
+    try {
+      const res = await fetchApi('/api/diagnostics/aggregate', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.annotations && editor && editor.session) {
+          editor.session.setAnnotations(data.annotations);
+        } else {
+          setAceAnnotations(data.diagnostics);
+        }
+      }
+    } catch (e) { /* silent */ }
+  }, 1500);
 }
 
 // Hook diagnostics into Ace change events
@@ -3913,8 +3952,11 @@ function openCommandPalette() {
     list.innerHTML = '';
     (data.items || []).forEach(item => {
       const row = document.createElement('div');
-      row.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;';
-      row.innerHTML = `<span style="color:var(--text-dim);font-size:10px;min-width:60px;">${escapeHtml(item.category)}</span><span style="color:var(--text);flex:1;">${escapeHtml(item.label)}</span><span style="color:var(--text-dim);font-size:10px;">${escapeHtml(item.detail)}</span>`;
+      // Mobile-optimized: larger touch target, category icon, clear hierarchy
+      const catIcons = { 'Run': '▶', 'Edit': '✎', 'Navigate': '↗', 'View': '👁', 'AI': '🔮', 'Settings': '⚙', 'File': '📄', 'General': '•' };
+      const catIcon = catIcons[item.category] || '•';
+      row.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;min-height:42px;';
+      row.innerHTML = `<span style="font-size:14px;min-width:24px;text-align:center;">${catIcon}</span><span style="color:var(--text-dim);font-size:10px;min-width:48px;">${escapeHtml(item.category)}</span><span style="color:var(--text);flex:1;font-size:13px;">${escapeHtml(item.label)}</span><span style="color:var(--text-dim);font-size:9px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(item.detail || '')}</span>`;
       row.onmouseover = () => row.style.background = 'var(--bg-panel-2)';
       row.onmouseout = () => row.style.background = '';
       row.onclick = () => {
@@ -4040,10 +4082,46 @@ async function executePaletteAction(item) {
       break;
     }
     case 'view.problems':
-      refreshDiagnostics();
+      openProblemsSheet();
       break;
     case 'view.terminal': {
       goToOutput();
+      break;
+    }
+    case 'file.new': {
+      // Create a new empty tab
+      const newId = 'tab-' + Date.now();
+      tabs.push({ id: newId, name: `untitled_${tabs.length + 1}.py`, content: "", revision: 0 });
+      switchTab(newId);
+      showToast('New file created', 'success');
+      break;
+    }
+    case 'file.open':
+      // Open file manager dialog
+      openFileManager(false);
+      break;
+    case 'file.save':
+      // Open file manager in save mode
+      openFileManager(true);
+      break;
+    case 'file.delete':
+      // Open file manager (has delete buttons)
+      openFileManager(false);
+      break;
+    case 'settings.ai_provider': {
+      const aiPanelEl = document.getElementById('ai-panel');
+      if (aiPanelEl) aiPanelEl.classList.add('open');
+      const aiProvEl = document.getElementById('ai-provider');
+      if (aiProvEl) aiProvEl.focus();
+      break;
+    }
+    case 'settings.libraries':
+      openLibraryManager();
+      break;
+    case 'settings.plugins': {
+      const mktBack = document.getElementById('market-modal-backdrop');
+      if (mktBack) mktBack.classList.add('open');
+      loadMarketplace();
       break;
     }
     case 'ai.chat': {
@@ -4073,12 +4151,10 @@ async function executePaletteAction(item) {
       break;
     }
     case 'settings.theme': {
-      // Inline input — no native prompt() dialog
-      const themeName = await _inlineInput('Theme name (retro, dracula, monokai, cyberpunk, nord, etc.):');
-      if (themeName) {
-        await applyTheme(themeName);
-        showToast(`Theme changed to ${themeName}!`, 'success');
-      }
+      // Open the theme picker dialog instead of text input
+      const themeBackdrop = document.getElementById('theme-dialog-backdrop');
+      if (themeBackdrop) themeBackdrop.classList.add('open');
+      loadThemes();
       break;
     }
     case 'settings.search':
@@ -4096,8 +4172,28 @@ async function executePaletteAction(item) {
       }
       break;
     }
+    case 'edit.search': {
+      // Project-wide search — open the search dialog
+      openProjectSearch();
+      break;
+    }
+    case 'navigate.workspace_symbols': {
+      // Workspace-wide symbol search (Ctrl+T)
+      const query = await _inlineInput('Search symbols across all files:');
+      if (query && query.trim()) {
+        const res = await fetchApi('/api/workspace/symbols?q=' + encodeURIComponent(query.trim()));
+        const data = await res.json();
+        if (data.ok && data.symbols && data.symbols.length) {
+          showSymbolOutline(data.symbols.map(s => ({ name: s.name + ' (' + s.filename + ')', kindLabel: s.kind, line: s.line, detail: s.filename })));
+        } else {
+          showToast('No symbols found for: ' + query, 'info');
+        }
+      }
+      break;
+    }
     default:
-      showToast(`Action: ${item.label} (not yet implemented)`, 'info');
+      // Truly unknown action — show the label so the user at least knows what was selected
+      showToast(`${item.label}`, 'info');
   }
 }
 
@@ -4154,6 +4250,14 @@ function openQuickOpen(prefix) {
           openFileByName(item.args[0]);
         } else if (item.action === 'navigate.line' && item.args[0]) {
           if (editor) { editor.gotoLine(item.args[0], 0, true); editor.focus(); }
+        } else if (item.action === 'navigate.symbol') {
+          // Symbol search in Quick Open — show outline
+          const code = getEditorValue();
+          fetchApi('/api/editor/outline', { method: 'POST', body: JSON.stringify({ code }) })
+            .then(r => r.json()).then(d => { if (d.ok && d.symbols) showSymbolOutline(d.symbols); });
+        } else {
+          // Delegate to executePaletteAction for other action types
+          executePaletteAction(item);
         }
       };
       list.appendChild(row);
@@ -4234,6 +4338,66 @@ function goToSymbolLine(line) {
     editor.gotoLine(line, 0, true);
     editor.focus();
   }
+}
+
+// Project-wide search dialog
+function openProjectSearch() {
+  let overlay = document.getElementById('project-search-overlay');
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement('div');
+  overlay.id = 'project-search-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'width:92%;max-width:420px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:75vh;display:flex;flex-direction:column;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search in files... (use /regex/ for regex, case:sensitive)';
+  input.style.cssText = 'width:100%;padding:12px;background:var(--bg-panel-2);color:var(--text);border:none;border-bottom:1px solid var(--border);font-size:14px;outline:none;font-family:var(--mono);';
+  input.autofocus = true;
+
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow-y:auto;flex:1;max-height:55vh;';
+
+  panel.appendChild(input);
+  panel.appendChild(list);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  async function doSearch(query) {
+    if (!query.trim()) { list.innerHTML = '<div style="padding:20px;color:var(--text-dim);text-align:center;">Type to search across all files</div>'; return; }
+    let isRegex = false, isCase = false, searchTerm = query;
+    if (/^\/.+\/$/.test(query.trim())) { isRegex = true; searchTerm = query.trim().slice(1, -1); }
+    if (query.includes('case:sensitive')) { isCase = true; searchTerm = searchTerm.replace('case:sensitive', '').trim(); }
+    const url = '/api/search?q=' + encodeURIComponent(searchTerm) + '&regex=' + isRegex + '&case_sensitive=' + isCase;
+    try {
+      const res = await fetchApi(url);
+      const data = await res.json();
+      if (!data.ok || !data.results || !data.results.length) {
+        list.innerHTML = '<div style="padding:20px;color:var(--text-dim);text-align:center;">No results for: ' + escapeHtml(searchTerm) + '</div>';
+        return;
+      }
+      list.innerHTML = data.results.map(r => `
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;gap:8px;"
+             onclick="openFileByName('${escapeHtml(r.filename)}');setTimeout(()=>{if(editor)editor.gotoLine(${r.line},${r.column-1},true);},300);document.getElementById('project-search-overlay')?.remove();">
+          <span style="color:var(--ai);font-size:10px;min-width:60px;white-space:nowrap;">${escapeHtml(r.filename)}:${r.line}</span>
+          <span style="color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.lineText || '')}</span>
+        </div>
+      `).join('');
+    } catch(e) {
+      list.innerHTML = '<div style="padding:20px;color:var(--err);text-align:center;">Search failed: ' + escapeHtml(String(e)) + '</div>';
+    }
+  }
+
+  let _st = null;
+  input.oninput = () => { if (_st) clearTimeout(_st); _st = setTimeout(() => doSearch(input.value), 250); };
+  input.onkeydown = (e) => { if (e.key === 'Escape') overlay.remove(); };
 }
 
 // Settings search

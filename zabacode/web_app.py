@@ -1161,36 +1161,118 @@ def workspace_import_graph():
     })
 
 
+#: The p4a webview bootstrap polls *exactly* this port (p4a.port = 5000) and
+#: loads http://127.0.0.1:5000/ once it answers. On Android we must therefore
+#: serve on this port — silently moving to another port leaves the WebView
+#: waiting forever or, worse, cross-loads another ZABA app sharing the same
+#: loopback (the "ketuker" bug reported when Zabacode + Zmux both on 5000).
+P4A_HTTP_PORT = 5000
+#: How long to wait for the p4a port to become free on Android (zombie process).
+P4A_BIND_TIMEOUT_SECONDS = 30.0
+
+
+def _is_android() -> bool:
+    import os
+    return any(k in os.environ for k in ("ANDROID_PRIVATE", "ANDROID_ARGUMENT", "ANDROID_APP_PATH"))
+
+
+def _bind_listener(host: str, port: int, family: int = None, reuse_port: bool = False):
+    import socket as _socket
+    if family is None:
+        family = _socket.AF_INET
+    sock = _socket.socket(family, _socket.SOCK_STREAM)
+    if family == _socket.AF_INET6 and hasattr(_socket, "IPV6_V6ONLY"):
+        sock.setsockopt(_socket.IPPROTO_IPV6, _socket.IPV6_V6ONLY, 1)
+    sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    if reuse_port and hasattr(_socket, "SO_REUSEPORT"):
+        try:
+            sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEPORT, 1)
+        except OSError:
+            pass
+    sock.bind((host, port))
+    sock.listen(min(_socket.SOMAXCONN, 128))
+    return sock
+
+
+def _bind_ipv6_loopback(port: int, reuse_port: bool = False):
+    try:
+        import socket as _socket
+        return _bind_listener("::1", port, family=_socket.AF_INET6, reuse_port=reuse_port)
+    except OSError:
+        return None
+
+
+def _bind_http_socket():
+    """Bind HTTP listener, honouring Android WebView port contract."""
+    import socket as _socket
+    import time as _time
+    import os as _os
+    if _is_android():
+        deadline = _time.monotonic() + P4A_BIND_TIMEOUT_SECONDS
+        while True:
+            for host in ("127.0.0.1", "localhost"):
+                try:
+                    return _bind_listener(host, P4A_HTTP_PORT, reuse_port=True)
+                except OSError:
+                    continue
+            if _time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Could not bind 127.0.0.1:{P4A_HTTP_PORT} within "
+                    f"{int(P4A_BIND_TIMEOUT_SECONDS)}s. The Android WebView "
+                    "shell waits for this exact port, so ZABACODE cannot start. "
+                    "Close other ZABA app instances (ZMUX) or force-stop them. "
+                    "For coexistence, ensure ZMUX uses 6000, ZABACODE uses 5000."
+                )
+            print(f"[WARN] Port {P4A_HTTP_PORT} occupied, retrying...")
+            _time.sleep(0.2)
+    # Desktop dev fallback: try range 5000-5010
+    for port in range(P4A_HTTP_PORT, P4A_HTTP_PORT + 11):
+        try:
+            return _bind_listener("127.0.0.1", port)
+        except OSError as e:
+            print(f"[WARN] Port {port} occupied ({e}), trying next...")
+    raise RuntimeError(f"All ports {P4A_HTTP_PORT}-{P4A_HTTP_PORT + 10} occupied.")
+
+
 def run_webview_server():
-    """Run WebView server with port conflict detection (Fix #27)."""
-    import socket
+    """Run WebView server — strict port contract matching WebViewLoader.
+
+    Prior implementation tried ports 5000-5010 after a probe-bind-close cycle.
+    That left a TOCTOU race and, more critically, broke co-existence with ZMUX:
+    both apps used p4a.port=5000, so second app's Python would bind 5001 while
+    its Java WebViewLoader still polled 5000 and loaded the first app's UI.
+    This is the root cause of "buka zmux muncul zabacode" and vice versa.
+
+    Fix: On Android, bind exactly P4A_HTTP_PORT (5000) with retry loop and pass
+    the live socket to Waitress (no probe-then-bind race). On desktop, fall back
+    to range scan. See ZMUX server.py for precedent — it implements the same
+    strict contract and documents it.
+    """
+    import time
 
     # Bootstrap service container (VSCode-inspired DI)
-    # This registers all services and commands before the server starts
     get_service_container()
     print("[INFO] Service container bootstrapped — events, commands, services ready")
 
-    # Try ports 5000-5010 to handle collision/denial-of-service on fixed port
-    for port in range(5000, 5011):
-        try:
-            # Quick check if port is available
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("127.0.0.1", port))
-                # If bind succeeds, port is free, close and let Waitress use it
-        except OSError as e:
-            print(f"[WARN] Port {port} occupied ({e}), trying next...")
-            continue
+    http_sock = _bind_http_socket()
+    http_port = http_sock.getsockname()[1]
 
-        try:
-            print(f"[INFO] Starting ZABACODE WebView server on 127.0.0.1:{port}")
-            print("[INFO] Loopback-only: exposure reduction, not full app-private boundary (see SECURITY.md #27)")
-            print("[INFO] Token delivery: AUTH_TOKEN embedded in root HTML JS, validated via constant-time compare, sensitive routes require X-Zabacode-Token")
-            serve(app, host="127.0.0.1", port=port, threads=4)
-            break
-        except OSError as e:
-            print(f"[WARN] Failed to start on port {port}: {e}, trying next...")
-            if port == 5010:
-                print("[ERROR] All ports 5000-5010 occupied. Clear recovery: check other ZABACODE instances or run `lsof -i :5000` / `netstat -tulpn` and kill conflicting process.")
-                raise
-            continue
+    listeners = [http_sock]
+    ipv6_sock = _bind_ipv6_loopback(http_port)
+    if ipv6_sock is not None:
+        listeners.append(ipv6_sock)
+        print(f"[INFO] Also listening on [::1]:{http_port} (localhost may resolve to IPv6)")
+
+    print(f"[INFO] Starting ZABACODE WebView server on 127.0.0.1:{http_port} (strict P4A contract)")
+    print("[INFO] Loopback-only: exposure reduction, not full app-private boundary (see SECURITY.md #27)")
+    print("[INFO] Token delivery: AUTH_TOKEN embedded in root HTML JS, validated via constant-time compare, sensitive routes require X-Zabacode-Token")
+    print(f"[INFO] Coexistence: Zabacode=5000, Zmux=6000 — distinct ports prevent cross-talk")
+
+    try:
+        serve(app, sockets=listeners, threads=4)
+    finally:
+        for lst in listeners:
+            try:
+                lst.close()
+            except OSError:
+                pass
